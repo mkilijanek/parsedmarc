@@ -1,7 +1,7 @@
 FROM python:3.12.0a1-alpine
 
 RUN apk update && apk upgrade --available \
-    && apk add build-base libxml2-dev libxslt-dev \
+    && apk add build-base libxml2-dev libxslt-dev libffi libffi-dev \
     && apk add --update alpine-sdk \
     && rm -rf /var/cache/apk/*
 RUN pip install --no-cache --upgrade pip \
