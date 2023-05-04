@@ -1,4 +1,4 @@
-FROM python:alpine3.17
+FROM python:3-alpine3.17
 
 RUN apk update && apk upgrade --available \
     && apk add build-base libxml2-dev libxslt-dev libffi libffi-dev \
