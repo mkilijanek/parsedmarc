@@ -7,6 +7,6 @@ RUN apk update && apk upgrade --available \
 RUN pip install --no-cache --upgrade pip \
     && pip install --no-cache -U wheel \
     && pip install --no-cache -U setuptools \
-    && pip install --no-cache -U parsedmarc==8.6.4
+    && pip install --no-cache -U parsedmarc==8.7.0
 RUN adduser -D parsedmarc
 USER parsedmarc
