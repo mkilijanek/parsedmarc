@@ -8,7 +8,7 @@ RUN apk update && apk upgrade --available \
     && rm -rf /var/cache/apk/*
 RUN pip install --no-cache --upgrade pip \
     && pip install --no-cache -U wheel \
-    && pip install --no-cache -U setuptools \
+    && pip install --no-cache -U setup tools && pip install kafka-python-ng \
     && pip install --no-cache -U parsedmarc==${PARSEDMARC_VERSION}
 RUN adduser -D parsedmarc
 USER parsedmarc
