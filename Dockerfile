@@ -1,6 +1,6 @@
 FROM python:alpine
 
-ENV PARSEDMARC_VERSION=8.12.0
+ENV PARSEDMARC_VERSION=8.15.1
 
 RUN apk update && apk upgrade --available \
     && apk add build-base libxml2-dev libxslt-dev libffi libffi-dev \
