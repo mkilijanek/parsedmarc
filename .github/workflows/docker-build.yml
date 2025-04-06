@@ -64,10 +64,10 @@ jobs:
         chmod +x cosign
         sudo mv cosign /usr/local/bin/
 
-    - name: Get image digest
+    - name: Get image digest (${{ matrix.tag }})
       id: digest
       run: |
-        DIGEST=$(docker buildx imagetools inspect --format '{{ index .Manifest "digest" }}' $IMAGE_NAME:latest)
+        DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:${{ matrix.tag }} --format '{{ index .Manifest "digest" }}')
         echo "digest=$DIGEST"
         echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
