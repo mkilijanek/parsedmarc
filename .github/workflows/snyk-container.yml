@@ -37,7 +37,7 @@ jobs:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
         image: ghcr.io/${{ github.repository_owner }}/parsedmarc:snyk-scan
-        args: --file=Dockerfile --sarif-file-output=snyk.sarif
+        args: --file=Dockerfile --sarif-file-output=snyk.sarif --severity-threshold=low
 
     - name: Upload SARIF to GitHub Code Scanning
       uses: github/codeql-action/upload-sarif@v3
