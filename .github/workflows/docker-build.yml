@@ -1,11 +1,10 @@
-name: Build and Sign Multi-Arch Docker Image with Provenance
+name: Build, Sign and Generate SLSA Provenance
 
 on:
   release:
     types: [published]
-
   schedule:
-    - cron: '0 3 1 */1 *'
+    - cron: '0 3 1 */1 *'  # Rebuild monthly
 
 permissions:
   contents: read
@@ -22,7 +21,7 @@ jobs:
       PARSEDMARC_VERSION: ${{ github.ref_name }}
 
     steps:
-    - name: Checkout source code
+    - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Set up QEMU
@@ -42,7 +41,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build and Push Multi-Arch Image
+    - name: Build and push multi-arch Docker image
       run: |
         docker buildx build \
           --platform linux/amd64,linux/arm64 \
@@ -61,7 +60,7 @@ jobs:
     - name: Get image digest
       id: digest
       run: |
-        DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:${{ env.IMAGE_TAG }} --format '{{ .Digest }}')
+        DIGEST=$(docker buildx imagetools inspect --format '{{ index .Manifest "digest" }}' $IMAGE_NAME:latest)
         echo "digest=$DIGEST"
         echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
@@ -140,10 +139,8 @@ jobs:
 
     - name: Make GHCR image public
       run: |
-        REPO_OWNER=${{ github.repository_owner }}
-        PACKAGE_NAME="parsedmarc"
         curl -s -X PATCH \
           -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           -H "Accept: application/vnd.github+json" \
-          https://api.github.com/users/$REPO_OWNER/packages/container/$PACKAGE_NAME/visibility \
+          https://api.github.com/users/${{ github.repository_owner }}/packages/container/parsedmarc/visibility \
           -d '{"visibility":"public"}'
