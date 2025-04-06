@@ -48,6 +48,13 @@ jobs:
         chmod +x cosign
         sudo mv cosign /usr/local/bin/
 
+    - name: Get image digest
+      id: digest
+      run: |
+        DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:$IMAGE_TAG --format '{{ .Digest }}')
+        echo "digest=$DIGEST"
+        echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
     - name: Generate SLSA Provenance File
       run: |
         COMMIT=$(git rev-parse HEAD)
@@ -56,8 +63,10 @@ jobs:
           "_type": "https://in-toto.io/Statement/v0.1",
           "subject": [
             {
-              "name": "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}",
-              "digest": {}
+              "name": "${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}",
+              "digest": {
+                "sha256": "${{ steps.digest.outputs.digest#sha256: }}"
+              }
             }
           ],
           "predicateType": "https://slsa.dev/provenance/v0.2",
@@ -106,12 +115,13 @@ jobs:
         }
         EOF
 
-    - name: Attach SLSA Provenance to Image via Cosign
+    - name: Attach SLSA Provenance via Cosign
       run: |
         cosign attest \
+          --yes \
           --predicate provenance.json \
           --type https://slsa.dev/provenance/v0.2 \
-          $IMAGE_NAME:$IMAGE_TAG
+          $IMAGE_NAME@${{ steps.digest.outputs.digest }}
 
     - name: Make GHCR image public
       run: |
