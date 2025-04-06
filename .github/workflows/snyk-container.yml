@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read             # Required for actions/checkout
-      security-events: write     # Required to upload SARIF
-      actions: read              # Needed for private repo status lookup
+      contents: read             # For actions/checkout
+      security-events: write     # For SARIF upload to GitHub Security
+      actions: read              # For private repo actions
 
     steps:
     - name: Check out code
@@ -30,8 +30,8 @@ jobs:
           -t ghcr.io/${{ github.repository_owner }}/parsedmarc:snyk-scan \
           -f Dockerfile .
 
-    - name: Run Snyk scan and upload to GitHub Code Scanning
-      uses: snyk/actions/docker@v0.6.1
+    - name: Run Snyk scan and upload SARIF
+      uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf  # ✅ latest release
       continue-on-error: true
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -44,8 +44,8 @@ jobs:
       with:
         sarif_file: snyk.sarif
 
-    - name: Monitor Snyk project in app.snyk.io
-      uses: snyk/actions/docker@v0.6.1
+    - name: Monitor project in Snyk UI
+      uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf  # ✅ same SHA
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
