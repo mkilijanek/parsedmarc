@@ -13,22 +13,23 @@ jobs:
   build-and-provenance:
     runs-on: ubuntu-latest
     env:
-      IMAGE_NAME: parsedmarc
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/parsedmarc
       IMAGE_TAG: 8.18.1
       PARSEDMARC_VERSION: 8.18.1
 
     steps:
-    - name: Checkout
+    - name: Checkout source code
       uses: actions/checkout@v4
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Log in to DockerHub (or skip if using GHCR)
+    - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build Docker image
       run: |
@@ -36,16 +37,20 @@ jobs:
           --build-arg PARSEDMARC_VERSION=${{ env.PARSEDMARC_VERSION }} \
           -t $IMAGE_NAME:$IMAGE_TAG .
 
+    - name: Push Docker image to GHCR
+      run: |
+        docker push $IMAGE_NAME:$IMAGE_TAG > push_output.txt
+
     - name: Get Docker image digest
       id: digest
       run: |
-        docker push $IMAGE_NAME:$IMAGE_TAG > push_output.txt
         DIGEST=$(grep -o 'sha256:[a-f0-9]\{64\}' push_output.txt | head -n1)
         echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
     - name: Generate SLSA provenance JSON
       run: |
         COMMIT=$(git rev-parse HEAD)
+        DIGEST="${{ steps.digest.outputs.digest#sha256: }}"
         cat <<EOF > provenance.json
         {
           "_type": "https://in-toto.io/Statement/v0.1",
@@ -53,7 +58,7 @@ jobs:
             {
               "name": "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}",
               "digest": {
-                "sha256": "${{ steps.digest.outputs.digest#sha256: }}"
+                "sha256": "$DIGEST"
               }
             }
           ],
