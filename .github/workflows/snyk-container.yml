@@ -1,0 +1,53 @@
+name: Snyk Container Scan
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '36 12 * * 4'  # Every Thursday at 12:36 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  snyk:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read             # Required for actions/checkout
+      security-events: write     # Required to upload SARIF
+      actions: read              # Needed for private repo status lookup
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Build Docker image for Snyk scan
+      run: |
+        docker build \
+          -t ghcr.io/${{ github.repository_owner }}/parsedmarc:snyk-scan \
+          -f Dockerfile .
+
+    - name: Run Snyk scan and upload to GitHub Code Scanning
+      uses: snyk/actions/docker@v0.6.1
+      continue-on-error: true
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        image: ghcr.io/${{ github.repository_owner }}/parsedmarc:snyk-scan
+        args: --file=Dockerfile --sarif-file-output=snyk.sarif
+
+    - name: Upload SARIF to GitHub Code Scanning
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: snyk.sarif
+
+    - name: Monitor Snyk project in app.snyk.io
+      uses: snyk/actions/docker@v0.6.1
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        image: ghcr.io/${{ github.repository_owner }}/parsedmarc:snyk-scan
+        args: monitor --file=Dockerfile
