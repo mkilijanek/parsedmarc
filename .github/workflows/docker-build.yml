@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
 
+  schedule:
+    - cron: '0 3 1 */1 *'  # 3:00 AM UTC on the 1st of every month
+
 permissions:
   contents: read
   id-token: write
@@ -12,9 +15,12 @@ permissions:
 jobs:
   build-and-provenance:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tag: [ '8.18.1', 'latest' ]
+
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/parsedmarc
-      IMAGE_TAG: 8.18.1
       PARSEDMARC_VERSION: 8.18.1
 
     steps:
@@ -33,12 +39,12 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build and Push amd64 Image
+    - name: Build and Push Image (${{ matrix.tag }})
       run: |
         docker buildx build \
           --platform linux/amd64 \
           --build-arg PARSEDMARC_VERSION=${{ env.PARSEDMARC_VERSION }} \
-          -t $IMAGE_NAME:$IMAGE_TAG \
+          -t $IMAGE_NAME:${{ matrix.tag }} \
           --push .
 
     - name: Install Cosign
@@ -48,14 +54,14 @@ jobs:
         chmod +x cosign
         sudo mv cosign /usr/local/bin/
 
-    - name: Get image digest
+    - name: Get image digest (${{ matrix.tag }})
       id: digest
       run: |
-        DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:$IMAGE_TAG --format '{{ .Digest }}')
+        DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:${{ matrix.tag }} --format '{{ .Digest }}')
         echo "digest=$DIGEST"
         echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
-    - name: Generate SLSA Provenance File
+    - name: Generate SLSA Provenance (${{ matrix.tag }})
       run: |
         COMMIT=$(git rev-parse HEAD)
         FULL_DIGEST="${{ steps.digest.outputs.digest }}"
@@ -101,7 +107,7 @@ jobs:
                   "command": [
                     "docker", "buildx", "build", "--platform", "linux/amd64",
                     "--build-arg", "PARSEDMARC_VERSION=${{ env.PARSEDMARC_VERSION }}",
-                    "-t", "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}", ".", "--push"
+                    "-t", "${{ env.IMAGE_NAME }}:${{ matrix.tag }}", ".", "--push"
                   ]
                 }
               ]
@@ -118,7 +124,7 @@ jobs:
         }
         EOF
 
-    - name: Attach SLSA Provenance via Cosign
+    - name: Attach SLSA Provenance (${{ matrix.tag }})
       run: |
         cosign attest \
           --yes \
@@ -126,7 +132,7 @@ jobs:
           --type https://slsa.dev/provenance/v0.2 \
           $IMAGE_NAME@${{ steps.digest.outputs.digest }}
 
-    - name: Make GHCR image public
+    - name: Make GHCR image public (${{ matrix.tag }})
       run: |
         REPO_OWNER=${{ github.repository_owner }}
         PACKAGE_NAME="parsedmarc"
