@@ -58,14 +58,17 @@ jobs:
     - name: Generate SLSA Provenance File
       run: |
         COMMIT=$(git rev-parse HEAD)
+        FULL_DIGEST="${{ steps.digest.outputs.digest }}"
+        STRIPPED_DIGEST=${FULL_DIGEST#sha256:}
+
         cat <<EOF > provenance.json
         {
           "_type": "https://in-toto.io/Statement/v0.1",
           "subject": [
             {
-              "name": "${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}",
+              "name": "${{ env.IMAGE_NAME }}@$FULL_DIGEST",
               "digest": {
-                "sha256": "${{ steps.digest.outputs.digest#sha256: }}"
+                "sha256": "$STRIPPED_DIGEST"
               }
             }
           ],
