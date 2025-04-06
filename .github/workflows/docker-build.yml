@@ -1,4 +1,4 @@
-name: Build, Sign and Generate SLSA Provenance
+name: Build, Sign, and Generate SLSA Provenance + SBOM
 
 on:
   release:
@@ -41,11 +41,18 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build and push multi-arch Docker image
+    - name: Build and push multi-arch Docker image with labels
       run: |
         docker buildx build \
           --platform linux/amd64,linux/arm64 \
           --build-arg PARSEDMARC_VERSION=${{ env.PARSEDMARC_VERSION }} \
+          --label org.opencontainers.image.title="parsedmarc" \
+          --label org.opencontainers.image.description="A containerized version of Parsedmarc email analyzer" \
+          --label org.opencontainers.image.version="${{ env.IMAGE_TAG }}" \
+          --label org.opencontainers.image.source="https://github.com/${{ github.repository }}" \
+          --label org.opencontainers.image.revision="${{ github.sha }}" \
+          --label org.opencontainers.image.licenses="MIT" \
+          --label org.opencontainers.image.authors="mkilijanek" \
           -t $IMAGE_NAME:${{ env.IMAGE_TAG }} \
           -t $IMAGE_NAME:latest \
           --push .
@@ -64,6 +71,29 @@ jobs:
         echo "digest=$DIGEST"
         echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
+    # ---------- SBOM Generation ----------
+    - name: Install Trivy
+      run: |
+        TRIVY_VERSION="0.50.0"
+        curl -sfL https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz | tar xz
+        sudo mv trivy /usr/local/bin/
+
+    - name: Generate CycloneDX SBOM with Trivy
+      run: |
+        trivy image \
+          --format cyclonedx \
+          --output sbom.json \
+          $IMAGE_NAME@${{ steps.digest.outputs.digest }}
+
+    - name: Attach SBOM as attestation
+      run: |
+        cosign attest \
+          --yes \
+          --predicate sbom.json \
+          --type https://cyclonedx.org/schema \
+          $IMAGE_NAME@${{ steps.digest.outputs.digest }}
+
+    # ---------- SLSA Provenance ----------
     - name: Generate SLSA Provenance File
       run: |
         COMMIT=$(git rev-parse HEAD)
@@ -111,8 +141,16 @@ jobs:
                     "docker", "buildx", "build",
                     "--platform", "linux/amd64,linux/arm64",
                     "--build-arg", "PARSEDMARC_VERSION=${{ env.PARSEDMARC_VERSION }}",
+                    "--label", "org.opencontainers.image.title=parsedmarc",
+                    "--label org.opencontainers.image.description="Dockerized Parsedmarc under MIT; includes Apache-2.0 software",
+                    "--label", "org.opencontainers.image.version=${{ env.IMAGE_TAG }}",
+                    "--label", "org.opencontainers.image.source=https://github.com/${{ github.repository }}",
+                    "--label", "org.opencontainers.image.revision=${{ github.sha }}",
+                    "--label org.opencontainers.image.licenses="MIT AND Apache-2.0",
+                    "--label", "org.opencontainers.image.authors=mkilijanek",
                     "-t", "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}",
-                    "-t", "${{ env.IMAGE_NAME }}:latest", ".", "--push"
+                    "-t", "${{ env.IMAGE_NAME }}:latest",
+                    ".", "--push"
                   ]
                 }
               ]
@@ -137,6 +175,7 @@ jobs:
           --type https://slsa.dev/provenance/v0.2 \
           $IMAGE_NAME@${{ steps.digest.outputs.digest }}
 
+    # ---------- Make GHCR Public ----------
     - name: Make GHCR image public
       run: |
         curl -s -X PATCH \
