@@ -34,7 +34,7 @@ jobs:
         docker build -t ghcr.io/${{ github.repository_owner }}/parsedmarc:${{ github.sha }} .
 
     - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@v0.12.0
+      uses: aquasecurity/trivy-action@f5356c7e524f7f5981a8d94cb956e1a066d67ff5  # v0.30.0
       with:
         image-ref: 'ghcr.io/${{ github.repository_owner }}/parsedmarc:${{ github.sha }}'
         format: 'template'
