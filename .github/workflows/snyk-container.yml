@@ -31,7 +31,7 @@ jobs:
           -f Dockerfile .
 
     - name: Run Snyk scan and upload SARIF
-      uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf  # ✅ latest release
+      uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4  # ✅ latest release
       continue-on-error: true
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -45,7 +45,7 @@ jobs:
         sarif_file: snyk.sarif
 
     - name: Monitor project in Snyk UI
-      uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf  # ✅ same SHA
+      uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4  # ✅ same SHA
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
