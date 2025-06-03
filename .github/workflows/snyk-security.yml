@@ -1,0 +1,54 @@
+name: Snyk Security
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  snyk:
+    name: Snyk Full Stack Scan
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read              # For actions/checkout
+      security-events: write     # For uploading SARIF
+      actions: read              # For private repo Code Scanning visibility
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    # Optional: Set up language-specific environments if needed
+    # - uses: actions/setup-node@v4
+    #   with:
+    #     node-version: 20
+
+    - name: Set up Snyk CLI
+      uses: snyk/actions/setup@806182742461562b67788a64410098c9d9b96adb
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+    - name: Snyk Code (SAST) analysis → SARIF
+      run: snyk code test --sarif > snyk-code.sarif || true
+
+    - name: Upload Snyk Code SARIF to GitHub Code Scanning
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: snyk-code.sarif
+
+    - name: Snyk Open Source (SCA) monitoring
+      run: snyk monitor --all-projects || true
+
+    - name: Snyk IaC (Infrastructure as Code) analysis
+      run: snyk iac test --report || true
+
+    - name: Build Docker image for container scan
+      run: docker build -t your/image-to-test .
+
+    - name: Snyk Container monitoring
+      run: snyk container monitor your/image-to-test --file=Dockerfile || true
