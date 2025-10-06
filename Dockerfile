@@ -1,4 +1,4 @@
-FROM python:alpine
+FROM python:3-alpine
 
 ENV PARSEDMARC_VERSION=8.18.6
 
