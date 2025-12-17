@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1>IOC Viewer</h1>
+<p>Presentation layer for PostgreSQL views/functions. Use the tabs above.</p>
+
+<section class="cards">
+  <div class="card">
+    <h2>Unified view</h2>
+    <p>All IOCs (with mobile context when present).</p>
+    <p><a class="btn" href="{{ url_for('webui.unified') }}">Open</a></p>
+  </div>
+  <div class="card">
+    <h2>Mobile view</h2>
+    <p>APK/iOS-focused view: package name, version, permissions.</p>
+    <p><a class="btn" href="{{ url_for('webui.mobile') }}">Open</a></p>
+  </div>
+  <div class="card">
+    <h2>Aggregations</h2>
+    <p>Counts by source/type/TLP.</p>
+    <p><a class="btn" href="{{ url_for('webui.stats') }}">Open</a></p>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{{ title or "IOC Viewer" }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="{{ url_for('webui.index') }}">IOC Viewer</a></div>
+    <nav class="nav">
+      <a href="{{ url_for('webui.unified') }}">Unified</a>
+      <a href="{{ url_for('webui.mobile') }}">Mobile</a>
+      <a href="{{ url_for('webui.stats') }}">Stats</a>
+      <a href="{{ url_for('indicators_view') }}">Legacy /indicators</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <small>DB-backed IOC presentation layer</small>
+  </footer>
+</body>
+</html>
