@@ -31,6 +31,7 @@ class Config:
 
     MALWAREBAZAAR_SINCE_DATE: str = os.getenv("MALWAREBAZAAR_SINCE_DATE", "")
     MALWAREBAZAAR_API_URL: str = os.getenv("MALWAREBAZAAR_API_URL", "https://mb-api.abuse.ch/api/v1/")
+    MALWAREBAZAAR_AUTH_KEY: str = os.getenv("MALWAREBAZAAR_AUTH_KEY", "")
     MWDB_URL: str = os.getenv("MWDB_URL", "")
     MWDB_AUTH_KEY: str = os.getenv("MWDB_AUTH_KEY", "")
 

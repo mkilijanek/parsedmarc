@@ -164,6 +164,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if src == "bazaar":
             rows = fetch_malwarebazaar_by_tags(
                 base_url=os.getenv("MALWAREBAZAAR_API_URL") or cfg_overrides.get("MALWAREBAZAAR_API_URL") or "https://mb-api.abuse.ch/api/v1/",
+                auth_key=(cfg_overrides.get("MALWAREBAZAAR_AUTH_KEY") or os.getenv("MALWAREBAZAAR_AUTH_KEY") or app_cfg.MALWAREBAZAAR_AUTH_KEY),
                 tags=tags,
                 since=since,
                 until=until,
@@ -171,8 +172,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         else:
             rows = fetch_mwdb_by_tags(
-                base_url=os.getenv("MWDB_URL") or cfg_overrides.get("MWDB_URL") or "",
-                auth_key=os.getenv("MWDB_AUTH_KEY") or cfg_overrides.get("MWDB_AUTH_KEY") or "",
+                base_url=(cfg_overrides.get("MWDB_URL") or os.getenv("MWDB_URL") or app_cfg.MWDB_URL),
+                auth_key=(cfg_overrides.get("MWDB_AUTH_KEY") or os.getenv("MWDB_AUTH_KEY") or app_cfg.MWDB_AUTH_KEY),
                 tags=tags,
                 since=since,
                 until=until,
