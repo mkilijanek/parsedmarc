@@ -20,7 +20,7 @@ def _utc_iso(dt: datetime | None) -> str:
 
 def _sanitize_name(s: str) -> str:
     # For tool formats that need a name identifier
-    return s.replace('.', '-').replace(':', '-').replace('/', '-').replace('\', '-')
+    return s.replace('.', '-').replace(':', '-').replace('/', '-').replace('\\', '-')
 
 def _only_ip(ind: Indicator) -> bool:
     return ind.type == "ip"

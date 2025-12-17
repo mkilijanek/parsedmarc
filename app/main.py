@@ -5,10 +5,10 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, Response, jsonify, request, make_response
+from flask import Flask, Response, jsonify, request, make_response, redirect, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, text
 from sqlalchemy.orm import Session
 
 from .config import Config
@@ -20,6 +20,7 @@ from .cache import get_redis
 from .security import validate_search_query, enforce_allowed_hosts
 from .query_parser import parse_kibana_query, Term, Token
 from .formatters import FORMATTERS
+
 from .metrics import request_count, request_duration, active_indicators, generate_latest, CONTENT_TYPE_LATEST
 
 logger = logging.getLogger(__name__)
@@ -282,10 +283,55 @@ def create_app() -> Flask:
         cached = r.get(cache_key)
         if cached:
             resp = make_response(cached)
-            resp.headers["Content-Type"] = "text/html; charset=utf-8"
+            resp.headers["Content-Type"] = mime_map.get(fmt, "application/octet-stream")
+            resp.headers["Content-Disposition"] = f'attachment; filename="indicators.{fmt}"'
             return resp
 
         db = _db()
+
+        # Prefer database-native export generator when available.
+        # Falls back to Python formatters for compatibility.
+        mime_map = {
+            "txt": "text/plain; charset=utf-8",
+            "csv": "text/csv; charset=utf-8",
+            "tsv": "text/tab-separated-values; charset=utf-8",
+            "json": "application/json; charset=utf-8",
+            "elasticsearch": "application/x-ndjson; charset=utf-8",
+            "cribl": "application/x-ndjson; charset=utf-8",
+            "splunk": "application/json; charset=utf-8",
+            "arcsight": "text/plain; charset=utf-8",
+            "fidelis": "application/json; charset=utf-8",
+        }
+        db_out = None
+        try:
+            types_arr = None if type_filter == "all" else [type_filter]
+            sources_arr = None if source == "all" else [source]
+            tlps_arr = None if tlp == "ALL" else [tlp]
+            # NOTE: Export uses ti.export_indicators(fmt, q, limit, offset, types, sources, tlps, active_only)
+            db_out = db.execute(
+                text(
+                    "SELECT ti.export_indicators(:fmt, :q, :limit, :offset, :types, :sources, :tlps, :active_only)"
+                ),
+                {
+                    "fmt": fmt,
+                    "q": q,
+                    "limit": 100000,
+                    "offset": 0,
+                    "types": types_arr,
+                    "sources": sources_arr,
+                    "tlps": tlps_arr,
+                    "active_only": True,
+                },
+            ).scalar_one_or_none()
+        except Exception:
+            db_out = None
+
+        if db_out is not None and fmt in DB_SUPPORTED_FORMATS:
+            resp = make_response(db_out)
+            resp.headers["Content-Type"] = mime_map.get(fmt, "text/plain; charset=utf-8")
+            resp.headers["Content-Disposition"] = f'attachment; filename="indicators.{fmt}"'
+            return resp
+
         try:
             rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=1000, offset=0)
         except Exception as e:
@@ -305,11 +351,21 @@ def create_app() -> Flask:
         resp.headers["Content-Type"] = "text/html; charset=utf-8"
         return resp
 
+    
+    @app.get("/sources/<src>")
+    @limiter.limit("30 per minute")
+    def indicators_by_source(src: str):
+        # Dedicated endpoint: shortcut to /indicators with source preselected.
+        src = (src or "").strip().lower()
+        if not src or any(c in src for c in [' ', '\t', '\n', '\r', '/', '\\']):
+            return jsonify({"error": "Invalid source"}), 400
+        return redirect(url_for("indicators_view", source=src))
+
     @app.get("/indicators/<fmt>")
     @limiter.limit("30 per minute")
     def export_indicators(fmt: str):
         fmt = fmt.lower()
-        if fmt not in FORMATTERS:
+        if fmt not in FORMATTERS and fmt not in DB_SUPPORTED_FORMATS:
             return jsonify({"error": "Unknown format"}), 404
 
         q = request.args.get("q", "").strip() or None
@@ -319,6 +375,18 @@ def create_app() -> Flask:
         type_filter = (request.args.get("type") or "all").lower()
         tlp = (request.args.get("tlp") or "all").upper()
         source = (request.args.get("source") or "all").lower()
+
+        mime_map = {
+            "txt": "text/plain; charset=utf-8",
+            "csv": "text/csv; charset=utf-8",
+            "tsv": "text/tab-separated-values; charset=utf-8",
+            "json": "application/json; charset=utf-8",
+            "elasticsearch": "application/x-ndjson; charset=utf-8",
+            "cribl": "application/x-ndjson; charset=utf-8",
+            "splunk": "application/json; charset=utf-8",
+            "arcsight": "text/plain; charset=utf-8",
+            "fidelis": "application/json; charset=utf-8",
+        }
 
         cfg = Config()
         cache_key = _cache_key("export", fmt=fmt, q=q or "", type=type_filter, tlp=tlp, source=source)

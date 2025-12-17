@@ -6,6 +6,7 @@ Production-ready threat feed aggregation and export service:
 - Caches exports/views in **Redis 7** (AOF, 512MB, LRU)
 - Serves HTTPS via **Nginx** (TLS 1.2+, HTTP/2, security headers, rate limiting)
 - Web UI: `/indicators` (Kibana-like search) with WCAG/ARIA attributes
+- Source shortcuts: `/sources/<src>` (e.g. `/sources/bazaar`, `/sources/mwdb`)
 - 17 export formats via `/indicators/<format>`
 
 ## Quickstart (Docker Compose)
@@ -97,7 +98,7 @@ pytest -q
 
 ## Configuration
 
-- `MALWAREBAZAAR_SINCE_DATE` (optional): ISO date `YYYY-MM-DD`. When set, MalwareBazaar ingestion should only pull entries from this date (inclusive) onward.
+- `MALWAREBAZAAR_SINCE_DATE` (optional): ISO date `YYYY-MM-DD`. When set, MALWAREBAZAAR_SINCE_DATE: ISO date `YYYY-MM-DD` (UTC). MalwareBazaar ingestion pulls entries from this date (inclusive) onward.
 
 
 ## CLI (IOC ingestion)
@@ -120,3 +121,8 @@ Supported keys:
 - `MALWAREBAZAAR_API_URL`
 - `MWDB_URL`
 - `MWDB_AUTH_KEY`
+- `MALWAREBAZAAR_AUTH_KEY`
+
+Precedence:
+- CLI flags override values from `--config-file`.
+- For `DATABASE_URL`, current precedence is: environment variable first, then `--config-file`.

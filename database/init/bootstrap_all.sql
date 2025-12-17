@@ -6,3 +6,5 @@
 \i 04_triggers_and_maintenance.sql
 \i 05_functions_search_upsert.sql
 \i 06_views.sql
+
+\i 07_export_functions.sql
