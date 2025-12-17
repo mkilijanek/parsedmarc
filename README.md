@@ -98,3 +98,25 @@ pytest -q
 ## Configuration
 
 - `MALWAREBAZAAR_SINCE_DATE` (optional): ISO date `YYYY-MM-DD`. When set, MalwareBazaar ingestion should only pull entries from this date (inclusive) onward.
+
+
+## CLI (IOC ingestion)
+
+Run locally:
+
+```bash
+export DATABASE_URL='postgresql://iocuser:pass@localhost:5432/iocdb'
+python -m app.cli fetch --data-source bazaar --tags TrickBot --since 2025-01-01 --until 2025-01-31
+python -m app.cli fetch --data-source mwdb --tags EvilTag --since 2025-01-01 --config-file ./config/cli.env
+```
+
+### Config file
+`--config-file` supports JSON (`.json`) or `.env` style `KEY=VALUE`.
+Supported keys:
+- `DATABASE_URL`
+- `TAGS` (comma-separated)
+- `SINCE` (YYYY-MM-DD or ISO datetime)
+- `UNTIL` (YYYY-MM-DD or ISO datetime)
+- `MALWAREBAZAAR_API_URL`
+- `MWDB_URL`
+- `MWDB_AUTH_KEY`

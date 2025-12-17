@@ -30,6 +30,10 @@ class Config:
     MISP_DAYS: int = int(os.getenv("MISP_DAYS", "7"))
 
     MALWAREBAZAAR_SINCE_DATE: str = os.getenv("MALWAREBAZAAR_SINCE_DATE", "")
+    MALWAREBAZAAR_API_URL: str = os.getenv("MALWAREBAZAAR_API_URL", "https://mb-api.abuse.ch/api/v1/")
+    MWDB_URL: str = os.getenv("MWDB_URL", "")
+    MWDB_AUTH_KEY: str = os.getenv("MWDB_AUTH_KEY", "")
+
 
     # Worker
     ENABLE_BACKGROUND_JOBS: bool = _env_bool("ENABLE_BACKGROUND_JOBS", True)
