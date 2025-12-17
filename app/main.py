@@ -17,7 +17,7 @@ from .logging import setup_logging
 from .db import SessionLocal
 from .models import Indicator, FeedStats, AuditLog
 from .cache import get_redis
-from .security import validate_search_query, enforce_allowed_hosts
+from .security import validate_search_query, enforce_allowed_hosts, get_client_ip
 from .query_parser import parse_kibana_query, Term, Token
 from .formatters import FORMATTERS
 
@@ -26,6 +26,8 @@ from .metrics import request_count, request_duration, active_indicators, generat
 logger = logging.getLogger(__name__)
 
 SUPPORTED_FIELDS = {"value","type","confidence","tlp","tags","source"}
+# Database-native export formats (formats supported by ti.export_indicators SQL function)
+DB_SUPPORTED_FORMATS = {"txt", "csv", "json"}
 
 def create_app() -> Flask:
     cfg = Config()
@@ -33,6 +35,12 @@ def create_app() -> Flask:
 
     app = Flask(__name__)
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
+
+    # SECURITY: Secure session cookie configuration
+    app.config["SESSION_COOKIE_SECURE"] = True  # Only send over HTTPS
+    app.config["SESSION_COOKIE_HTTPONLY"] = True  # Prevent JavaScript access
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # CSRF protection
+    app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # 1 hour session
 
     # Web UI blueprint
     app.register_blueprint(webui_bp)
@@ -50,9 +58,19 @@ def create_app() -> Flask:
 
     @app.after_request
     def _add_headers(resp: Response) -> Response:
-        # Some defense-in-depth headers for the app itself (nginx also sets them)
+        # SECURITY: Defense-in-depth security headers
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        resp.headers.setdefault("X-XSS-Protection", "1; mode=block")
+        # CSP: Allow same origin for scripts/styles, block everything else by default
+        resp.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'"
+        )
+        # HSTS: Force HTTPS for 1 year (should be set by reverse proxy, but adding here too)
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        # Permissions Policy: Disable unnecessary browser features
+        resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
         return resp
 
     @app.before_request
@@ -73,12 +91,14 @@ def create_app() -> Flask:
     def _audit(action: str, entity_type: str | None = None, entity_id: int | None = None, metadata: dict | None = None) -> None:
         db = _db()
         try:
+            # SECURITY: Use safe IP extraction that respects proxy configuration
+            client_ip = get_client_ip()
             db.add(AuditLog(
                 action=action,
                 entity_type=entity_type,
                 entity_id=entity_id,
                 user_id=None,
-                ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
+                ip_address=client_ip,
                 metadata=metadata or {},
             ))
             db.commit()
@@ -283,55 +303,10 @@ def create_app() -> Flask:
         cached = r.get(cache_key)
         if cached:
             resp = make_response(cached)
-            resp.headers["Content-Type"] = mime_map.get(fmt, "application/octet-stream")
-            resp.headers["Content-Disposition"] = f'attachment; filename="indicators.{fmt}"'
+            resp.headers["Content-Type"] = "text/html; charset=utf-8"
             return resp
 
         db = _db()
-
-        # Prefer database-native export generator when available.
-        # Falls back to Python formatters for compatibility.
-        mime_map = {
-            "txt": "text/plain; charset=utf-8",
-            "csv": "text/csv; charset=utf-8",
-            "tsv": "text/tab-separated-values; charset=utf-8",
-            "json": "application/json; charset=utf-8",
-            "elasticsearch": "application/x-ndjson; charset=utf-8",
-            "cribl": "application/x-ndjson; charset=utf-8",
-            "splunk": "application/json; charset=utf-8",
-            "arcsight": "text/plain; charset=utf-8",
-            "fidelis": "application/json; charset=utf-8",
-        }
-        db_out = None
-        try:
-            types_arr = None if type_filter == "all" else [type_filter]
-            sources_arr = None if source == "all" else [source]
-            tlps_arr = None if tlp == "ALL" else [tlp]
-            # NOTE: Export uses ti.export_indicators(fmt, q, limit, offset, types, sources, tlps, active_only)
-            db_out = db.execute(
-                text(
-                    "SELECT ti.export_indicators(:fmt, :q, :limit, :offset, :types, :sources, :tlps, :active_only)"
-                ),
-                {
-                    "fmt": fmt,
-                    "q": q,
-                    "limit": 100000,
-                    "offset": 0,
-                    "types": types_arr,
-                    "sources": sources_arr,
-                    "tlps": tlps_arr,
-                    "active_only": True,
-                },
-            ).scalar_one_or_none()
-        except Exception:
-            db_out = None
-
-        if db_out is not None and fmt in DB_SUPPORTED_FORMATS:
-            resp = make_response(db_out)
-            resp.headers["Content-Type"] = mime_map.get(fmt, "text/plain; charset=utf-8")
-            resp.headers["Content-Disposition"] = f'attachment; filename="indicators.{fmt}"'
-            return resp
-
         try:
             rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=1000, offset=0)
         except Exception as e:
@@ -487,6 +462,7 @@ def create_app() -> Flask:
         return resp
 
     @app.get("/misp/event/<event_id>")
+    @limiter.limit("30 per minute")
     def misp_event_redirect(event_id: str):
         cfg = Config()
         if not cfg.MISP_URL:
