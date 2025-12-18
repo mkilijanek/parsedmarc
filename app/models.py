@@ -24,7 +24,7 @@ class Indicator(Base):
     tlp: Mapped[str] = mapped_column(String(20), server_default="WHITE", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
 
-    metadata: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, server_default="{}")
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
 
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
@@ -47,7 +47,7 @@ class FeedStats(Base):
     last_update: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
     last_fetch_status: Mapped[str | None] = mapped_column(String(50))
     last_fetch_error: Mapped[str | None] = mapped_column(Text)
-    metadata: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, server_default="{}")
 
     __table_args__ = (
         UniqueConstraint("source", "source_id", name="unique_feed_stats"),
@@ -62,5 +62,5 @@ class AuditLog(Base):
     entity_id: Mapped[int | None] = mapped_column(Integer)
     user_id: Mapped[str | None] = mapped_column(String(100))
     ip_address: Mapped[str | None] = mapped_column(INET)
-    metadata: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, server_default="{}")
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())

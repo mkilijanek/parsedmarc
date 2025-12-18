@@ -60,7 +60,7 @@ def export_json(indicators: Iterable[Indicator]) -> str:
             "source_id": ind.source_id,
             "is_active": ind.is_active,
             "tags": ind.tags or [],
-            "metadata": ind.metadata or {},
+            "metadata": ind.metadata_ or {},
             "first_seen": _utc_iso(ind.first_seen),
             "last_seen": _utc_iso(ind.last_seen),
         }
