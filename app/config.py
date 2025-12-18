@@ -9,10 +9,28 @@ def _env_bool(name: str, default: bool = False) -> bool:
         return default
     return v.strip().lower() in {"1","true","yes","y","on"}
 
+def _get_secret_key() -> str:
+    """Get SECRET_KEY from environment with validation.
+
+    SECURITY: Enforces that SECRET_KEY is set and strong enough.
+    """
+    key = os.getenv("SECRET_KEY", "")
+    if not key:
+        raise RuntimeError(
+            "SECURITY ERROR: SECRET_KEY environment variable must be set. "
+            "Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(32))'"
+        )
+    if len(key) < 32:
+        raise RuntimeError(
+            f"SECURITY ERROR: SECRET_KEY must be at least 32 characters long (current: {len(key)}). "
+            "Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(32))'"
+        )
+    return key
+
 @dataclass(frozen=True)
 class Config:
     # Core
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
+    SECRET_KEY: str = _get_secret_key()
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 
     # DB / Redis
@@ -26,7 +44,8 @@ class Config:
 
     MISP_URL: str = os.getenv("MISP_URL", "")
     MISP_API_KEY: str = os.getenv("MISP_API_KEY", "")
-    MISP_VERIFY_SSL: bool = _env_bool("MISP_VERIFY_SSL", False)
+    # SECURITY: SSL verification enabled by default to prevent MITM attacks
+    MISP_VERIFY_SSL: bool = _env_bool("MISP_VERIFY_SSL", True)
     MISP_DAYS: int = int(os.getenv("MISP_DAYS", "7"))
 
     MALWAREBAZAAR_SINCE_DATE: str = os.getenv("MALWAREBAZAAR_SINCE_DATE", "")
