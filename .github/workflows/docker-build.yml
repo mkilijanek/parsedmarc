@@ -64,12 +64,11 @@ jobs:
         chmod +x cosign
         sudo mv cosign /usr/local/bin/
 
-    - name: Get image digest (${{ matrix.tag }})
+    - name: Get image digest
       id: digest
       run: |
-        DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:${{ matrix.tag }} --format '{{ index .Manifest "digest" }}')
-        echo "digest=$DIGEST"
-        echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+        DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:${{ env.IMAGE_TAG }} | awk '/^Digest: / {print $2; exit}')
+        echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
     # ---------- SBOM Generation ----------
     - name: Install Trivy
