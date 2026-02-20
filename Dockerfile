@@ -1,6 +1,6 @@
-FROM python:3-alpine3.22
+FROM python:3-alpine3.23
 
-ENV PARSEDMARC_VERSION=8.18.6
+ENV PARSEDMARC_VERSION=9.0.11
 
 RUN pip install --no-cache --upgrade parsedmarc==${PARSEDMARC_VERSION}
 RUN mkdir -p /home/parsedmarc
