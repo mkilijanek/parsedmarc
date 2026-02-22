@@ -47,7 +47,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build image (local, for scan)
         uses: docker/build-push-action@v6
@@ -72,6 +72,7 @@ jobs:
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
+
         with:
           sarif_file: trivy-results-${{ matrix.image.name }}.sarif
           category: trivy-${{ matrix.image.name }}
