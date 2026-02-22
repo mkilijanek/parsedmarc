@@ -56,7 +56,7 @@ jobs:
           tags: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
 
       - name: Run Snyk scan and upload SARIF
-        uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4
+        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -74,7 +74,7 @@ jobs:
           category: snyk-${{ matrix.image.name }}
 
       - name: Monitor project in Snyk UI
-        uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4
+        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
