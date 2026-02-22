@@ -17,33 +17,61 @@ permissions:
 
 jobs:
   trivy:
-    name: Trivy Container Scan
+    name: Trivy Container Scan (latest + hardened + locked)
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read              # For actions/checkout
-      security-events: write     # For SARIF upload to GitHub security tab
-      actions: read              # Needed for private repos
+      contents: read
+      security-events: write
+      actions: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: latest
+            dockerfile: Dockerfile
+            platform: linux/amd64
+          - name: hardened
+            dockerfile: Dockerfile.hardened
+            platform: linux/amd64
+          - name: locked-alpine
+            dockerfile: Dockerfile-alpine.locked
+            platform: linux/amd64
+          - name: locked-debian
+            dockerfile: Dockerfile-debian.locked
+            platform: linux/amd64
+          - name: locked-ubi
+            dockerfile: Dockerfile-ubi.locked
+            platform: linux/amd64
 
     steps:
-    - name: Check out code
-      uses: actions/checkout@v4
+      - name: Check out code
+        uses: actions/checkout@v4
 
-    - name: Build Docker image
-      run: |
-        docker build -t ghcr.io/${{ github.repository_owner }}/parsedmarc:${{ github.sha }} .
+      - name: Build image (local, for scan)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          push: false
+          load: true
+          platforms: ${{ matrix.image.platform }}
+          tags: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
 
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@7b7aa264d83dc58691451798b4d117d53d21edfe  # v0.30.0
-      with:
-        image-ref: 'ghcr.io/${{ github.repository_owner }}/parsedmarc:${{ github.sha }}'
-        format: 'template'
-        template: '@/contrib/sarif.tpl'
-        output: 'trivy-results.sarif'
-        severity: 'CRITICAL,HIGH'
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@7b7aa264d83dc58691451798b4d117d53d21edfe  # v0.30.0
+        with:
+          image-ref: 'local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}'
+          format: 'template'
+          template: '@/contrib/sarif.tpl'
+          output: 'trivy-results-${{ matrix.image.name }}.sarif'
+          severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
+          ignore-unfixed: true
 
-    - name: Upload Trivy results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: trivy-results.sarif
-
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results-${{ matrix.image.name }}.sarif
+          category: trivy-${{ matrix.image.name }}
