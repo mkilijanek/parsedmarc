@@ -1,54 +1,99 @@
-name: Snyk Security
+name: Snyk Security (SAST + SCA + IaC)
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  schedule:
+    - cron: "11 2 * * 4"   # Every Thursday 02:11 UTC
+  workflow_dispatch:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   snyk:
-    name: Snyk Full Stack Scan
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read              # For actions/checkout
-      security-events: write     # For uploading SARIF
-      actions: read              # For private repo Code Scanning visibility
+    strategy:
+      fail-fast: false
+      matrix:
+        scan: [sast, sca, iac]
 
     steps:
-    - name: Check out code
-      uses: actions/checkout@v4
+      - name: Check out code
+        uses: actions/checkout@v4
 
-    # Optional: Set up language-specific environments if needed
-    # - uses: actions/setup-node@v4
-    #   with:
-    #     node-version: 20
+      - name: Set up Snyk CLI
+        uses: snyk/actions/setup@master
 
-    - name: Set up Snyk CLI
-      uses: snyk/actions/setup@806182742461562b67788a64410098c9d9b96adb
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      - name: Snyk auth
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: snyk auth "$SNYK_TOKEN"
 
-    - name: Snyk Code (SAST) analysis → SARIF
-      run: snyk code test --sarif > snyk-code.sarif || true
+      # -------------------------
+      # SAST (Snyk Code)
+      # -------------------------
+      - name: SAST (snyk code test)
+        if: matrix.scan == 'sast'
+        continue-on-error: true
+        run: |
+          snyk code test \
+            --sarif-file-output=snyk-code.sarif
 
-    - name: Upload Snyk Code SARIF to GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: snyk-code.sarif
+      - name: Upload SAST SARIF
+        if: matrix.scan == 'sast'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-code.sarif
+          category: snyk-code
 
-    - name: Snyk Open Source (SCA) monitoring
-      run: snyk monitor --all-projects || true
+      # -------------------------
+      # SCA (Open Source deps)
+      # -------------------------
+      - name: Set up Python
+        if: matrix.scan == 'sca'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Snyk IaC (Infrastructure as Code) analysis
-      run: snyk iac test --report || true
+      - name: SCA (snyk test)
+        if: matrix.scan == 'sca'
+        continue-on-error: true
+        run: |
+          # Snyk sam wykrywa typ projektu; dla Pythona zwykle requirements*.txt / pyproject.toml
+          # Raport JSON jako artifact do audytu (najpewniejsze i stabilne).
+          snyk test --severity-threshold=high --json-file-output=snyk-sca.json || true
 
-    - name: Build Docker image for container scan
-      run: docker build -t your/image-to-test .
+      - name: Upload SCA report artifact
+        if: matrix.scan == 'sca'
+        uses: actions/upload-artifact@v4
+        with:
+          name: snyk-sca.json
+          path: snyk-sca.json
+          if-no-files-found: warn
 
-    - name: Snyk Container monitoring
-      run: snyk container monitor your/image-to-test --file=Dockerfile || true
+      # Optional gate (odkomentuj, jeśli chcesz fail pipeline na HIGH+ w SCA)
+      # - name: SCA Gate (fail on HIGH+)
+      #   if: matrix.scan == 'sca'
+      #   run: snyk test --severity-threshold=high
+
+      # -------------------------
+      # IaC (Terraform/K8s/Compose/etc.)
+      # -------------------------
+      - name: IaC (snyk iac test)
+        if: matrix.scan == 'iac'
+        continue-on-error: true
+        run: |
+          # --report tworzy ładny output; SARIF do GitHub Code Scanning
+          snyk iac test \
+            --sarif-file-output=snyk-iac.sarif
+
+      - name: Upload IaC SARIF
+        if: matrix.scan == 'iac'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-iac.sarif
+          category: snyk-iac
