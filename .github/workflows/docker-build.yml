@@ -1,4 +1,4 @@
-name: Build and Publish Docker Images
+name: Build and Publish Docker Images (Reproducible Metadata)
 
 on:
   release:
@@ -9,12 +9,55 @@ permissions:
   packages: write
   id-token: write
 
+env:
+  IMAGE: ghcr.io/mkilijanek/parsedmarc
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute reproducible timestamps
+        id: repro
+        shell: bash
+        run: |
+          # Use commit time as SOURCE_DATE_EPOCH (reproducible)
+          SDE=$(git log -1 --format=%ct)
+          echo "SOURCE_DATE_EPOCH=${SDE}" >> "$GITHUB_OUTPUT"
+          # RFC3339 UTC derived from SOURCE_DATE_EPOCH (reproducible)
+          BUILD_DATE=$(date -u -d "@${SDE}" +%Y-%m-%dT%H:%M:%SZ)
+          echo "BUILD_DATE=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
+          echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker meta (standard)
+        id: meta_std
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.repro.outputs.VERSION }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.created=${{ steps.repro.outputs.BUILD_DATE }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.repro.outputs.VERSION }}
+
+      - name: Docker meta (distroless)
+        id: meta_dst
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.repro.outputs.VERSION }}-distroless
+            type=raw,value=distroless
+          labels: |
+            org.opencontainers.image.created=${{ steps.repro.outputs.BUILD_DATE }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.repro.outputs.VERSION }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -29,14 +72,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
-        id: vars
-        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-
       ############################################################
       # Standard image
       ############################################################
-
       - name: Build and push (standard)
         uses: docker/build-push-action@v6
         with:
@@ -44,20 +82,19 @@ jobs:
           file: Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
-            ghcr.io/mkilijanek/parsedmarc:latest
+          tags: ${{ steps.meta_std.outputs.tags }}
+          labels: ${{ steps.meta_std.outputs.labels }}
           build-args: |
-            PARSEDMARC_VERSION=${{ steps.vars.outputs.VERSION }}
+            PARSEDMARC_VERSION=${{ steps.repro.outputs.VERSION }}
             VCS_REF=${{ github.sha }}
-            BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
+            SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
           sbom: true
           provenance: true
 
       ############################################################
-      # Hardened distroless image
+      # Distroless hardened image
       ############################################################
-
       - name: Build and push (distroless hardened)
         uses: docker/build-push-action@v6
         with:
@@ -65,24 +102,24 @@ jobs:
           file: Dockerfile.hardened
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}-distroless
-            ghcr.io/mkilijanek/parsedmarc:distroless
+          tags: ${{ steps.meta_dst.outputs.tags }}
+          labels: ${{ steps.meta_dst.outputs.labels }}
           build-args: |
-            PARSEDMARC_VERSION=${{ steps.vars.outputs.VERSION }}
+            PARSEDMARC_VERSION=${{ steps.repro.outputs.VERSION }}
             VCS_REF=${{ github.sha }}
-            BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
+            SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
           sbom: true
           provenance: true
 
       ############################################################
-      # Cosign keyless signing
+      # Cosign signing (keyless)
       ############################################################
-
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
       - name: Sign images (keyless)
+        shell: bash
         run: |
-          cosign sign --yes ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
-          cosign sign --yes ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}-distroless
+          cosign sign --yes "${{ env.IMAGE }}:${{ steps.repro.outputs.VERSION }}"
+          cosign sign --yes "${{ env.IMAGE }}:${{ steps.repro.outputs.VERSION }}-distroless"
