@@ -68,7 +68,7 @@ jobs:
             --severity-threshold=low
 
       - name: Upload SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v6
         with:
           sarif_file: snyk-${{ matrix.image.name }}.sarif
           category: snyk-${{ matrix.image.name }}
