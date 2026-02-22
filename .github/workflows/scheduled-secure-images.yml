@@ -1,187 +1,41 @@
-name: Scheduled Secure Image Pipeline
+name: Scheduled Secure Image Build
 
 on:
+  schedule:
+    - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
-      cadence:
-        description: 'Which cadence to run'
-        required: true
-        default: daily
-        type: choice
-        options:
-          - daily
-          - weekly
-          - monthly
-  schedule:
-    - cron: '10 2 * * *'   # Daily
-    - cron: '30 3 * * 1'   # Weekly (Monday)
-    - cron: '45 4 1 * *'   # Monthly (1st day)
-
-permissions:
-  contents: read
-  packages: write
-  id-token: write
+      parsedmarc_version:
+        description: 'Parsedmarc version'
+        required: false
+        default: '9.0.11'
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/parsedmarc
+  DEFAULT_PARSEDMARC_VERSION: 9.0.11
 
 jobs:
-  secure-build:
-    name: Build and secure parsedmarc image
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Resolve cadence
-        id: cadence
+      - name: Determine version
+        id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ github.event.inputs.cadence }}" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ github.event.inputs.parsedmarc_version }}" ]; then
+            echo "VERSION=${{ github.event.inputs.parsedmarc_version }}" >> $GITHUB_OUTPUT
           else
-            case "${{ github.event.schedule }}" in
-              "10 2 * * *") echo "value=daily" >> "$GITHUB_OUTPUT" ;;
-              "30 3 * * 1") echo "value=weekly" >> "$GITHUB_OUTPUT" ;;
-              "45 4 1 * *") echo "value=monthly" >> "$GITHUB_OUTPUT" ;;
-              *) echo "value=unknown" >> "$GITHUB_OUTPUT" ;;
-            esac
+            echo "VERSION=${DEFAULT_PARSEDMARC_VERSION}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Ensure cadence is known
-        if: steps.cadence.outputs.value == 'unknown'
+      - name: Build image
         run: |
-          echo "Unsupported schedule trigger: ${{ github.event.schedule }}"
-          exit 1
-
-      - name: Set build metadata
-        id: meta
-        run: |
-          TS=$(date -u +%Y%m%d)
-          echo "timestamp=$TS" >> "$GITHUB_OUTPUT"
-          echo "tag=${IMAGE_NAME}:${{ steps.cadence.outputs.value }}" >> "$GITHUB_OUTPUT"
-          echo "dated_tag=${IMAGE_NAME}:${{ steps.cadence.outputs.value }}-$TS" >> "$GITHUB_OUTPUT"
-          echo "scan_tag=${IMAGE_NAME}:scan-$TS" >> "$GITHUB_OUTPUT"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          install: true
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install cosign
-        run: |
-          COSIGN_VERSION="v2.2.3"
-          curl -sSfL https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64 -o cosign
-          chmod +x cosign
-          sudo mv cosign /usr/local/bin/
-
-      - name: Install Trivy
-        run: |
-          TRIVY_VERSION="0.50.0"
-          curl -sfL https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz | tar xz
-          sudo mv trivy /usr/local/bin/
-
-      - name: Build amd64 image for validation
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            --label org.opencontainers.image.title="parsedmarc" \
-            --label org.opencontainers.image.description="Auto-hardened parsedmarc image (${{ steps.cadence.outputs.value }})" \
-            --label org.opencontainers.image.revision="${{ github.sha }}" \
-            --label org.opencontainers.image.source="https://github.com/${{ github.repository }}" \
-            --label org.opencontainers.image.licenses="MIT" \
-            --label org.opencontainers.image.created="$(date -u --iso-8601=seconds)" \
-            -t ${{ steps.meta.outputs.scan_tag }} \
-            --load .
-
-      - name: Scan image for HIGH/CRITICAL and CISA KEV issues
-        id: trivy
-        run: |
-          IMAGE_REF=${{ steps.meta.outputs.scan_tag }}
-          trivy image \
-            --security-checks vuln \
-            --vuln-type os,library \
-            --severity HIGH,CRITICAL \
-            --ignore-unfixed=false \
-            --format json \
-            --output trivy-${{ steps.cadence.outputs.value }}.json \
-            "$IMAGE_REF"
-
-          curl -sSfL https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json \
-            -o cisa-kev.json
-
-          jq -r '.vulnerabilities[].cveID' cisa-kev.json | sort -u > cisa-kev.txt
-          jq -r '.Results[].Vulnerabilities[]?.VulnerabilityID' trivy-${{ steps.cadence.outputs.value }}.json | sort -u > trivy-cves.txt
-
-          if [ -s trivy-cves.txt ]; then
-            echo "Found CVEs in scan output, checking for HIGH/CRITICAL..."
-            HIGH_CRITICAL=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH" or .Severity=="CRITICAL")] | length' trivy-${{ steps.cadence.outputs.value }}.json)
-            if [ "$HIGH_CRITICAL" -gt 0 ]; then
-              echo "Detected $HIGH_CRITICAL HIGH/CRITICAL vulnerabilities"
-              exit 1
-            fi
-          fi
-
-          if comm -12 trivy-cves.txt cisa-kev.txt | grep -q .; then
-            echo "Detected vulnerabilities present in CISA KEV feed"
-            exit 1
-          fi
-
-      - name: Build and push hardened multi-arch image
-        run: |
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --provenance=true \
-            --sbom=true \
-            --label org.opencontainers.image.title="parsedmarc" \
-            --label org.opencontainers.image.description="Auto-hardened parsedmarc image (${{ steps.cadence.outputs.value }})" \
-            --label org.opencontainers.image.revision="${{ github.sha }}" \
-            --label org.opencontainers.image.source="https://github.com/${{ github.repository }}" \
-            --label org.opencontainers.image.licenses="MIT" \
-            --label org.opencontainers.image.created="$(date -u --iso-8601=seconds)" \
-            -t ${{ steps.meta.outputs.tag }} \
-            -t ${{ steps.meta.outputs.dated_tag }} \
-            --push .
-
-      - name: Get image digest
-        id: digest
-        run: |
-          DIGEST=$(docker buildx imagetools inspect ${{ steps.meta.outputs.tag }} | awk '/^Digest: / {print $2; exit}')
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-
-      - name: Generate CycloneDX SBOM
-        run: |
-          trivy image \
-            --format cyclonedx \
-            --output sbom-${{ steps.cadence.outputs.value }}.json \
-            ${{ steps.meta.outputs.tag }}
-
-      - name: Attach SBOM attestation
-        run: |
-          cosign attest \
-            --yes \
-            --predicate sbom-${{ steps.cadence.outputs.value }}.json \
-            --type https://cyclonedx.org/schema \
-            ${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
-
-      - name: Upload security artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.cadence.outputs.value }}-security-artifacts
-          path: |
-            trivy-${{ steps.cadence.outputs.value }}.json
-            sbom-${{ steps.cadence.outputs.value }}.json
-            cisa-kev.json
+          docker build \
+            --build-arg PARSEDMARC_VERSION=${{ steps.version.outputs.VERSION }} \
+            --build-arg VCS_REF=${{ github.sha }} \
+            --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            -t parsedmarc:${{ steps.version.outputs.VERSION }} .
