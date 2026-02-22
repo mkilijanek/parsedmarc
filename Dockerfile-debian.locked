@@ -1,0 +1,52 @@
+# syntax=docker/dockerfile:1
+
+############################
+# Builder (Debian slim)
+############################
+FROM python:3.12-slim AS builder
+
+ARG VCS_REF=""
+ARG BUILD_DATE=""
+ARG SOURCE_DATE_EPOCH=""
+
+ENV VENV_PATH=/opt/venv
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /src
+COPY requirements.lock /src/requirements.lock
+
+RUN python -m venv "${VENV_PATH}" \
+ && "${VENV_PATH}/bin/pip" install --no-cache-dir --upgrade pip \
+ && mkdir -p /wheels \
+ && "${VENV_PATH}/bin/pip" download --dest /wheels --require-hashes -r /src/requirements.lock \
+ && "${VENV_PATH}/bin/pip" install --no-cache-dir --no-index --find-links=/wheels --require-hashes -r /src/requirements.lock \
+ && rm -rf /wheels
+
+############################
+# Runtime (distroless Debian)
+############################
+FROM gcr.io/distroless/python3-debian12:nonroot
+
+ARG VCS_REF=""
+ARG BUILD_DATE=""
+ARG SOURCE_DATE_EPOCH=""
+
+LABEL org.opencontainers.image.source="https://github.com/mkilijanek/parsedmarc" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.title="parsedmarc-locked (distroless debian12)" \
+      org.opencontainers.image.vendor="mkilijanek"
+
+ENV VENV_PATH=/opt/venv
+ENV PATH="${VENV_PATH}/bin:${PATH}"
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+COPY --from=builder ${VENV_PATH} ${VENV_PATH}
+
+USER 65532:65532
+
+ENTRYPOINT ["parsedmarc"]
+CMD ["-h"]
