@@ -1,4 +1,4 @@
-name: Build and Publish Docker Image
+name: Build and Publish Docker Images
 
 on:
   release:
@@ -33,10 +33,15 @@ jobs:
         id: vars
         run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Build and push
+      ############################################################
+      # Standard image
+      ############################################################
+
+      - name: Build and push (standard)
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
@@ -49,22 +54,35 @@ jobs:
           sbom: true
           provenance: true
 
+      ############################################################
+      # Hardened distroless image
+      ############################################################
+
+      - name: Build and push (distroless hardened)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.hardened
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}-distroless
+            ghcr.io/mkilijanek/parsedmarc:distroless
+          build-args: |
+            PARSEDMARC_VERSION=${{ steps.vars.outputs.VERSION }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          sbom: true
+          provenance: true
+
+      ############################################################
+      # Cosign keyless signing
+      ############################################################
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: Sign image (keyless)
-        run: cosign sign --yes ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
-
-      - name: Generate SBOM (CycloneDX)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
-          format: cyclonedx
-          output: sbom.cdx.json
-
-      - name: Attest SBOM
+      - name: Sign images (keyless)
         run: |
-          cosign attest \
-            --predicate sbom.cdx.json \
-            --type cyclonedx \
-            ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
+          cosign sign --yes ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
+          cosign sign --yes ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}-distroless
