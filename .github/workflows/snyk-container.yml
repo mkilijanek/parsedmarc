@@ -1,83 +1,104 @@
-name: Snyk Container Scan
+name: Snyk Container Scan (Published Images)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   schedule:
-    - cron: '36 12 * * 4'  # Every Thursday at 12:36 UTC
+    - cron: "36 12 * * 4" # Thu 12:36 UTC
+  release:
+    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
+  packages: read
+  security-events: write
 
 jobs:
   snyk:
-    name: Snyk Container Scan (latest + hardened + locked)
+    name: Snyk container (latest + hardened + locked)
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
 
     strategy:
       fail-fast: false
       matrix:
-        image:
+        target:
           - name: latest
-            dockerfile: Dockerfile
-            platform: linux/amd64
+            repo: parsedmarc
+            tag: latest
           - name: hardened
-            dockerfile: Dockerfile.hardened
-            platform: linux/amd64
+            repo: parsedmarc
+            tag: hardened
           - name: locked-alpine
-            dockerfile: Dockerfile-alpine.locked
-            platform: linux/amd64
+            repo: parsedmarc-locked
+            tag: alpine
           - name: locked-debian
-            dockerfile: Dockerfile-debian.locked
-            platform: linux/amd64
+            repo: parsedmarc-locked
+            tag: debian
           - name: locked-ubi
-            dockerfile: Dockerfile-ubi.locked
-            platform: linux/amd64
+            repo: parsedmarc-locked
+            tag: ubi
 
     steps:
-      - name: Check out code
-        uses: actions/checkout@v6
+      - name: Resolve image ref
+        id: ref
+        shell: bash
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          BASE="ghcr.io/${OWNER}/${{ matrix.target.repo }}"
+          NAME="${{ matrix.target.name }}"
 
-      - name: Build image (local, for scan)
-        uses: docker/build-push-action@v6
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VER="${GITHUB_REF_NAME}"
+            case "${NAME}" in
+              latest)
+                echo "IMAGE_REF=${BASE}:${VER}" >> "$GITHUB_OUTPUT"
+                ;;
+              hardened)
+                echo "IMAGE_REF=${BASE}:${VER}-hardened" >> "$GITHUB_OUTPUT"
+                ;;
+              locked-alpine)
+                echo "IMAGE_REF=${BASE}:${VER}-alpine" >> "$GITHUB_OUTPUT"
+                ;;
+              locked-debian)
+                echo "IMAGE_REF=${BASE}:${VER}-debian" >> "$GITHUB_OUTPUT"
+                ;;
+              locked-ubi)
+                echo "IMAGE_REF=${BASE}:${VER}-ubi" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "Unsupported target"; exit 1
+                ;;
+            esac
+          else
+            echo "IMAGE_REF=${BASE}:${{ matrix.target.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: ${{ matrix.image.dockerfile }}
-          push: false
-          load: true
-          platforms: ${{ matrix.image.platform }}
-          tags: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Snyk scan and upload SARIF
-        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04
+      - name: Pull published image
+        run: docker pull "${{ steps.ref.outputs.IMAGE_REF }}"
+
+      - name: Snyk scan (SARIF)
+        uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          image: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
+          image: ${{ steps.ref.outputs.IMAGE_REF }}
           args: >
-            --file=${{ matrix.image.dockerfile }}
-            --sarif-file-output=snyk-${{ matrix.image.name }}.sarif
-            --severity-threshold=low
+            --sarif-file-output=snyk-container-${{ matrix.target.name }}.sarif
+            --severity-threshold=high
 
-      - name: Upload SARIF to GitHub Code Scanning
+      - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: snyk-${{ matrix.image.name }}.sarif
-          category: snyk-${{ matrix.image.name }}
-
-      - name: Monitor project in Snyk UI
-        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          image: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
-          args: monitor --file=${{ matrix.image.dockerfile }}
+          sarif_file: snyk-container-${{ matrix.target.name }}.sarif
+          category: snyk-container-published-${{ matrix.target.name }}
