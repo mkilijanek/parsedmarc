@@ -1,4 +1,4 @@
-name: Docker Build Check
+name: Docker Build Check (Reproducible Metadata)
 
 on:
   pull_request:
@@ -8,8 +8,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute reproducible timestamps
+        id: repro
+        shell: bash
+        run: |
+          SDE=$(git log -1 --format=%ct)
+          echo "SOURCE_DATE_EPOCH=${SDE}" >> "$GITHUB_OUTPUT"
+          BUILD_DATE=$(date -u -d "@${SDE}" +%Y-%m-%dT%H:%M:%SZ)
+          echo "BUILD_DATE=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
 
       - name: Build standard image (no push)
         uses: docker/build-push-action@v6
@@ -19,6 +31,9 @@ jobs:
           push: false
           build-args: |
             PARSEDMARC_VERSION=9.0.11
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
+            SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
 
       - name: Build hardened image (no push)
         uses: docker/build-push-action@v6
@@ -28,3 +43,6 @@ jobs:
           push: false
           build-args: |
             PARSEDMARC_VERSION=9.0.11
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
+            SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
