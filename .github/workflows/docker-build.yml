@@ -1,184 +1,70 @@
-name: Build, Sign, and Generate SLSA Provenance + SBOM
+name: Build and Publish Docker Image
 
 on:
   release:
     types: [published]
-  schedule:
-    - cron: '0 3 1 */1 *'  # Rebuild monthly
 
 permissions:
   contents: read
-  id-token: write
   packages: write
+  id-token: write
 
 jobs:
-  build-and-provenance:
+  build:
     runs-on: ubuntu-latest
 
-    env:
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/parsedmarc
-      IMAGE_TAG: ${{ github.ref_name }}
-      PARSEDMARC_VERSION: ${{ github.ref_name }}
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: all
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      with:
-        install: true
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Log in to GHCR
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build and push multi-arch Docker image with labels
-      run: |
-        docker buildx build \
-          --platform linux/amd64,linux/arm64 \
-          --build-arg PARSEDMARC_VERSION=${{ env.PARSEDMARC_VERSION }} \
-          --label org.opencontainers.image.title="parsedmarc" \
-          --label org.opencontainers.image.description="A containerized version of Parsedmarc email analyzer" \
-          --label org.opencontainers.image.version="${{ env.IMAGE_TAG }}" \
-          --label org.opencontainers.image.source="https://github.com/${{ github.repository }}" \
-          --label org.opencontainers.image.revision="${{ github.sha }}" \
-          --label org.opencontainers.image.licenses="MIT" \
-          --label org.opencontainers.image.authors="mkilijanek" \
-          -t $IMAGE_NAME:${{ env.IMAGE_TAG }} \
-          -t $IMAGE_NAME:latest \
-          --push .
+      - name: Extract version
+        id: vars
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
-    - name: Install Cosign
-      run: |
-        COSIGN_VERSION="v2.2.3"
-        curl -sSfL https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64 -o cosign
-        chmod +x cosign
-        sudo mv cosign /usr/local/bin/
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
+            ghcr.io/mkilijanek/parsedmarc:latest
+          build-args: |
+            PARSEDMARC_VERSION=${{ steps.vars.outputs.VERSION }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          sbom: true
+          provenance: true
 
-    - name: Get image digest
-      id: digest
-      run: |
-        DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:${{ env.IMAGE_TAG }} | awk '/^Digest: / {print $2; exit}')
-        echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
 
-    # ---------- SBOM Generation ----------
-    - name: Install Trivy
-      run: |
-        TRIVY_VERSION="0.50.0"
-        curl -sfL https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz | tar xz
-        sudo mv trivy /usr/local/bin/
+      - name: Sign image (keyless)
+        run: cosign sign --yes ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
 
-    - name: Generate CycloneDX SBOM with Trivy
-      run: |
-        trivy image \
-          --format cyclonedx \
-          --output sbom.json \
-          $IMAGE_NAME@${{ steps.digest.outputs.digest }}
+      - name: Generate SBOM (CycloneDX)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
+          format: cyclonedx
+          output: sbom.cdx.json
 
-    - name: Attach SBOM as attestation
-      run: |
-        cosign attest \
-          --yes \
-          --predicate sbom.json \
-          --type https://cyclonedx.org/schema \
-          $IMAGE_NAME@${{ steps.digest.outputs.digest }}
-
-    # ---------- SLSA Provenance ----------
-    - name: Generate SLSA Provenance File
-      run: |
-        COMMIT=$(git rev-parse HEAD)
-        FULL_DIGEST="${{ steps.digest.outputs.digest }}"
-        STRIPPED_DIGEST=${FULL_DIGEST#sha256:}
-
-        cat <<EOF > provenance.json
-        {
-          "_type": "https://in-toto.io/Statement/v0.1",
-          "subject": [
-            {
-              "name": "${{ env.IMAGE_NAME }}@$FULL_DIGEST",
-              "digest": {
-                "sha256": "$STRIPPED_DIGEST"
-              }
-            }
-          ],
-          "predicateType": "https://slsa.dev/provenance/v0.2",
-          "predicate": {
-            "builder": {
-              "id": "https://github.com/${{ github.repository }}/.github/workflows/${{ github.workflow }}@${{ github.ref }}"
-            },
-            "buildType": "https://github.com/Attestations/GitHubActionsWorkflow",
-            "invocation": {
-              "configSource": {
-                "uri": "git+https://github.com/${{ github.repository }}",
-                "digest": {
-                  "sha1": "$COMMIT"
-                },
-                "entryPoint": "${{ github.workflow }}"
-              },
-              "parameters": {
-                "dockerfile": "Dockerfile",
-                "parsedmarc_version": "${{ env.PARSEDMARC_VERSION }}",
-                "platforms": "linux/amd64, linux/arm64"
-              },
-              "environment": {
-                "os": "${{ runner.os }}"
-              }
-            },
-            "buildConfig": {
-              "steps": [
-                {
-                  "command": [
-                    "docker", "buildx", "build",
-                    "--platform", "linux/amd64,linux/arm64",
-                    "--build-arg", "PARSEDMARC_VERSION=${{ env.PARSEDMARC_VERSION }}",
-                    "--label", "org.opencontainers.image.title=parsedmarc",
-                    "--label org.opencontainers.image.description="Dockerized Parsedmarc under MIT; includes Apache-2.0 software",
-                    "--label", "org.opencontainers.image.version=${{ env.IMAGE_TAG }}",
-                    "--label", "org.opencontainers.image.source=https://github.com/${{ github.repository }}",
-                    "--label", "org.opencontainers.image.revision=${{ github.sha }}",
-                    "--label org.opencontainers.image.licenses="MIT AND Apache-2.0",
-                    "--label", "org.opencontainers.image.authors=mkilijanek",
-                    "-t", "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}",
-                    "-t", "${{ env.IMAGE_NAME }}:latest",
-                    ".", "--push"
-                  ]
-                }
-              ]
-            },
-            "materials": [
-              {
-                "uri": "git+https://github.com/${{ github.repository }}",
-                "digest": {
-                  "sha1": "$COMMIT"
-                }
-              }
-            ]
-          }
-        }
-        EOF
-
-    - name: Attach SLSA Provenance
-      run: |
-        cosign attest \
-          --yes \
-          --predicate provenance.json \
-          --type https://slsa.dev/provenance/v0.2 \
-          $IMAGE_NAME@${{ steps.digest.outputs.digest }}
-
-    # ---------- Make GHCR Public ----------
-    - name: Make GHCR image public
-      run: |
-        curl -s -X PATCH \
-          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github+json" \
-          https://api.github.com/users/${{ github.repository_owner }}/packages/container/parsedmarc/visibility \
-          -d '{"visibility":"public"}'
+      - name: Attest SBOM
+        run: |
+          cosign attest \
+            --predicate sbom.cdx.json \
+            --type cyclonedx \
+            ghcr.io/mkilijanek/parsedmarc:${{ steps.vars.outputs.VERSION }}
