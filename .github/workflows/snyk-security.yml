@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Snyk CLI
         uses: snyk/actions/setup@master
@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload SAST SARIF
         if: matrix.scan == 'sast'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v6
         with:
           sarif_file: snyk-code.sarif
           category: snyk-code
@@ -55,7 +55,7 @@ jobs:
       # -------------------------
       - name: Set up Python
         if: matrix.scan == 'sca'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -69,7 +69,7 @@ jobs:
 
       - name: Upload SCA report artifact
         if: matrix.scan == 'sca'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: snyk-sca.json
           path: snyk-sca.json
@@ -93,7 +93,7 @@ jobs:
 
       - name: Upload IaC SARIF
         if: matrix.scan == 'iac'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v6
         with:
           sarif_file: snyk-iac.sarif
           category: snyk-iac
