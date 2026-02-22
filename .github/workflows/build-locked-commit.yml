@@ -1,0 +1,98 @@
+name: build-locked-commit
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  PIP_TOOLS_VERSION: "7.4.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute reproducible timestamps
+        id: repro
+        shell: bash
+        run: |
+          SDE=$(git log -1 --format=%ct)
+          echo "SOURCE_DATE_EPOCH=${SDE}" >> "$GITHUB_OUTPUT"
+          BUILD_DATE=$(date -u -d "@${SDE}" +%Y-%m-%dT%H:%M:%SZ)
+          echo "BUILD_DATE=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Generate requirements.lock (with hashes)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pip-tools==${PIP_TOOLS_VERSION}"
+          pip-compile \
+            --generate-hashes \
+            --resolver=backtracking \
+            --output-file requirements.lock \
+            requirements.in
+
+      - name: Upload requirements.lock artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: requirements.lock
+          path: requirements.lock
+          if-no-files-found: error
+
+      ############################################################
+      # Build check: Alpine
+      ############################################################
+      - name: Build check (alpine)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile-alpine.locked
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
+            SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
+
+      ############################################################
+      # Build check: Debian (distroless)
+      ############################################################
+      - name: Build check (debian distroless)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile-debian.locked
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
+            SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
+
+      ############################################################
+      # Build check: UBI
+      ############################################################
+      - name: Build check (ubi)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile-ubi.locked
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
+            SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
