@@ -11,10 +11,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build image (no push)
+      - name: Build standard image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile
+          push: false
+          build-args: |
+            PARSEDMARC_VERSION=9.0.11
+
+      - name: Build hardened image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.hardened
           push: false
           build-args: |
             PARSEDMARC_VERSION=9.0.11
