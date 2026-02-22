@@ -13,41 +13,71 @@ permissions:
 
 jobs:
   snyk:
+    name: Snyk Container Scan (latest + hardened + locked)
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read             # For actions/checkout
-      security-events: write     # For SARIF upload to GitHub Security
-      actions: read              # For private repo actions
+      contents: read
+      security-events: write
+      actions: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: latest
+            dockerfile: Dockerfile
+            platform: linux/amd64
+          - name: hardened
+            dockerfile: Dockerfile.hardened
+            platform: linux/amd64
+          - name: locked-alpine
+            dockerfile: Dockerfile-alpine.locked
+            platform: linux/amd64
+          - name: locked-debian
+            dockerfile: Dockerfile-debian.locked
+            platform: linux/amd64
+          - name: locked-ubi
+            dockerfile: Dockerfile-ubi.locked
+            platform: linux/amd64
 
     steps:
-    - name: Check out code
-      uses: actions/checkout@v4
+      - name: Check out code
+        uses: actions/checkout@v4
 
-    - name: Build Docker image for Snyk scan
-      run: |
-        docker build \
-          -t ghcr.io/${{ github.repository_owner }}/parsedmarc:snyk-scan \
-          -f Dockerfile .
+      - name: Build image (local, for scan)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          push: false
+          load: true
+          platforms: ${{ matrix.image.platform }}
+          tags: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
 
-    - name: Run Snyk scan and upload SARIF
-      uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4  # ✅ latest release
-      continue-on-error: true
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        image: ghcr.io/${{ github.repository_owner }}/parsedmarc:snyk-scan
-        args: --file=Dockerfile --sarif-file-output=snyk.sarif --severity-threshold=low
+      - name: Run Snyk scan and upload SARIF
+        uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
+          args: >
+            --file=${{ matrix.image.dockerfile }}
+            --sarif-file-output=snyk-${{ matrix.image.name }}.sarif
+            --severity-threshold=low
 
-    - name: Upload SARIF to GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: snyk.sarif
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-${{ matrix.image.name }}.sarif
+          category: snyk-${{ matrix.image.name }}
 
-    - name: Monitor project in Snyk UI
-      uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4  # ✅ same SHA
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        image: ghcr.io/${{ github.repository_owner }}/parsedmarc:snyk-scan
-        args: monitor --file=Dockerfile
+      - name: Monitor project in Snyk UI
+        uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
+          args: monitor --file=${{ matrix.image.dockerfile }}
