@@ -60,7 +60,7 @@ jobs:
           tags: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@7b7aa264d83dc58691451798b4d117d53d21edfe  # v0.30.0
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.30.0
         with:
           image-ref: 'local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}'
           format: 'template'
