@@ -1,77 +1,104 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support documentation.
-
-name: Trivy Container Scan
+name: Trivy Scan (Published Images)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   schedule:
-    - cron: '43 1 * * 3'  # Every Wednesday at 01:43 UTC
+    - cron: "43 1 * * 3" # Wed 01:43 UTC
+  release:
+    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
+  packages: read
+  security-events: write
 
 jobs:
   trivy:
-    name: Trivy Container Scan (latest + hardened + locked)
+    name: Trivy (latest + hardened + locked)
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
 
     strategy:
       fail-fast: false
       matrix:
-        image:
+        target:
           - name: latest
-            dockerfile: Dockerfile
-            platform: linux/amd64
+            repo: parsedmarc
+            tag: latest
           - name: hardened
-            dockerfile: Dockerfile.hardened
-            platform: linux/amd64
+            repo: parsedmarc
+            tag: hardened
           - name: locked-alpine
-            dockerfile: Dockerfile-alpine.locked
-            platform: linux/amd64
+            repo: parsedmarc-locked
+            tag: alpine
           - name: locked-debian
-            dockerfile: Dockerfile-debian.locked
-            platform: linux/amd64
+            repo: parsedmarc-locked
+            tag: debian
           - name: locked-ubi
-            dockerfile: Dockerfile-ubi.locked
-            platform: linux/amd64
+            repo: parsedmarc-locked
+            tag: ubi
 
     steps:
-      - name: Check out code
-        uses: actions/checkout@v6
+      - name: Resolve image ref
+        id: ref
+        shell: bash
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          BASE="ghcr.io/${OWNER}/${{ matrix.target.repo }}"
+          NAME="${{ matrix.target.name }}"
 
-      - name: Build image (local, for scan)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.image.dockerfile }}
-          push: false
-          load: true
-          platforms: ${{ matrix.image.platform }}
-          tags: local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VER="${GITHUB_REF_NAME}"
+            case "${NAME}" in
+              latest)
+                echo "IMAGE_REF=${BASE}:${VER}" >> "$GITHUB_OUTPUT"
+                ;;
+              hardened)
+                echo "IMAGE_REF=${BASE}:${VER}-hardened" >> "$GITHUB_OUTPUT"
+                ;;
+              locked-alpine)
+                echo "IMAGE_REF=${BASE}:${VER}-alpine" >> "$GITHUB_OUTPUT"
+                ;;
+              locked-debian)
+                echo "IMAGE_REF=${BASE}:${VER}-debian" >> "$GITHUB_OUTPUT"
+                ;;
+              locked-ubi)
+                echo "IMAGE_REF=${BASE}:${VER}-ubi" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "Unsupported target"; exit 1
+                ;;
+            esac
+          else
+            echo "IMAGE_REF=${BASE}:${{ matrix.target.tag }}" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.30.0
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          image-ref: 'local/parsedmarc:${{ github.sha }}-${{ matrix.image.name }}'
-          format: 'template'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull published image
+        run: docker pull "${{ steps.ref.outputs.IMAGE_REF }}"
+
+      - name: Trivy scan (SARIF)
+        uses: aquasecurity/trivy-action@7b7aa264d83dc58691451798b4d117d53d21edfe # v0.30.0
+        with:
+          image-ref: ${{ steps.ref.outputs.IMAGE_REF }}
+          format: template
           template: '@/contrib/sarif.tpl'
-          output: 'trivy-results-${{ matrix.image.name }}.sarif'
-          severity: 'CRITICAL,HIGH'
-          vuln-type: 'os,library'
+          output: trivy-${{ matrix.target.name }}.sarif
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
           ignore-unfixed: true
 
-      - name: Upload Trivy results to GitHub Security tab
+      - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: trivy-results-${{ matrix.image.name }}.sarif
-          category: trivy-${{ matrix.image.name }}
+          sarif_file: trivy-${{ matrix.target.name }}.sarif
+          category: trivy-published-${{ matrix.target.name }}
