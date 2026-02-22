@@ -178,7 +178,7 @@ jobs:
             ${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
 
       - name: Upload security artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.cadence.outputs.value }}-security-artifacts
           path: |
