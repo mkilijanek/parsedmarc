@@ -1,13 +1,14 @@
 # syntax=docker/dockerfile:1
 
 ############################
-# Builder
+# Builder stage
 ############################
 FROM python:3.12-slim AS builder
 
 ARG PARSEDMARC_VERSION=9.0.11
 ARG VCS_REF=""
 ARG BUILD_DATE=""
+ARG SOURCE_DATE_EPOCH=""
 
 ENV VENV_PATH=/opt/venv
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -19,18 +20,21 @@ RUN python -m venv "${VENV_PATH}" \
  && "${VENV_PATH}/bin/pip" install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}"
 
 ############################
-# Runtime (distroless)
+# Runtime stage (distroless)
 ############################
 FROM gcr.io/distroless/python3-debian12:nonroot
 
 ARG PARSEDMARC_VERSION=9.0.11
 ARG VCS_REF=""
 ARG BUILD_DATE=""
+ARG SOURCE_DATE_EPOCH=""
 
 LABEL org.opencontainers.image.source="https://github.com/mkilijanek/parsedmarc" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.version="${PARSEDMARC_VERSION}"
+      org.opencontainers.image.version="${PARSEDMARC_VERSION}" \
+      org.opencontainers.image.vendor="mkilijanek" \
+      org.opencontainers.image.title="parsedmarc (distroless)"
 
 ENV VENV_PATH=/opt/venv
 ENV PATH="${VENV_PATH}/bin:${PATH}"
@@ -38,9 +42,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 COPY --from=builder ${VENV_PATH} ${VENV_PATH}
-
-# Opcjonalnie: katalog logów (jeśli montujesz wolumen, i tak go przykryje)
-# COPY --chown=nonroot:nonroot ./empty-logs-dir /var/log/parsedmarc
 
 USER 65532:65532
 
