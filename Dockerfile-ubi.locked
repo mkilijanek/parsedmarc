@@ -14,6 +14,9 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# UBI python image can default to non-root; root is required to create /opt/venv.
+USER 0
+
 WORKDIR /src
 COPY requirements.lock /src/requirements.lock
 
@@ -43,6 +46,9 @@ ENV VENV_PATH=/opt/venv
 ENV PATH="${VENV_PATH}/bin:${PATH}"
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+# UBI python image can default to a non-root user; switch to root for filesystem prep.
+USER 0
 
 # katalogi pod Twój compose
 RUN mkdir -p /opt/app/ini /var/log/parsedmarc \
