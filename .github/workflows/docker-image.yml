@@ -30,7 +30,7 @@ jobs:
           file: Dockerfile
           push: false
           build-args: |
-            PARSEDMARC_VERSION=9.0.11
+            PARSEDMARC_VERSION=9.1.0
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
@@ -42,7 +42,7 @@ jobs:
           file: Dockerfile.hardened
           push: false
           build-args: |
-            PARSEDMARC_VERSION=9.0.11
+            PARSEDMARC_VERSION=9.1.0
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
