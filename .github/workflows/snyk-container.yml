@@ -110,8 +110,17 @@ jobs:
             --sarif-file-output=snyk-container-${{ matrix.target.name }}.sarif
             --severity-threshold=high
 
-      - name: Upload SARIF to GitHub Security
+      - name: Check SARIF exists
         if: steps.image_check.outputs.exists == 'true'
+        id: sarif_check
+        shell: bash
+        run: |
+          [ -f "snyk-container-${{ matrix.target.name }}.sarif" ] \
+            && echo "found=true" >> "$GITHUB_OUTPUT" \
+            || echo "found=false" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF to GitHub Security
+        if: steps.image_check.outputs.exists == 'true' && steps.sarif_check.outputs.found == 'true'
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: snyk-container-${{ matrix.target.name }}.sarif
