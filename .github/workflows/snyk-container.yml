@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   snyk:
-    name: Snyk container (latest + hardened + locked)
+    name: Snyk container (latest + distroless + locked)
     runs-on: ubuntu-latest
 
     strategy:
@@ -28,9 +28,9 @@ jobs:
           - name: latest
             repo: parsedmarc
             tag: latest
-          - name: hardened
+          - name: distroless
             repo: parsedmarc
-            tag: hardened
+            tag: distroless
           - name: locked-alpine
             repo: parsedmarc-locked
             tag: alpine
@@ -56,8 +56,8 @@ jobs:
               latest)
                 echo "IMAGE_REF=${BASE}:${VER}" >> "$GITHUB_OUTPUT"
                 ;;
-              hardened)
-                echo "IMAGE_REF=${BASE}:${VER}-hardened" >> "$GITHUB_OUTPUT"
+              distroless)
+                echo "IMAGE_REF=${BASE}:${VER}-distroless" >> "$GITHUB_OUTPUT"
                 ;;
               locked-alpine)
                 echo "IMAGE_REF=${BASE}:${VER}-alpine" >> "$GITHUB_OUTPUT"
@@ -83,10 +83,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check image exists in GHCR
+        id: image_check
+        shell: bash
+        run: |
+          if docker manifest inspect "${{ steps.ref.outputs.IMAGE_REF }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Image not available yet: ${{ steps.ref.outputs.IMAGE_REF }}"
+          fi
+
       - name: Pull published image
+        if: steps.image_check.outputs.exists == 'true'
         run: docker pull "${{ steps.ref.outputs.IMAGE_REF }}"
 
       - name: Snyk scan (SARIF)
+        if: steps.image_check.outputs.exists == 'true'
         uses: snyk/actions/docker@14818c4695ecc4045f33c9cee9e795a788711ca4
         continue-on-error: true
         env:
@@ -98,6 +111,7 @@ jobs:
             --severity-threshold=high
 
       - name: Upload SARIF to GitHub Security
+        if: steps.image_check.outputs.exists == 'true'
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: snyk-container-${{ matrix.target.name }}.sarif
