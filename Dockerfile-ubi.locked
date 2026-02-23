@@ -44,6 +44,9 @@ ENV PATH="${VENV_PATH}/bin:${PATH}"
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# UBI python image can default to a non-root user; switch to root for filesystem prep.
+USER 0
+
 # katalogi pod Twój compose
 RUN mkdir -p /opt/app/ini /var/log/parsedmarc \
  && chown -R 1001:0 /opt/app /var/log/parsedmarc \
