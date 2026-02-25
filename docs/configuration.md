@@ -536,6 +536,17 @@ ABUSECH_CIRCUIT_FAIL_THRESHOLD=3
 ABUSECH_CIRCUIT_COOLDOWN_S=300
 ```
 
+#### Feed outbound rate limiting (all external feed integrations)
+
+```bash
+FEED_RATE_LIMIT_ENABLED=true
+FEED_REQUESTS_PER_SECOND=10
+FEED_REQUESTS_PER_MINUTE=55
+```
+
+- Applies to outbound requests for: `malwarebazaar`, `mwdb`, and abuse.ch feeds/APIs.
+- Use `FEED_RATE_LIMIT_ENABLED=false` only in controlled benchmark/test scenarios.
+
 ---
 
 ## Worker Configuration

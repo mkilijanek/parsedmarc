@@ -1,12 +1,91 @@
 from __future__ import annotations
 
-import time
-import random
 import logging
-from typing import Callable, TypeVar, Any, Optional
+import os
+import random
+import threading
+import time
+from collections import deque
+from typing import Callable, TypeVar
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+
+class ExternalFeedRateLimiter:
+    """Sliding-window limiter for outbound feed/API calls."""
+
+    def __init__(self, per_second: int, per_minute: int) -> None:
+        self.per_second = max(0, int(per_second))
+        self.per_minute = max(0, int(per_minute))
+        self._lock = threading.Lock()
+        self._second_window: deque[float] = deque()
+        self._minute_window: deque[float] = deque()
+
+    def _trim(self, now: float) -> None:
+        while self._second_window and (now - self._second_window[0]) >= 1.0:
+            self._second_window.popleft()
+        while self._minute_window and (now - self._minute_window[0]) >= 60.0:
+            self._minute_window.popleft()
+
+    def acquire(self, *, source: str = "external_feed") -> None:
+        while True:
+            sleep_s = 0.0
+            with self._lock:
+                now = time.monotonic()
+                self._trim(now)
+
+                waits = []
+                if self.per_second > 0 and len(self._second_window) >= self.per_second:
+                    waits.append(max(0.0, 1.0 - (now - self._second_window[0])))
+                if self.per_minute > 0 and len(self._minute_window) >= self.per_minute:
+                    waits.append(max(0.0, 60.0 - (now - self._minute_window[0])))
+
+                if not waits:
+                    now = time.monotonic()
+                    self._second_window.append(now)
+                    self._minute_window.append(now)
+                    return
+
+                sleep_s = max(0.001, min(waits))
+
+            logger.debug("feed_rate_limit_wait", extra={"source": source, "sleep_s": round(sleep_s, 3)})
+            time.sleep(sleep_s)
+
+
+_LIMITER_STATE_LOCK = threading.Lock()
+_LIMITER_STATE: tuple[tuple[bool, int, int] | None, ExternalFeedRateLimiter | None] = (None, None)
+
+
+def _env_feed_limiter_config() -> tuple[bool, int, int]:
+    enabled = os.getenv("FEED_RATE_LIMIT_ENABLED", "true").strip().lower() in {"1", "true", "yes", "y", "on"}
+    per_second = int(os.getenv("FEED_REQUESTS_PER_SECOND", "10"))
+    per_minute = int(os.getenv("FEED_REQUESTS_PER_MINUTE", "55"))
+    return enabled, per_second, per_minute
+
+
+def _get_feed_limiter() -> ExternalFeedRateLimiter | None:
+    global _LIMITER_STATE
+    cfg = _env_feed_limiter_config()
+    with _LIMITER_STATE_LOCK:
+        current_cfg, limiter = _LIMITER_STATE
+        if current_cfg == cfg:
+            return limiter
+        enabled, per_second, per_minute = cfg
+        if not enabled or (per_second <= 0 and per_minute <= 0):
+            limiter = None
+        else:
+            limiter = ExternalFeedRateLimiter(per_second=per_second, per_minute=per_minute)
+        _LIMITER_STATE = (cfg, limiter)
+        return limiter
+
+
+def throttle_external_request(*, source: str = "external_feed") -> None:
+    limiter = _get_feed_limiter()
+    if limiter is None:
+        return
+    limiter.acquire(source=source)
+
 
 def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay: float = 1.0, max_delay: float = 30.0, jitter: float = 0.2) -> T:
     """Exponential backoff with jitter for transient failures."""
