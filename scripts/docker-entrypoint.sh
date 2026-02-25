@@ -21,4 +21,15 @@ if [ -z "${REDIS_URL:-}" ]; then
   export REDIS_URL="redis://:redispass@redis:6379/0"
 fi
 
+# Ensure ORM tables exist unless explicitly disabled.
+if [ "${AUTO_DB_INIT:-true}" = "true" ]; then
+  python - <<'PY'
+from app.db import Base, engine
+from app import models  # noqa: F401 - register metadata
+
+Base.metadata.create_all(bind=engine)
+print("AUTO_DB_INIT: schema ensured")
+PY
+fi
+
 exec "$@"
