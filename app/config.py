@@ -94,6 +94,11 @@ class Config:
     HUNTING_AUTH_KEY: str = field(default_factory=lambda: _env_str("HUNTING_AUTH_KEY", ""))
     HUNTING_FPLIST_FORMAT: str = field(default_factory=lambda: _env_str("HUNTING_FPLIST_FORMAT", "csv"))
     HUNTING_FPLIST_LIMIT: int = field(default_factory=lambda: _env_int("HUNTING_FPLIST_LIMIT", 10000))
+    ABUSECH_TIMEOUT_S: int = field(default_factory=lambda: _env_int("ABUSECH_TIMEOUT_S", 30))
+    ABUSECH_RETRY_ATTEMPTS: int = field(default_factory=lambda: _env_int("ABUSECH_RETRY_ATTEMPTS", 4))
+    ABUSECH_RETRY_BASE_DELAY_S: int = field(default_factory=lambda: _env_int("ABUSECH_RETRY_BASE_DELAY_S", 1))
+    ABUSECH_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("ABUSECH_CIRCUIT_FAIL_THRESHOLD", 3))
+    ABUSECH_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("ABUSECH_CIRCUIT_COOLDOWN_S", 300))
 
 
     # Worker

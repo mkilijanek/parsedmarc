@@ -28,6 +28,7 @@ from app.services.mwdb import update_mwdb_indicators
 from app.services.malwarebazaar import update_malwarebazaar_indicators
 from app.services.mwdb import _build_tag_query
 from app.services.abusech import (
+    _CIRCUIT_STATE,
     _infer_ioc_type,
     _normalize_threatfox_ioc,
     _pick_ioc_from_csv_row,
@@ -746,9 +747,8 @@ class TestAbuseChFetchers:
         assert all(r["ioc_type"] == "ip" for r in rows)
         assert rows[0]["source"] == "feodotracker"
 
-    @patch("app.services.abusech.requests.Session")
-    def test_fetch_yaraify_lookup_hashes(self, mock_session_cls):
-        mock_session = MagicMock()
+    @patch("app.services.abusech.requests.post")
+    def test_fetch_yaraify_lookup_hashes(self, mock_post):
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {
@@ -759,8 +759,7 @@ class TestAbuseChFetchers:
                 "task_id": "task-1",
             }]
         }
-        mock_session.post.return_value = mock_response
-        mock_session_cls.return_value = mock_session
+        mock_post.return_value = mock_response
 
         rows = list(fetch_yaraify_lookup_hashes(
             api_url="https://yaraify-api.abuse.ch/api/v1/",
@@ -879,6 +878,72 @@ class TestAbuseChUpdater:
         assert "yaraify" in result
         assert result["yaraify"]["fetched"] == 1
         mock_yaraify_lookup.assert_called_once()
+
+    @patch("app.services.abusech.SessionLocal")
+    @patch("app.services.abusech.fetch_urlhaus_urls")
+    @patch("app.services.abusech.fetch_threatfox_iocs")
+    def test_source_error_does_not_block_other_sources(self, mock_threatfox, mock_urlhaus, mock_sessionlocal):
+        _CIRCUIT_STATE.clear()
+        mock_threatfox.side_effect = RuntimeError("threatfox down")
+        mock_urlhaus.return_value = iter([{
+            "ioc_value": "http://evil.test",
+            "ioc_type": "url",
+            "source_ref": "http://evil.test",
+            "first_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "last_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "confidence": 65,
+            "tlp": "GREEN",
+            "is_active": True,
+            "tags": [],
+            "metadata": {},
+        }])
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "THREATFOX_ENABLED": "true",
+            "URLHAUS_ENABLED": "true",
+            "ABUSECH_AUTH_KEY": "key",
+        }, clear=False):
+            result = update_abusech_indicators()
+
+        assert result["threatfox"]["error"] == 1
+        assert result["urlhaus"]["fetched"] == 1
+
+    def test_validation_requires_yaraify_identifier_or_hashes(self):
+        _CIRCUIT_STATE.clear()
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "YARAIFY_ENABLED": "true",
+            "ABUSECH_AUTH_KEY": "key",
+            "YARAIFY_IDENTIFIER": "",
+            "YARAIFY_LOOKUP_HASHES": "",
+        }, clear=False):
+            with pytest.raises(RuntimeError, match="YARAIFY_ENABLED=true requires YARAIFY_IDENTIFIER or YARAIFY_LOOKUP_HASHES"):
+                update_abusech_indicators()
+
+    @patch("app.services.abusech.SessionLocal")
+    @patch("app.services.abusech.fetch_threatfox_iocs")
+    def test_circuit_breaker_skips_after_fail_threshold(self, mock_threatfox, mock_sessionlocal):
+        _CIRCUIT_STATE.clear()
+        mock_threatfox.side_effect = RuntimeError("boom")
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "THREATFOX_ENABLED": "true",
+            "ABUSECH_AUTH_KEY": "key",
+            "ABUSECH_CIRCUIT_FAIL_THRESHOLD": "1",
+            "ABUSECH_CIRCUIT_COOLDOWN_S": "60",
+        }, clear=False):
+            first = update_abusech_indicators()
+            second = update_abusech_indicators()
+
+        assert first["threatfox"]["error"] == 1
+        assert second["threatfox"]["skipped"] == 1
+        assert mock_threatfox.call_count == 1
 
 
 # ============================================================================

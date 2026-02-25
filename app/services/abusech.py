@@ -5,17 +5,27 @@ import io
 import ipaddress
 import logging
 import re
+import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import requests
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..config import Config
 from ..db import SessionLocal
+from ..metrics import (
+    feed_update_errors,
+    feed_fetch_total,
+    feed_fetched_rows_total,
+    feed_deactivated_rows_total,
+    feed_update_duration_seconds,
+)
 from ..models import FeedStats, Indicator
+from .common import retry_with_backoff
 
 logger = logging.getLogger(__name__)
+_CIRCUIT_STATE: Dict[str, Dict[str, float]] = {}
 
 
 def _parse_dt(s: str | None) -> Optional[datetime]:
@@ -85,6 +95,68 @@ def _abusech_headers(auth_key: str) -> Dict[str, str]:
     return {"Auth-Key": auth_key, "User-Agent": "ioc-threat-platform/1.0"}
 
 
+def _post_json_with_retry(
+    *,
+    url: str,
+    headers: Dict[str, str],
+    payload: Dict[str, Any],
+    timeout_s: int,
+    retry_attempts: int,
+    retry_base_delay_s: float,
+) -> Dict[str, Any]:
+    def _do() -> Dict[str, Any]:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_s)
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise RuntimeError("Unexpected non-object JSON response")
+        return data
+
+    return retry_with_backoff(
+        _do,
+        max_attempts=max(1, retry_attempts),
+        base_delay=max(0.1, retry_base_delay_s),
+    )
+
+
+def _get_text_with_retry(
+    *,
+    url: str,
+    timeout_s: int,
+    retry_attempts: int,
+    retry_base_delay_s: float,
+) -> str:
+    def _do() -> str:
+        resp = requests.get(url, timeout=timeout_s)
+        resp.raise_for_status()
+        return resp.text
+
+    return retry_with_backoff(
+        _do,
+        max_attempts=max(1, retry_attempts),
+        base_delay=max(0.1, retry_base_delay_s),
+    )
+
+
+def _cb_is_open(source: str, now_ts: float) -> bool:
+    state = _CIRCUIT_STATE.get(source) or {}
+    return float(state.get("open_until", 0.0)) > now_ts
+
+
+def _cb_record_success(source: str) -> None:
+    _CIRCUIT_STATE[source] = {"fails": 0.0, "open_until": 0.0}
+
+
+def _cb_record_failure(source: str, *, fail_threshold: int, cooldown_s: int, now_ts: float) -> None:
+    state = _CIRCUIT_STATE.get(source) or {"fails": 0.0, "open_until": 0.0}
+    fails = float(state.get("fails", 0.0)) + 1.0
+    open_until = float(state.get("open_until", 0.0))
+    if fails >= max(1, fail_threshold):
+        open_until = now_ts + max(1, cooldown_s)
+        fails = 0.0
+    _CIRCUIT_STATE[source] = {"fails": fails, "open_until": open_until}
+
+
 def fetch_threatfox_iocs(
     *,
     api_url: str,
@@ -92,11 +164,18 @@ def fetch_threatfox_iocs(
     days: int = 3,
     limit: int = 1000,
     timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
 ) -> Iterator[Dict[str, Any]]:
     payload = {"query": "get_iocs", "days": max(1, min(days, 7))}
-    resp = requests.post(api_url, headers=_abusech_headers(auth_key), json=payload, timeout=timeout_s)
-    resp.raise_for_status()
-    data = resp.json()
+    data = _post_json_with_retry(
+        url=api_url,
+        headers=_abusech_headers(auth_key),
+        payload=payload,
+        timeout_s=timeout_s,
+        retry_attempts=retry_attempts,
+        retry_base_delay_s=retry_base_delay_s,
+    )
     if data.get("query_status") != "ok":
         logger.warning("threatfox_query_failed", extra={"status": data.get("query_status")})
         return
@@ -142,11 +221,20 @@ def fetch_threatfox_iocs(
             return
 
 
-def _fetch_text_lines(url: str, timeout_s: int = 30) -> List[str]:
-    resp = requests.get(url, timeout=timeout_s)
-    resp.raise_for_status()
+def _fetch_text_lines(
+    url: str,
+    timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
+) -> List[str]:
+    text = _get_text_with_retry(
+        url=url,
+        timeout_s=timeout_s,
+        retry_attempts=retry_attempts,
+        retry_base_delay_s=retry_base_delay_s,
+    )
     out: List[str] = []
-    for line in resp.text.splitlines():
+    for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
@@ -154,10 +242,22 @@ def _fetch_text_lines(url: str, timeout_s: int = 30) -> List[str]:
     return out
 
 
-def fetch_urlhaus_urls(*, url: str, limit: int = 10000, timeout_s: int = 30) -> Iterator[Dict[str, Any]]:
+def fetch_urlhaus_urls(
+    *,
+    url: str,
+    limit: int = 10000,
+    timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
+) -> Iterator[Dict[str, Any]]:
     now = datetime.now(tz=timezone.utc)
     yielded = 0
-    for line in _fetch_text_lines(url, timeout_s=timeout_s):
+    for line in _fetch_text_lines(
+        url,
+        timeout_s=timeout_s,
+        retry_attempts=retry_attempts,
+        retry_base_delay_s=retry_base_delay_s,
+    ):
         yield {
             "ioc_value": line,
             "ioc_type": "url",
@@ -176,10 +276,22 @@ def fetch_urlhaus_urls(*, url: str, limit: int = 10000, timeout_s: int = 30) -> 
             return
 
 
-def fetch_feodotracker_ips(*, url: str, limit: int = 10000, timeout_s: int = 30) -> Iterator[Dict[str, Any]]:
+def fetch_feodotracker_ips(
+    *,
+    url: str,
+    limit: int = 10000,
+    timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
+) -> Iterator[Dict[str, Any]]:
     now = datetime.now(tz=timezone.utc)
     yielded = 0
-    for line in _fetch_text_lines(url, timeout_s=timeout_s):
+    for line in _fetch_text_lines(
+        url,
+        timeout_s=timeout_s,
+        retry_attempts=retry_attempts,
+        retry_base_delay_s=retry_base_delay_s,
+    ):
         candidate = line.split(",")[0].strip()
         if not candidate:
             continue
@@ -213,6 +325,8 @@ def fetch_yaraify_tasks(
     task_status: str = "processed",
     limit: int = 250,
     timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
 ) -> Iterator[Dict[str, Any]]:
     if not identifier:
         return
@@ -221,9 +335,14 @@ def fetch_yaraify_tasks(
         "identifier": identifier,
         "task_status": task_status,
     }
-    resp = requests.post(api_url, headers=_abusech_headers(auth_key), json=payload, timeout=timeout_s)
-    resp.raise_for_status()
-    data = resp.json()
+    data = _post_json_with_retry(
+        url=api_url,
+        headers=_abusech_headers(auth_key),
+        payload=payload,
+        timeout_s=timeout_s,
+        retry_attempts=retry_attempts,
+        retry_base_delay_s=retry_base_delay_s,
+    )
     if data.get("query_status") != "ok":
         logger.warning("yaraify_query_failed", extra={"status": data.get("query_status")})
         return
@@ -259,18 +378,24 @@ def fetch_yaraify_lookup_hashes(
     search_terms: List[str],
     limit: int = 250,
     timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
 ) -> Iterator[Dict[str, Any]]:
     yielded = 0
-    session = requests.Session()
     headers = _abusech_headers(auth_key)
     for term in search_terms:
         search_term = (term or "").strip()
         if not search_term:
             continue
         payload = {"query": "lookup_hash", "search_term": search_term}
-        resp = session.post(api_url, headers=headers, json=payload, timeout=timeout_s)
-        resp.raise_for_status()
-        data = resp.json()
+        data = _post_json_with_retry(
+            url=api_url,
+            headers=headers,
+            payload=payload,
+            timeout_s=timeout_s,
+            retry_attempts=retry_attempts,
+            retry_base_delay_s=retry_base_delay_s,
+        )
         if data.get("query_status") != "ok":
             logger.warning(
                 "yaraify_lookup_hash_failed",
@@ -350,18 +475,38 @@ def fetch_hunting_fplist(
     response_format: str = "csv",
     limit: int = 10000,
     timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
 ) -> Iterator[Dict[str, Any]]:
     fmt = (response_format or "csv").strip().lower()
     if fmt not in {"csv", "json"}:
         fmt = "csv"
     payload = {"query": "get_fplist", "format": fmt}
-    resp = requests.post(api_url, headers=_abusech_headers(auth_key), json=payload, timeout=timeout_s)
-    resp.raise_for_status()
+    data: Dict[str, Any] | None = None
+    text_data: str | None = None
+    if fmt == "json":
+        data = _post_json_with_retry(
+            url=api_url,
+            headers=_abusech_headers(auth_key),
+            payload=payload,
+            timeout_s=timeout_s,
+            retry_attempts=retry_attempts,
+            retry_base_delay_s=retry_base_delay_s,
+        )
+    else:
+        def _do_text() -> str:
+            resp = requests.post(api_url, headers=_abusech_headers(auth_key), json=payload, timeout=timeout_s)
+            resp.raise_for_status()
+            return resp.text
+        text_data = retry_with_backoff(
+            _do_text,
+            max_attempts=max(1, retry_attempts),
+            base_delay=max(0.1, retry_base_delay_s),
+        )
     now = datetime.now(tz=timezone.utc)
 
     yielded = 0
     if fmt == "json":
-        data = resp.json()
         entries = data.get("data", []) if isinstance(data, dict) else []
         for item in entries or []:
             if not isinstance(item, dict):
@@ -388,7 +533,7 @@ def fetch_hunting_fplist(
         return
 
     csv_lines = []
-    for line in resp.text.splitlines():
+    for line in (text_data or "").splitlines():
         ln = line.strip()
         if not ln or ln.startswith("#"):
             continue
@@ -484,89 +629,192 @@ def _upsert_source_rows(
     return {"fetched": len(rows), "deactivated": len(to_deactivate)}
 
 
+def _mark_feed_error(db, *, source: str, now: datetime, error: str) -> None:
+    db.execute(
+        pg_insert(FeedStats.__table__).values(
+            source=source,
+            source_id=None,
+            last_update=now,
+            last_fetch_status="error",
+            last_fetch_error=error[:2000],
+            metadata={},
+        ).on_conflict_do_update(
+            index_elements=["source", "source_id"],
+            set_={
+                "last_update": now,
+                "last_fetch_status": "error",
+                "last_fetch_error": error[:2000],
+            },
+        )
+    )
+
+
+def _validate_abusech_config(cfg: Config) -> None:
+    shared_key = (cfg.ABUSECH_AUTH_KEY or "").strip()
+    if cfg.THREATFOX_ENABLED and not ((cfg.THREATFOX_AUTH_KEY or "").strip() or shared_key):
+        raise RuntimeError("THREATFOX_ENABLED=true requires THREATFOX_AUTH_KEY or ABUSECH_AUTH_KEY")
+    if cfg.HUNTING_FPLIST_ENABLED and not ((cfg.HUNTING_AUTH_KEY or "").strip() or shared_key):
+        raise RuntimeError("HUNTING_FPLIST_ENABLED=true requires HUNTING_AUTH_KEY or ABUSECH_AUTH_KEY")
+    if cfg.YARAIFY_ENABLED and not ((cfg.YARAIFY_AUTH_KEY or "").strip() or shared_key):
+        raise RuntimeError("YARAIFY_ENABLED=true requires YARAIFY_AUTH_KEY or ABUSECH_AUTH_KEY")
+    if cfg.YARAIFY_ENABLED:
+        has_identifier = bool((cfg.YARAIFY_IDENTIFIER or "").strip())
+        has_hashes = bool((cfg.YARAIFY_LOOKUP_HASHES or "").strip())
+        if not has_identifier and not has_hashes:
+            raise RuntimeError("YARAIFY_ENABLED=true requires YARAIFY_IDENTIFIER or YARAIFY_LOOKUP_HASHES")
+
+
 def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
     cfg = Config()
     now = datetime.now(tz=timezone.utc)
+    _validate_abusech_config(cfg)
 
     auth_key = cfg.ABUSECH_AUTH_KEY
     results: Dict[str, Dict[str, int]] = {}
-    source_rows: Dict[str, List[Dict[str, Any]]] = {}
 
-    try:
-        if cfg.THREATFOX_ENABLED:
-            source_rows["threatfox"] = list(
+    def _source_specs() -> List[tuple[str, bool, Any]]:
+        retry_attempts = max(1, int(cfg.ABUSECH_RETRY_ATTEMPTS))
+        retry_base_delay_s = max(1, int(cfg.ABUSECH_RETRY_BASE_DELAY_S))
+        timeout_s = max(1, int(cfg.ABUSECH_TIMEOUT_S))
+        specs: List[tuple[str, bool, Any]] = []
+        specs.append((
+            "threatfox",
+            bool(cfg.THREATFOX_ENABLED),
+            lambda: list(
                 fetch_threatfox_iocs(
                     api_url=cfg.THREATFOX_API_URL,
                     auth_key=cfg.THREATFOX_AUTH_KEY or auth_key,
                     days=max(1, int(cfg.THREATFOX_DAYS)),
                     limit=max(1, int(cfg.THREATFOX_LIMIT)),
+                    timeout_s=timeout_s,
+                    retry_attempts=retry_attempts,
+                    retry_base_delay_s=retry_base_delay_s,
                 )
-            )
-        if cfg.URLHAUS_ENABLED:
-            source_rows["urlhaus"] = list(
+            ),
+        ))
+        specs.append((
+            "urlhaus",
+            bool(cfg.URLHAUS_ENABLED),
+            lambda: list(
                 fetch_urlhaus_urls(
                     url=cfg.URLHAUS_FEED_URL,
                     limit=max(1, int(cfg.URLHAUS_LIMIT)),
+                    timeout_s=timeout_s,
+                    retry_attempts=retry_attempts,
+                    retry_base_delay_s=retry_base_delay_s,
                 )
-            )
-        if cfg.FEODOTRACKER_ENABLED:
-            source_rows["feodotracker"] = list(
+            ),
+        ))
+        specs.append((
+            "feodotracker",
+            bool(cfg.FEODOTRACKER_ENABLED),
+            lambda: list(
                 fetch_feodotracker_ips(
                     url=cfg.FEODOTRACKER_FEED_URL,
                     limit=max(1, int(cfg.FEODOTRACKER_LIMIT)),
+                    timeout_s=timeout_s,
+                    retry_attempts=retry_attempts,
+                    retry_base_delay_s=retry_base_delay_s,
                 )
-            )
+            ),
+        ))
         if cfg.YARAIFY_ENABLED:
             yk = cfg.YARAIFY_AUTH_KEY or auth_key
             identifier = (cfg.YARAIFY_IDENTIFIER or "").strip()
             if identifier:
-                source_rows["yaraify"] = list(
-                    fetch_yaraify_tasks(
-                        api_url=cfg.YARAIFY_API_URL,
-                        auth_key=yk,
-                        identifier=identifier,
-                        task_status=cfg.YARAIFY_TASK_STATUS,
-                        limit=max(1, int(cfg.YARAIFY_LIMIT)),
-                    )
-                )
+                specs.append((
+                    "yaraify",
+                    True,
+                    lambda: list(
+                        fetch_yaraify_tasks(
+                            api_url=cfg.YARAIFY_API_URL,
+                            auth_key=yk,
+                            identifier=identifier,
+                            task_status=cfg.YARAIFY_TASK_STATUS,
+                            limit=max(1, int(cfg.YARAIFY_LIMIT)),
+                            timeout_s=timeout_s,
+                            retry_attempts=retry_attempts,
+                            retry_base_delay_s=retry_base_delay_s,
+                        )
+                    ),
+                ))
             else:
                 search_terms = [x.strip() for x in (cfg.YARAIFY_LOOKUP_HASHES or "").split(",") if x.strip()]
-                if search_terms:
-                    source_rows["yaraify"] = list(
+                specs.append((
+                    "yaraify",
+                    True,
+                    lambda: list(
                         fetch_yaraify_lookup_hashes(
                             api_url=cfg.YARAIFY_API_URL,
                             auth_key=yk,
                             search_terms=search_terms,
                             limit=max(1, int(cfg.YARAIFY_LIMIT)),
+                            timeout_s=timeout_s,
+                            retry_attempts=retry_attempts,
+                            retry_base_delay_s=retry_base_delay_s,
                         )
-                    )
-        if cfg.HUNTING_FPLIST_ENABLED:
-            source_rows["abusech_hunting_fplist"] = list(
+                    ),
+                ))
+        specs.append((
+            "abusech_hunting_fplist",
+            bool(cfg.HUNTING_FPLIST_ENABLED),
+            lambda: list(
                 fetch_hunting_fplist(
                     api_url=cfg.HUNTING_API_URL,
                     auth_key=cfg.HUNTING_AUTH_KEY or auth_key,
                     response_format=cfg.HUNTING_FPLIST_FORMAT,
                     limit=max(1, int(cfg.HUNTING_FPLIST_LIMIT)),
+                    timeout_s=timeout_s,
+                    retry_attempts=retry_attempts,
+                    retry_base_delay_s=retry_base_delay_s,
                 )
-            )
+            ),
+        ))
+        return specs
 
-        db = SessionLocal()
-        try:
-            for source, rows in source_rows.items():
-                results[source] = _upsert_source_rows(
-                    db,
-                    source=source,
-                    rows=rows,
-                    now=now,
-                    meta={"fetched": len(rows)},
-                )
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            raise e
-        finally:
-            db.close()
+    db = SessionLocal()
+    try:
+        for source, enabled, fetch_fn in _source_specs():
+            if not enabled:
+                continue
+            with feed_update_duration_seconds.labels(source=source).time():
+                now_ts = time.time()
+                if _cb_is_open(source, now_ts):
+                    feed_fetch_total.labels(source=source, status="circuit_open").inc()
+                    results[source] = {"skipped": 1, "fetched": 0, "deactivated": 0}
+                    continue
+                try:
+                    rows = fetch_fn()
+                    stats = _upsert_source_rows(
+                        db,
+                        source=source,
+                        rows=rows,
+                        now=now,
+                        meta={"fetched": len(rows)},
+                    )
+                    db.commit()
+                    _cb_record_success(source)
+                    feed_fetch_total.labels(source=source, status="success").inc()
+                    feed_fetched_rows_total.labels(source=source).inc(stats["fetched"])
+                    feed_deactivated_rows_total.labels(source=source).inc(stats["deactivated"])
+                    results[source] = stats
+                except Exception as e:
+                    db.rollback()
+                    _cb_record_failure(
+                        source,
+                        fail_threshold=max(1, int(cfg.ABUSECH_CIRCUIT_FAIL_THRESHOLD)),
+                        cooldown_s=max(1, int(cfg.ABUSECH_CIRCUIT_COOLDOWN_S)),
+                        now_ts=now_ts,
+                    )
+                    feed_update_errors.labels(source=source).inc()
+                    feed_fetch_total.labels(source=source, status="error").inc()
+                    try:
+                        _mark_feed_error(db, source=source, now=now, error=str(e))
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+                    logger.error("abusech_source_update_failed", extra={"source": source, "error": str(e)}, exc_info=True)
+                    results[source] = {"error": 1, "fetched": 0, "deactivated": 0}
         return results
-    except Exception as e:
-        logger.error("abusech_update_failed", extra={"error": str(e)}, exc_info=True)
-        raise
+    finally:
+        db.close()

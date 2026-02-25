@@ -6,3 +6,7 @@ request_count = Counter('http_requests_total', 'Total HTTP requests', ['method',
 request_duration = Histogram('http_request_duration_seconds', 'HTTP request duration', ['endpoint'])
 active_indicators = Gauge('active_indicators_total', 'Total active indicators')
 feed_update_errors = Counter('feed_update_errors_total', 'Feed update errors', ['source'])
+feed_fetch_total = Counter('feed_fetch_total', 'Feed fetch attempts', ['source', 'status'])
+feed_fetched_rows_total = Counter('feed_fetched_rows_total', 'Fetched rows per feed', ['source'])
+feed_deactivated_rows_total = Counter('feed_deactivated_rows_total', 'Deactivated rows per feed', ['source'])
+feed_update_duration_seconds = Histogram('feed_update_duration_seconds', 'Feed update duration', ['source'])
