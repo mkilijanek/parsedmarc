@@ -238,6 +238,26 @@ MALWAREBAZAAR_AUTH_KEY=your-api-key
 MALWAREBAZAAR_SINCE_DATE=2025-01-01
 ```
 
+#### MALWAREBAZAAR_TAGS
+
+**Type:** Comma-separated string  
+**Default:** Empty  
+**Purpose:** Worker tag list used for automatic MalwareBazaar ingestion
+
+```bash
+MALWAREBAZAAR_TAGS=TrickBot,Emotet
+```
+
+#### MALWAREBAZAAR_LIMIT
+
+**Type:** Integer  
+**Default:** `1000`  
+**Purpose:** Max number of indicators fetched per MalwareBazaar worker run
+
+```bash
+MALWAREBAZAAR_LIMIT=1000
+```
+
 ---
 
 ### MWDB Integration
@@ -260,6 +280,87 @@ MWDB_URL=https://mwdb.cert.pl
 
 ```bash
 MWDB_AUTH_KEY=your-mwdb-api-key
+```
+
+#### MWDB_TAGS
+
+**Type:** Comma-separated string  
+**Default:** Empty  
+**Purpose:** Worker tag list used for automatic MWDB ingestion
+
+```bash
+MWDB_TAGS=malware,apt
+```
+
+#### MWDB_LIMIT
+
+**Type:** Integer  
+**Default:** `1000`  
+**Purpose:** Max number of indicators fetched per MWDB worker run
+
+```bash
+MWDB_LIMIT=1000
+```
+
+---
+
+### abuse.ch Extended Integrations
+
+#### ABUSECH_AUTH_KEY
+
+**Type:** String (API key)  
+**Default:** Empty  
+**Purpose:** Shared auth key for abuse.ch APIs (ThreatFox/YARAify/Hunting). Source-specific keys can override.
+
+```bash
+ABUSECH_AUTH_KEY=your-auth-key
+```
+
+#### THREATFOX_* variables
+
+```bash
+THREATFOX_ENABLED=true
+THREATFOX_API_URL=https://threatfox-api.abuse.ch/api/v1/
+THREATFOX_AUTH_KEY=
+THREATFOX_DAYS=3
+THREATFOX_LIMIT=1000
+```
+
+#### URLHAUS_* variables
+
+```bash
+URLHAUS_ENABLED=true
+URLHAUS_FEED_URL=https://urlhaus.abuse.ch/downloads/text_online/
+URLHAUS_LIMIT=10000
+```
+
+#### FEODOTRACKER_* variables
+
+```bash
+FEODOTRACKER_ENABLED=true
+FEODOTRACKER_FEED_URL=https://feodotracker.abuse.ch/downloads/ipblocklist.txt
+FEODOTRACKER_LIMIT=10000
+```
+
+#### YARAIFY_* variables
+
+```bash
+YARAIFY_ENABLED=true
+YARAIFY_API_URL=https://yaraify-api.abuse.ch/api/v1/
+YARAIFY_AUTH_KEY=
+YARAIFY_IDENTIFIER=
+YARAIFY_TASK_STATUS=processed
+YARAIFY_LIMIT=250
+```
+
+#### HUNTING_FPLIST_* variables
+
+```bash
+HUNTING_FPLIST_ENABLED=true
+HUNTING_API_URL=https://hunting-api.abuse.ch/api/v1/
+HUNTING_AUTH_KEY=
+HUNTING_FPLIST_FORMAT=csv
+HUNTING_FPLIST_LIMIT=10000
 ```
 
 ---
@@ -441,10 +542,25 @@ CROWDSEC_LISTS=list1,list2,list3
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
 MALWAREBAZAAR_AUTH_KEY=your-key
 MALWAREBAZAAR_SINCE_DATE=2025-01-01
+MALWAREBAZAAR_TAGS=TrickBot,Emotet
+MALWAREBAZAAR_LIMIT=1000
 
 # MWDB
 MWDB_URL=https://mwdb.cert.pl
 MWDB_AUTH_KEY=your-mwdb-key
+MWDB_TAGS=malware,apt
+MWDB_LIMIT=1000
+
+# abuse.ch Extended
+ABUSECH_AUTH_KEY=your-auth-key
+THREATFOX_ENABLED=true
+THREATFOX_DAYS=3
+URLHAUS_ENABLED=true
+FEODOTRACKER_ENABLED=true
+YARAIFY_ENABLED=false
+YARAIFY_IDENTIFIER=
+HUNTING_FPLIST_ENABLED=true
+HUNTING_FPLIST_FORMAT=csv
 
 # Worker
 ENABLE_BACKGROUND_JOBS=true

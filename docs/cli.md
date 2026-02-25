@@ -255,7 +255,7 @@ ValueError: time data '2025/01/01' does not match format
 
 ## Limitations
 
-- **No automatic updates** - Must be scheduled externally
+- **Worker auto-update exists** - CLI is still useful for ad-hoc/manual ingestion and one-off backfills
 - **Tag-based only** - Cannot query by hash or other fields
 - **Rate limits** - Subject to API provider limits
 - **No streaming** - Loads all results in memory

@@ -59,8 +59,40 @@ class Config:
     MALWAREBAZAAR_SINCE_DATE: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_SINCE_DATE", ""))
     MALWAREBAZAAR_API_URL: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_API_URL", "https://mb-api.abuse.ch/api/v1/"))
     MALWAREBAZAAR_AUTH_KEY: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_AUTH_KEY", ""))
+    MALWAREBAZAAR_TAGS: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_TAGS", ""))
+    MALWAREBAZAAR_LIMIT: int = field(default_factory=lambda: _env_int("MALWAREBAZAAR_LIMIT", 1000))
     MWDB_URL: str = field(default_factory=lambda: _env_str("MWDB_URL", ""))
     MWDB_AUTH_KEY: str = field(default_factory=lambda: _env_str("MWDB_AUTH_KEY", ""))
+    MWDB_TAGS: str = field(default_factory=lambda: _env_str("MWDB_TAGS", ""))
+    MWDB_LIMIT: int = field(default_factory=lambda: _env_int("MWDB_LIMIT", 1000))
+
+    ABUSECH_AUTH_KEY: str = field(default_factory=lambda: _env_str("ABUSECH_AUTH_KEY", ""))
+    THREATFOX_ENABLED: bool = field(default_factory=lambda: _env_bool("THREATFOX_ENABLED", False))
+    THREATFOX_API_URL: str = field(default_factory=lambda: _env_str("THREATFOX_API_URL", "https://threatfox-api.abuse.ch/api/v1/"))
+    THREATFOX_AUTH_KEY: str = field(default_factory=lambda: _env_str("THREATFOX_AUTH_KEY", ""))
+    THREATFOX_DAYS: int = field(default_factory=lambda: _env_int("THREATFOX_DAYS", 3))
+    THREATFOX_LIMIT: int = field(default_factory=lambda: _env_int("THREATFOX_LIMIT", 1000))
+
+    URLHAUS_ENABLED: bool = field(default_factory=lambda: _env_bool("URLHAUS_ENABLED", False))
+    URLHAUS_FEED_URL: str = field(default_factory=lambda: _env_str("URLHAUS_FEED_URL", "https://urlhaus.abuse.ch/downloads/text_online/"))
+    URLHAUS_LIMIT: int = field(default_factory=lambda: _env_int("URLHAUS_LIMIT", 10000))
+
+    FEODOTRACKER_ENABLED: bool = field(default_factory=lambda: _env_bool("FEODOTRACKER_ENABLED", False))
+    FEODOTRACKER_FEED_URL: str = field(default_factory=lambda: _env_str("FEODOTRACKER_FEED_URL", "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"))
+    FEODOTRACKER_LIMIT: int = field(default_factory=lambda: _env_int("FEODOTRACKER_LIMIT", 10000))
+
+    YARAIFY_ENABLED: bool = field(default_factory=lambda: _env_bool("YARAIFY_ENABLED", False))
+    YARAIFY_API_URL: str = field(default_factory=lambda: _env_str("YARAIFY_API_URL", "https://yaraify-api.abuse.ch/api/v1/"))
+    YARAIFY_AUTH_KEY: str = field(default_factory=lambda: _env_str("YARAIFY_AUTH_KEY", ""))
+    YARAIFY_IDENTIFIER: str = field(default_factory=lambda: _env_str("YARAIFY_IDENTIFIER", ""))
+    YARAIFY_TASK_STATUS: str = field(default_factory=lambda: _env_str("YARAIFY_TASK_STATUS", "processed"))
+    YARAIFY_LIMIT: int = field(default_factory=lambda: _env_int("YARAIFY_LIMIT", 250))
+
+    HUNTING_FPLIST_ENABLED: bool = field(default_factory=lambda: _env_bool("HUNTING_FPLIST_ENABLED", False))
+    HUNTING_API_URL: str = field(default_factory=lambda: _env_str("HUNTING_API_URL", "https://hunting-api.abuse.ch/api/v1/"))
+    HUNTING_AUTH_KEY: str = field(default_factory=lambda: _env_str("HUNTING_AUTH_KEY", ""))
+    HUNTING_FPLIST_FORMAT: str = field(default_factory=lambda: _env_str("HUNTING_FPLIST_FORMAT", "csv"))
+    HUNTING_FPLIST_LIMIT: int = field(default_factory=lambda: _env_int("HUNTING_FPLIST_LIMIT", 10000))
 
 
     # Worker

@@ -103,6 +103,11 @@ Contribution and quality gate:
 ## Configuration
 
 - `MALWAREBAZAAR_SINCE_DATE` (optional): ISO date `YYYY-MM-DD`. When set, MALWAREBAZAAR_SINCE_DATE: ISO date `YYYY-MM-DD` (UTC). MalwareBazaar ingestion pulls entries from this date (inclusive) onward.
+- `MALWAREBAZAAR_TAGS` (optional): comma-separated tags for worker auto-ingestion.
+- `MALWAREBAZAAR_LIMIT` (optional): max rows per run (default: `1000`).
+- `MWDB_TAGS` (optional): comma-separated tags for worker auto-ingestion.
+- `MWDB_LIMIT` (optional): max rows per run (default: `1000`).
+- abuse.ch extended integrations (optional): `THREATFOX_*`, `URLHAUS_*`, `YARAIFY_*`, `FEODOTRACKER_*`, `HUNTING_FPLIST_*`, with shared `ABUSECH_AUTH_KEY`.
 
 
 ## CLI (IOC ingestion)

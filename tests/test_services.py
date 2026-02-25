@@ -24,6 +24,17 @@ from app.services.misp import (
     _normalize_value,
 )
 from app.services.common import retry_with_backoff
+from app.services.mwdb import update_mwdb_indicators
+from app.services.malwarebazaar import update_malwarebazaar_indicators
+from app.services.mwdb import _build_tag_query
+from app.services.abusech import (
+    _infer_ioc_type,
+    _normalize_threatfox_ioc,
+    _pick_ioc_from_csv_row,
+    fetch_urlhaus_urls,
+    fetch_feodotracker_ips,
+    update_abusech_indicators,
+)
 
 
 # ============================================================================
@@ -518,6 +529,247 @@ class TestDataNormalization:
         """Test email normalization."""
         value, meta = _normalize_value('email', 'test@example.com')
         assert value == 'test@example.com'
+
+
+class _FakeQuery:
+    def __init__(self, rows):
+        self._rows = rows
+        self.updated = False
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def all(self):
+        return self._rows
+
+    def update(self, *args, **kwargs):
+        self.updated = True
+        return 1
+
+
+class _FakeDB:
+    def __init__(self, rows=None):
+        self.rows = rows or []
+        self.executed = 0
+        self.committed = 0
+        self.rolled_back = 0
+        self.closed = 0
+
+    def query(self, *args, **kwargs):
+        return _FakeQuery(self.rows)
+
+    def execute(self, stmt):
+        self.executed += 1
+        return None
+
+    def commit(self):
+        self.committed += 1
+
+    def rollback(self):
+        self.rolled_back += 1
+
+    def close(self):
+        self.closed += 1
+
+
+class TestMWDBAutoUpdate:
+    @patch("app.services.mwdb.fetch_mwdb_by_tags")
+    def test_skips_when_no_tags(self, mock_fetch):
+        with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MWDB_TAGS": ""}, clear=False):
+            result = update_mwdb_indicators()
+            assert result["fetched"] == 0
+            assert result["deactivated"] == 0
+            mock_fetch.assert_not_called()
+
+    @patch("app.services.mwdb.SessionLocal")
+    @patch("app.services.mwdb.fetch_mwdb_by_tags")
+    def test_updates_indicators(self, mock_fetch, mock_sessionlocal):
+        mock_fetch.return_value = iter([{
+            "ioc_value": "a" * 64,
+            "ioc_type": "hash",
+            "source": "mwdb",
+            "source_ref": "obj-1",
+            "first_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "last_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "confidence": 60,
+            "tlp": "GREEN",
+            "is_active": True,
+            "tags": ["apt"],
+            "metadata": {"id": "obj-1"},
+        }])
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "MWDB_TAGS": "apt,malware",
+            "MWDB_URL": "https://mwdb.example.com",
+            "MWDB_AUTH_KEY": "test-key",
+            "MWDB_LIMIT": "10",
+        }, clear=False):
+            result = update_mwdb_indicators()
+
+        assert result["fetched"] == 1
+        assert fake_db.executed >= 2
+        assert fake_db.committed >= 1
+        assert fake_db.closed == 1
+        mock_fetch.assert_called_once()
+
+
+class TestMWDBQueryBuilding:
+    def test_single_simple_tag(self):
+        assert _build_tag_query(["trojan"]) == "tag:trojan"
+
+    def test_single_tag_with_colon(self):
+        assert _build_tag_query(["feed:vx"]) == 'tag:"feed:vx"'
+
+    def test_multiple_tags_mixed(self):
+        q = _build_tag_query(["trojan", "feed:vx"])
+        assert q == '(tag:trojan OR tag:"feed:vx")'
+
+
+class TestMalwareBazaarAutoUpdate:
+    @patch("app.services.malwarebazaar.fetch_malwarebazaar_by_tags")
+    def test_skips_when_no_tags(self, mock_fetch):
+        with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MALWAREBAZAAR_TAGS": ""}, clear=False):
+            result = update_malwarebazaar_indicators()
+            assert result["fetched"] == 0
+            assert result["deactivated"] == 0
+            mock_fetch.assert_not_called()
+
+    @patch("app.services.malwarebazaar.SessionLocal")
+    @patch("app.services.malwarebazaar.fetch_malwarebazaar_by_tags")
+    def test_updates_indicators(self, mock_fetch, mock_sessionlocal):
+        mock_fetch.return_value = iter([{
+            "ioc_value": "b" * 64,
+            "ioc_type": "hash",
+            "source": "malwarebazaar",
+            "source_ref": "sample-1",
+            "first_seen": datetime(2025, 1, 2, tzinfo=timezone.utc),
+            "last_seen": datetime(2025, 1, 2, tzinfo=timezone.utc),
+            "confidence": 60,
+            "tlp": "GREEN",
+            "is_active": True,
+            "tags": ["trickbot"],
+            "metadata": {"sha256_hash": "b" * 64},
+        }])
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "MALWAREBAZAAR_TAGS": "trickbot",
+            "MALWAREBAZAAR_AUTH_KEY": "test-key",
+            "MALWAREBAZAAR_LIMIT": "5",
+        }, clear=False):
+            result = update_malwarebazaar_indicators()
+
+        assert result["fetched"] == 1
+        assert fake_db.executed >= 2
+        assert fake_db.committed >= 1
+        assert fake_db.closed == 1
+        mock_fetch.assert_called_once()
+
+
+class TestAbuseChHelpers:
+    def test_infer_ioc_type(self):
+        assert _infer_ioc_type("1.2.3.4") == "ip"
+        assert _infer_ioc_type("https://evil.example/a") == "url"
+        assert _infer_ioc_type("example.com") == "domain"
+        assert _infer_ioc_type("a" * 64) == "hash"
+
+    def test_normalize_threatfox_ioc(self):
+        value, kind = _normalize_threatfox_ioc("8.8.8.8:443", "ip:port")
+        assert value == "8.8.8.8"
+        assert kind == "ip"
+
+        value, kind = _normalize_threatfox_ioc("http://evil.test", "url")
+        assert value == "http://evil.test"
+        assert kind == "url"
+
+    def test_pick_ioc_from_csv_row(self):
+        ioc, ioc_type = _pick_ioc_from_csv_row({"value": "bad.example.com"})
+        assert ioc == "bad.example.com"
+        assert ioc_type == "domain"
+
+
+class TestAbuseChFetchers:
+    @patch("app.services.abusech.requests.get")
+    def test_fetch_urlhaus_urls(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = "# comment\nhttps://evil.example/a\n\nhttps://evil.example/b\n"
+        mock_get.return_value = mock_response
+
+        rows = list(fetch_urlhaus_urls(url="https://urlhaus.abuse.ch/downloads/text_online/", limit=10))
+        assert len(rows) == 2
+        assert rows[0]["ioc_type"] == "url"
+        assert rows[0]["source"] == "urlhaus"
+
+    @patch("app.services.abusech.requests.get")
+    def test_fetch_feodotracker_ips(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = "# comment\n1.1.1.1\nnot-an-ip\n8.8.8.8,foo\n"
+        mock_get.return_value = mock_response
+
+        rows = list(fetch_feodotracker_ips(url="https://feodotracker.abuse.ch/downloads/ipblocklist.txt", limit=10))
+        assert len(rows) == 2
+        assert all(r["ioc_type"] == "ip" for r in rows)
+        assert rows[0]["source"] == "feodotracker"
+
+
+class TestAbuseChUpdater:
+    @patch("app.services.abusech.SessionLocal")
+    @patch("app.services.abusech.fetch_hunting_fplist")
+    @patch("app.services.abusech.fetch_yaraify_tasks")
+    @patch("app.services.abusech.fetch_feodotracker_ips")
+    @patch("app.services.abusech.fetch_urlhaus_urls")
+    @patch("app.services.abusech.fetch_threatfox_iocs")
+    def test_update_abusech_indicators(
+        self,
+        mock_threatfox,
+        mock_urlhaus,
+        mock_feodo,
+        mock_yaraify,
+        mock_hunting,
+        mock_sessionlocal,
+    ):
+        mock_threatfox.return_value = iter([{
+            "ioc_value": "evil.example.com",
+            "ioc_type": "domain",
+            "source_ref": "1",
+            "first_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "last_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "confidence": 60,
+            "tlp": "GREEN",
+            "is_active": True,
+            "tags": [],
+            "metadata": {"id": 1},
+        }])
+        mock_urlhaus.return_value = iter([])
+        mock_feodo.return_value = iter([])
+        mock_yaraify.return_value = iter([])
+        mock_hunting.return_value = iter([])
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "THREATFOX_ENABLED": "true",
+            "URLHAUS_ENABLED": "false",
+            "FEODOTRACKER_ENABLED": "false",
+            "YARAIFY_ENABLED": "false",
+            "HUNTING_FPLIST_ENABLED": "false",
+            "THREATFOX_AUTH_KEY": "key",
+        }, clear=False):
+            result = update_abusech_indicators()
+
+        assert "threatfox" in result
+        assert result["threatfox"]["fetched"] == 1
+        assert fake_db.executed >= 2
+        assert fake_db.committed >= 1
+        assert fake_db.closed == 1
 
 
 # ============================================================================

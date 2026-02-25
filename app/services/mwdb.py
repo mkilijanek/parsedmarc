@@ -5,6 +5,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
 import requests
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from ..config import Config
+from ..db import SessionLocal
+from ..models import FeedStats, Indicator
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +24,58 @@ def _parse_dt(s: str) -> Optional[datetime]:
         return dt.astimezone(timezone.utc)
     except Exception:
         return None
+
+
+def _normalize_obj_tags(raw_tags: Any) -> List[str]:
+    if not raw_tags:
+        return []
+    if isinstance(raw_tags, str):
+        return [t.strip() for t in raw_tags.split(",") if t.strip()]
+    if isinstance(raw_tags, dict):
+        vals: List[str] = []
+        for v in raw_tags.values():
+            if isinstance(v, dict):
+                tag = v.get("tag")
+                if isinstance(tag, str) and tag.strip():
+                    vals.append(tag.strip())
+            elif isinstance(v, str) and v.strip():
+                vals.append(v.strip())
+        return vals
+    if isinstance(raw_tags, list):
+        vals: List[str] = []
+        for v in raw_tags:
+            if isinstance(v, str) and v.strip():
+                vals.append(v.strip())
+            elif isinstance(v, dict):
+                tag = v.get("tag")
+                if isinstance(tag, str) and tag.strip():
+                    vals.append(tag.strip())
+        return vals
+    return []
+
+
+def _escape_lucene_value(value: str) -> str:
+    # Minimal escaping for quoted Lucene term.
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _tag_term(tag: str) -> str:
+    t = (tag or "").strip()
+    if not t:
+        return ""
+    # Tags like feed:vx require quotes in Lucene query.
+    if ":" in t or " " in t:
+        return f'tag:"{_escape_lucene_value(t)}"'
+    return f"tag:{_escape_lucene_value(t)}"
+
+
+def _build_tag_query(tags: List[str]) -> str:
+    terms = [_tag_term(t) for t in tags if (t or "").strip()]
+    if not terms:
+        raise ValueError("At least one non-empty tag is required")
+    if len(terms) == 1:
+        return terms[0]
+    return "(" + " OR ".join(terms) + ")"
 
 def fetch_mwdb_by_tags(
     *,
@@ -53,10 +110,7 @@ def fetch_mwdb_by_tags(
     session.headers.update({"Authorization": f"Bearer {auth_key}"})
 
     # lucene tag query
-    if len(tags) == 1:
-        q = f"tag:{tags[0]}"
-    else:
-        q = "(" + " OR ".join([f"tag:{t}" for t in tags]) + ")"
+    q = _build_tag_query(tags)
 
     older_than = None
     yielded = 0
@@ -87,12 +141,7 @@ def fetch_mwdb_by_tags(
             if until and dt > until:
                 continue
 
-            obj_tags = obj.get("tags") or []
-            if isinstance(obj_tags, dict):
-                # sometimes tags may be returned as list of dicts
-                obj_tags = [x.get("tag") for x in obj_tags.values() if isinstance(x, dict)]
-            if isinstance(obj_tags, str):
-                obj_tags = [t.strip() for t in obj_tags.split(",") if t.strip()]
+            obj_tags = _normalize_obj_tags(obj.get("tags"))
 
             # merge tags
             all_tags=[]
@@ -131,3 +180,126 @@ def fetch_mwdb_by_tags(
         # if we didn't update older_than, break to avoid infinite loop
         if not older_than:
             return
+
+
+def _parse_tag_list(raw: str) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for val in (raw or "").split(","):
+        tag = val.strip()
+        if not tag:
+            continue
+        key = tag.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(tag)
+    return out
+
+
+def update_mwdb_indicators() -> Dict[str, int]:
+    cfg = Config()
+    now = datetime.now(timezone.utc)
+    tags = _parse_tag_list(cfg.MWDB_TAGS)
+    if not tags:
+        logger.info("mwdb_skipped_no_tags")
+        return {"fetched": 0, "deactivated": 0}
+
+    rows = list(
+        fetch_mwdb_by_tags(
+            base_url=cfg.MWDB_URL,
+            auth_key=cfg.MWDB_AUTH_KEY,
+            tags=tags,
+            since=None,
+            until=None,
+            limit=max(1, int(cfg.MWDB_LIMIT)),
+        )
+    )
+
+    incoming = {r["ioc_value"] for r in rows if r.get("ioc_value")}
+    db = SessionLocal()
+    try:
+        existing = db.query(Indicator.id, Indicator.value).filter(Indicator.source == "mwdb").all()
+        existing_map = {value: ind_id for (ind_id, value) in existing}
+        to_deactivate = [existing_map[v] for v in existing_map.keys() if v not in incoming]
+        if to_deactivate:
+            db.query(Indicator).filter(Indicator.id.in_(to_deactivate)).update(  # type: ignore[arg-type]
+                {"is_active": False, "last_seen": now}, synchronize_session=False
+            )
+
+        for item in rows:
+            value = str(item.get("ioc_value") or "").strip()
+            if not value:
+                continue
+            stmt = pg_insert(Indicator.__table__).values(
+                value=value,
+                type=(item.get("ioc_type") or "hash"),
+                source="mwdb",
+                source_id=str(item.get("source_ref") or value),
+                first_seen=item.get("first_seen") or now,
+                last_seen=item.get("last_seen") or now,
+                confidence=int(item.get("confidence") or 60),
+                tlp=str(item.get("tlp") or "GREEN"),
+                is_active=True,
+                metadata={"mwdb": item.get("metadata") or {}},
+                tags=list(item.get("tags") or []),
+            ).on_conflict_do_update(
+                index_elements=["value", "source", "source_id"],
+                set_={
+                    "last_seen": item.get("last_seen") or now,
+                    "is_active": True,
+                    "confidence": int(item.get("confidence") or 60),
+                    "tlp": str(item.get("tlp") or "GREEN"),
+                    "metadata": {"mwdb": item.get("metadata") or {}},
+                    "tags": list(item.get("tags") or []),
+                },
+            )
+            db.execute(stmt)
+
+        db.execute(
+            pg_insert(FeedStats.__table__).values(
+                source="mwdb",
+                source_id=None,
+                last_update=now,
+                last_fetch_status="success",
+                last_fetch_error=None,
+                metadata={"fetched": len(rows), "tags": tags},
+            ).on_conflict_do_update(
+                index_elements=["source", "source_id"],
+                set_={
+                    "last_update": now,
+                    "last_fetch_status": "success",
+                    "last_fetch_error": None,
+                    "metadata": {"fetched": len(rows), "tags": tags},
+                },
+            )
+        )
+        db.commit()
+        logger.info("mwdb_updated", extra={"fetched": len(rows), "tags": len(tags)})
+        return {"fetched": len(rows), "deactivated": len(to_deactivate)}
+    except Exception as e:
+        db.rollback()
+        try:
+            db.execute(
+                pg_insert(FeedStats.__table__).values(
+                    source="mwdb",
+                    source_id=None,
+                    last_update=now,
+                    last_fetch_status="error",
+                    last_fetch_error=str(e),
+                    metadata={},
+                ).on_conflict_do_update(
+                    index_elements=["source", "source_id"],
+                    set_={
+                        "last_update": now,
+                        "last_fetch_status": "error",
+                        "last_fetch_error": str(e),
+                    },
+                )
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise
+    finally:
+        db.close()
