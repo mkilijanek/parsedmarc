@@ -203,6 +203,7 @@ External Source → API Fetch → Normalization → Database Upsert → Feed Sta
 4. **Upsert:** `ON CONFLICT DO UPDATE` for idempotency
 5. **Audit:** Log ingestion stats and errors
 6. **Cache:** Clear relevant cache keys
+7. **Quality/Enrichment:** Canonical normalization, dedup, and metadata enrichment
 
 ### Query Flow (API Request)
 
@@ -218,6 +219,7 @@ Client Request → Nginx → Flask → Cache Check → Database Query → Format
 2. **Flask:** Parse query, validate syntax (max 500 chars)
 3. **Cache:** Check Redis for cached response
 4. **Database:** Execute parameterized SQL query
+5. **Correlation (optional):** Aggregate active IOCs across distinct sources via `/correlations`
 5. **Format:** Apply output formatter (txt/csv/json/...)
 6. **Cache:** Store result in Redis (TTL: 5 minutes)
 7. **Response:** Return with security headers

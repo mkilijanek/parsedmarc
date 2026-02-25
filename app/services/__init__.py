@@ -17,3 +17,4 @@ from .quality import (
     infer_type_from_value,
 )
 from .enrichment import enrich_metadata
+from .correlation import query_correlations

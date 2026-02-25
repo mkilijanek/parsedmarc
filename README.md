@@ -44,6 +44,7 @@ curl -k https://localhost:7003/indicators/arcsight | head
 - `GET /` – status overview
 - `GET /indicators` – unified view (HTML)
 - `GET /indicators/<fmt>` – export (TXT/CSV/JSON/XML + vendor formats)
+- `GET /correlations` – cross-source IOC correlation view (JSON)
 - `GET /metrics` – Prometheus metrics (deploy behind internal network/VPN if needed)
 
 ### Export formats (17)

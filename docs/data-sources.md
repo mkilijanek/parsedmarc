@@ -264,6 +264,14 @@ All sources are normalized to:
 }
 ```
 
+### Enrichment & Correlation (M10)
+
+- All canonicalized IOC rows are enriched with derived metadata (`metadata.enrichment`) such as:
+  - URL host/root domain
+  - IP properties (private/global/version)
+  - Hash family hint by length
+- Cross-source correlation is available via `GET /correlations`, grouping active indicators by `(value, type)` seen in multiple sources.
+
 ### Type Mapping
 
 | Source Type | Normalized Type |

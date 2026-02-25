@@ -21,6 +21,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from conftest import EXPORT_FORMATS, assert_security_headers
+from app.models import Indicator
 
 
 # ============================================================================
@@ -230,6 +231,59 @@ class TestSourcesEndpoint:
         """Test sources endpoint rejects empty source."""
         response = client.get("/sources/ ")
         assert response.status_code in [400, 404]
+
+
+class TestCorrelationEndpoint:
+    def test_correlations_basic(self, client, test_db):
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        test_db.add_all([
+            Indicator(
+                value="corr.example.org",
+                type="domain",
+                source="mwdb",
+                source_id="x1",
+                confidence=70,
+                tlp="GREEN",
+                is_active=True,
+                tags=["malware"],
+                metadata_={"mwdb": {"enrichment": {"domain_root": "example.org"}}},
+                first_seen=now,
+                last_seen=now,
+            ),
+            Indicator(
+                value="corr.example.org",
+                type="domain",
+                source="threatfox",
+                source_id="x2",
+                confidence=75,
+                tlp="GREEN",
+                is_active=True,
+                tags=["apt"],
+                metadata_={"threatfox": {"enrichment": {"domain_root": "example.org"}}},
+                first_seen=now,
+                last_seen=now,
+            ),
+        ])
+        test_db.commit()
+
+        response = client.get("/correlations?min_sources=2&type=domain")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["count"] >= 1
+        assert isinstance(data["items"], list)
+        first = data["items"][0]
+        assert "source_count" in first
+        assert "sources" in first
+        assert "enrichment" in first
+
+    def test_correlations_invalid_type(self, client):
+        response = client.get("/correlations?type=invalid")
+        assert response.status_code == 400
+
+    def test_correlations_invalid_params(self, client):
+        response = client.get("/correlations?min_sources=abc")
+        assert response.status_code == 400
 
 
 # ============================================================================

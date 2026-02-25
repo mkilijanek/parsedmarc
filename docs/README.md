@@ -77,6 +77,14 @@ Kibana-like query syntax with boolean operators:
 type:ip AND confidence:>70 AND (tags:apt OR tags:malware)
 ```
 
+### 🔗 IOC Correlation
+
+Cross-source correlation endpoint:
+
+```bash
+curl "https://localhost:7003/correlations?min_sources=2&type=domain"
+```
+
 ### 📤 17 Export Formats
 
 - **Basic:** TXT, CSV, JSON, XML

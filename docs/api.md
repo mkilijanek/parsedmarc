@@ -65,6 +65,12 @@ Returns Prometheus-compatible metrics for monitoring.
 - `http_requests_total` - Total HTTP requests
 - `http_request_duration_seconds` - Request duration histogram
 - `active_indicators` - Number of active indicators in database
+- `quality_normalized_total` - IOC rows normalized by quality pipeline
+- `quality_dropped_invalid_total` - Dropped invalid IOC rows
+- `quality_dedup_merged_total` - IOC rows merged during dedup
+- `correlation_queries_total` - Correlation API query count
+- `correlation_query_duration_seconds` - Correlation query latency
+- `correlation_groups_returned_total` - Returned correlation group count
 
 **Security Note:** Deploy this endpoint behind internal network/VPN in production.
 
@@ -148,6 +154,48 @@ value:192.168.1.?  # ? matches single character
 **Example:**
 ```bash
 curl "https://localhost:7003/indicators?type=ip&min_conf=70&tlp=AMBER"
+```
+
+---
+
+### IOC Correlation
+
+#### `GET /correlations`
+
+Returns IOC groups observed in at least `min_sources` distinct feeds.
+
+**Rate Limit:** 20 requests/minute
+
+**Query Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `min_sources` | integer | Minimum number of distinct sources per IOC group | `2` |
+| `limit` | integer | Maximum number of correlation groups (max 5000) | `1000` |
+| `type` | string | IOC type filter | `all` |
+
+**Response:**
+```json
+{
+  "count": 1,
+  "min_sources": 2,
+  "type": "domain",
+  "items": [
+    {
+      "value": "shared.example.org",
+      "type": "domain",
+      "source_count": 2,
+      "max_confidence": 80,
+      "last_seen": "2026-02-25T12:00:00+00:00",
+      "sources": [
+        {"source": "mwdb", "source_id": "x1", "confidence": 80},
+        {"source": "threatfox", "source_id": "x2", "confidence": 75}
+      ],
+      "tags": ["apt", "malware"],
+      "enrichment": {"domain_root": "example.org"}
+    }
+  ]
+}
 ```
 
 ---
@@ -337,6 +385,7 @@ Rate limits are enforced per client IP address:
 |----------|-------|
 | `/indicators` | 20/minute |
 | `/indicators/<format>` | 30/minute |
+| `/correlations` | 20/minute |
 | `/health` | 60/minute |
 | `/metrics` | 30/minute |
 | `/misp/*` | 30/minute |

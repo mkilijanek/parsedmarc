@@ -13,3 +13,6 @@ feed_update_duration_seconds = Histogram('feed_update_duration_seconds', 'Feed u
 quality_normalized_total = Counter('quality_normalized_total', 'Rows normalized by quality pipeline', ['source'])
 quality_dropped_invalid_total = Counter('quality_dropped_invalid_total', 'Rows dropped by quality pipeline', ['source', 'reason'])
 quality_dedup_merged_total = Counter('quality_dedup_merged_total', 'Rows merged during batch deduplication', ['source'])
+correlation_queries_total = Counter('correlation_queries_total', 'Correlation API queries', ['status'])
+correlation_query_duration_seconds = Histogram('correlation_query_duration_seconds', 'Correlation query duration')
+correlation_groups_returned_total = Counter('correlation_groups_returned_total', 'Correlation groups returned')

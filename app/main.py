@@ -20,8 +20,18 @@ from .cache import get_redis
 from .security import validate_search_query, enforce_allowed_hosts, get_client_ip
 from .query_parser import parse_kibana_query, Term, Token
 from .formatters import FORMATTERS
+from .services.correlation import query_correlations
 
-from .metrics import request_count, request_duration, active_indicators, generate_latest, CONTENT_TYPE_LATEST
+from .metrics import (
+    request_count,
+    request_duration,
+    active_indicators,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+    correlation_queries_total,
+    correlation_query_duration_seconds,
+    correlation_groups_returned_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -335,6 +345,38 @@ def create_app() -> Flask:
         if not src or any(c in src for c in [' ', '\t', '\n', '\r', '/', '\\']):
             return jsonify({"error": "Invalid source"}), 400
         return redirect(url_for("indicators_view", source=src))
+
+    @app.get("/correlations")
+    @limiter.limit("20 per minute")
+    def correlations():
+        try:
+            min_sources = int(request.args.get("min_sources", "2"))
+            limit = int(request.args.get("limit", "1000"))
+        except ValueError:
+            correlation_queries_total.labels(status="error").inc()
+            return jsonify({"error": "min_sources/limit must be integers"}), 400
+        ioc_type = (request.args.get("type") or "all").lower()
+        if ioc_type not in {"all", "ip", "domain", "url", "hash", "email", "object_id"}:
+            correlation_queries_total.labels(status="error").inc()
+            return jsonify({"error": "invalid type"}), 400
+
+        db = _db()
+        try:
+            with correlation_query_duration_seconds.time():
+                groups = query_correlations(db, min_sources=min_sources, limit=limit, ioc_type=ioc_type)
+            correlation_queries_total.labels(status="success").inc()
+            correlation_groups_returned_total.inc(len(groups))
+            return jsonify({
+                "count": len(groups),
+                "min_sources": max(2, min_sources),
+                "type": ioc_type,
+                "items": groups,
+            })
+        except Exception:
+            correlation_queries_total.labels(status="error").inc()
+            raise
+        finally:
+            db.close()
 
     @app.get("/indicators/<fmt>")
     @limiter.limit("30 per minute")
