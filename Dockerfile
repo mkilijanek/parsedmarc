@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1.6
+FROM python:3.11-slim AS builder
+WORKDIR /build
+# SECURITY: Install only necessary build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ libpq-dev && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+FROM python:3.11-slim
+# SECURITY: Create non-root user early in build process
+RUN useradd -m -u 1000 appuser
+
+WORKDIR /app
+# SECURITY: Install only necessary runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends curl libpq5 && rm -rf /var/lib/apt/lists/*
+
+# SECURITY: Copy files with proper ownership from the start
+COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
+COPY --chown=appuser:appuser app/ ./app/
+
+ENV PATH=/home/appuser/.local/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# SECURITY: Switch to non-root user before any operations
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -fsS http://localhost:8080/health || exit 1
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--timeout", "120", "--worker-class", "sync", "app.main:app"]

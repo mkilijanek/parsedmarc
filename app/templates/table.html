@@ -1,0 +1,84 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+
+<form method="get" class="filters">
+  <label>Search
+    <input name="q" value="{{ q or '' }}" placeholder="FTS / substring">
+  </label>
+  <label>Types (comma)
+    <input name="types" value="{{ types_raw or '' }}" placeholder="ip,domain,hash,apk,ios">
+  </label>
+  <label>Sources (comma)
+    <input name="sources" value="{{ sources_raw or '' }}" placeholder="misp,malwarebazaar,mwdb,crowdsec">
+  </label>
+  <label>TLPs (comma)
+    <input name="tlps" value="{{ tlps_raw or '' }}" placeholder="GREEN,AMBER,RED,WHITE">
+  </label>
+  <label>
+    <input type="checkbox" name="active_only" value="1" {% if active_only %}checked{% endif %}>
+    active only
+  </label>
+  <label>Limit
+    <input name="limit" value="{{ limit }}" size="6">
+  </label>
+  <button class="btn" type="submit">Apply</button>
+
+  <div class="downloads">
+    <span>Download:</span>
+    <a href="{{ download_csv }}">CSV</a>
+    <a href="{{ download_tsv }}">TSV</a>
+    <a href="{{ download_json }}">JSON</a>
+  </div>
+</form>
+
+<div class="tablewrap">
+<table>
+  <thead>
+    <tr>
+      <th>last_seen</th>
+      <th>ioc_value</th>
+      <th>type</th>
+      <th>source</th>
+      <th>confidence</th>
+      <th>TLP</th>
+      <th>tags</th>
+      {% if show_mobile %}
+      <th>platform</th>
+      <th>package</th>
+      <th>version</th>
+      <th>permissions</th>
+      {% endif %}
+      <th>comments</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r.last_seen }}</td>
+      <td class="mono">{{ r.ioc_value }}</td>
+      <td>{{ r.ioc_type }}</td>
+      <td>{{ r.source }}</td>
+      <td>{{ r.confidence }}</td>
+      <td>{{ r.tlp }}</td>
+      <td class="mono">{{ (r.tags or [])|join(',') }}</td>
+      {% if show_mobile %}
+      <td>{{ r.platform or '' }}</td>
+      <td class="mono">{{ r.package_name or '' }}</td>
+      <td class="mono">{{ r.app_version or '' }}</td>
+      <td class="mono">
+        {% if r.permissions %}{{ r.permissions|join(',') }}{% endif %}
+      </td>
+      {% endif %}
+      <td>{{ r.comments or '' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if not rows %}
+<p>No results.</p>
+{% endif %}
+
+{% endblock %}

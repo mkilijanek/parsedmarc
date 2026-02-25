@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1>IOC stats</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th>source</th><th>type</th><th>tlp</th><th>total</th><th>active</th><th>inactive</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.source }}</td>
+      <td>{{ r.ioc_type }}</td>
+      <td>{{ r.tlp }}</td>
+      <td>{{ r.total }}</td>
+      <td>{{ r.active }}</td>
+      <td>{{ r.inactive }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p class="hint">Backed by ti.agg_iocs_by_source_type_tlp()</p>
+{% endblock %}
