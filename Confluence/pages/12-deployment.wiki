@@ -1,0 +1,65 @@
+h1. Deployment
+
+{info:title=Documentation Metadata}
+Purpose: Deployment process, prerequisites, and rollout guidance.\\
+Source file: {code}DEPLOYMENT.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+h2. Quick Start
+
+{code:language=bash}
+# 1. Generate secrets
+./scripts/generate-secrets.sh
+
+# 2. Setup SSL
+./scripts/setup-ssl.sh
+
+# 3. Configure .env
+vim .env  # Add MISP and CrowdSec credentials
+
+# 4. Start services
+docker-compose up -d
+
+# 5. Verify
+curl -k https://localhost:7003/health
+{code}
+
+h2. Production Deployment
+
+h3. Prerequisites
+* Docker 24.0+
+* 4GB RAM minimum
+* Valid SSL certificate
+* External IP/domain name
+
+h3. Steps
+# Clone repository
+# Configure environment variables
+# Setup SSL with Let's Encrypt
+# Start services
+# Configure firewall (allow 7003/tcp)
+# Setup monitoring
+
+h3. Monitoring
+* Health: https://your-domain:7003/health
+* Logs: docker-compose logs -f
+* Stats: https://your-domain:7003/api/stats
+
+h3. Backup
+{code:language=bash}
+# Backup database
+docker-compose exec db pg_dump -U threatfeed threatfeed > backup.sql
+
+# Backup .env
+cp .env .env.backup
+{code}
+
+h3. Updates
+{code:language=bash}
+git pull
+docker-compose build
+docker-compose up -d
+{code}

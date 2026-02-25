@@ -1,0 +1,103 @@
+h1. Runbook
+
+{info:title=Documentation Metadata}
+Purpose: Incident and routine operations playbook.\\
+Source file: {code}docs/runbook.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+h2. Scope
+
+Operational playbook for the IOC service in production-like environments with shared resources.
+
+h2. Quick Triage
+
+# Check health and error ratio:
+{code:language=bash}
+curl -s http://127.0.0.1:8080/health
+curl -s http://127.0.0.1:8080/metrics | rg -n "http_requests_total|db_query_duration_seconds|cache_access_total"
+{code}
+# Check container status:
+{code:language=bash}
+docker compose ps
+docker compose logs --tail=200 app worker redis postgres
+{code}
+# Validate current resource limits:
+{code:language=bash}
+docker inspect <app-container-id> --format 'cpus={{.HostConfig.NanoCpus}} mem={{.HostConfig.Memory}}'
+{code}
+
+h2. Incident: Redis Degraded/Down
+
+Symptoms:
+* cache hit ratio drops
+* {{cache_access_total{status="error"}}} grows
+
+Actions:
+# Confirm Redis state:
+{code:language=bash}
+docker compose ps redis
+docker compose logs --tail=200 redis
+{code}
+# Keep service online (fallback already implemented for key endpoints).
+# Restart Redis:
+{code:language=bash}
+docker compose restart redis
+{code}
+# Run chaos smoke:
+{code:language=bash}
+bash scripts/m15_chaos_check.sh
+{code}
+
+h2. Incident: DB Slow / Pool Saturation
+
+Symptoms:
+* p95/p99 latency increase
+* {{db_query_duration_seconds}} grows
+
+Actions:
+# Check DB health and active queries.
+# Temporarily lower expensive traffic pressure (smaller export limits or stricter edge limits).
+# Tune:
+* {{DB_POOL_SIZE}}
+* {{DB_MAX_OVERFLOW}}
+* {{WORKERS}}
+# Re-run benchmark gate:
+{code:language=bash}
+bash scripts/m15_premerge_gate.sh
+{code}
+
+h2. Incident: Upstream Source Outage
+
+Symptoms:
+* worker errors for source updates
+* stale feed stats
+
+Actions:
+# Verify API key/network/certs.
+# Keep ingestion running for unaffected sources.
+# Track outage in logs and feed stats.
+
+h2. Release Gate
+
+Before merge/release:
+{code:language=bash}
+bash scripts/m15_premerge_gate.sh
+{code}
+
+Recommended thresholds:
+* mixed throughput >= 700 req/s
+* mixed p95 <= 350 ms
+* mixed error rate <= 1%
+
+h2. Rollback
+
+# Deploy previous stable image/tag.
+# Restart app and worker.
+# Re-run smoke checks:
+{code:language=bash}
+curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:8080/indicators?limit=10
+{code}

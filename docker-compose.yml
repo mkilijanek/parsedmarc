@@ -73,7 +73,7 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "${HOST_PORT:-7003}:8080"
     depends_on:
       postgres:
         condition: service_healthy

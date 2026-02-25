@@ -1,0 +1,888 @@
+h1. Configuration
+
+{info:title=Documentation Metadata}
+Purpose: Environment variables and runtime configuration matrix.\\
+Source file: {code}docs/configuration.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+h2. Environment Variables
+
+All configuration is done via environment variables. No config files required.
+
+---
+
+h2. Core Configuration
+
+h3. SECRET_KEY (REQUIRED)
+
+*Type:* String  
+*Minimum Length:* 32 characters  
+*Purpose:* Flask session signing and security  
+*Security:* CRITICAL - Must be unique and secret
+
+{code:language=bash}
+# Generate secure key
+SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+{code}
+
+*Error if not set:*
+{code:language=none}
+SECURITY ERROR: SECRET_KEY environment variable must be set.
+Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(32))'
+{code}
+
+h3. LOG_LEVEL
+
+*Type:* String  
+*Default:* {{INFO}}  
+*Options:* {{DEBUG}}, {{INFO}}, {{WARNING}}, {{ERROR}}, {{CRITICAL}}
+
+{code:language=bash}
+LOG_LEVEL=INFO
+{code}
+
+h3. REQUESTS_PER_SECOND_MAX
+
+*Type:* Integer  
+*Default:* {{1000000}}  
+*Purpose:* Global hard safety cap for incoming request rate (application-level guardrail)
+
+{code:language=bash}
+REQUESTS_PER_SECOND_MAX=1000000
+{code}
+
+h3. RATE_LIMITS_ENABLED
+
+*Type:* Boolean  
+*Default:* {{true}}  
+*Purpose:* Enable Flask-Limiter endpoint limits ({{20/min}}, {{30/min}}, etc.)
+
+{code:language=bash}
+RATE_LIMITS_ENABLED=true
+{code}
+
+Use {{false}} only for controlled benchmark environments.
+
+h3. QUERY_RESULT_LIMIT_MAX
+
+*Type:* Integer  
+*Default:* {{10000}}  
+*Purpose:* Maximum {{limit}} accepted by {{/indicators}}
+
+{code:language=bash}
+QUERY_RESULT_LIMIT_MAX=10000
+{code}
+
+h3. EXPORT_RESULT_LIMIT_MAX
+
+*Type:* Integer  
+*Default:* {{200000}}  
+*Purpose:* Maximum {{limit}} accepted by {{/indicators/<format>}}
+
+{code:language=bash}
+EXPORT_RESULT_LIMIT_MAX=200000
+{code}
+
+h3. CORRELATION_LIMIT_MAX
+
+*Type:* Integer  
+*Default:* {{5000}}  
+*Purpose:* Maximum {{limit}} accepted by {{/correlations}}
+
+{code:language=bash}
+CORRELATION_LIMIT_MAX=5000
+{code}
+
+h3. HEALTH_CACHE_TTL
+
+*Type:* Integer (seconds)  
+*Default:* {{5}}  
+*Purpose:* Short-lived Redis cache for {{/health}} to reduce DB/Redis probe pressure under load
+
+{code:language=bash}
+HEALTH_CACHE_TTL=5
+{code}
+
+h3. CORRELATION_CACHE_TTL
+
+*Type:* Integer (seconds)  
+*Default:* {{30}}  
+*Purpose:* Redis cache TTL for {{/correlations}} responses
+
+{code:language=bash}
+CORRELATION_CACHE_TTL=30
+{code}
+
+h3. CORRELATION_SNAPSHOT_ENABLED
+
+*Type:* Boolean  
+*Default:* {{true}}  
+*Purpose:* Enable worker-driven preaggregation snapshots for {{/correlations}}
+
+{code:language=bash}
+CORRELATION_SNAPSHOT_ENABLED=true
+{code}
+
+h3. CORRELATION_SNAPSHOT_INTERVAL
+
+*Type:* Integer (seconds)  
+*Default:* {{60}}  
+*Purpose:* Snapshot refresh interval in background worker
+
+{code:language=bash}
+CORRELATION_SNAPSHOT_INTERVAL=60
+{code}
+
+h3. CORRELATION_SNAPSHOT_MIN_SOURCES
+
+*Type:* Integer  
+*Default:* {{2}}  
+*Purpose:* {{min_sources}} used for generated snapshots
+
+{code:language=bash}
+CORRELATION_SNAPSHOT_MIN_SOURCES=2
+{code}
+
+h3. CORRELATION_SNAPSHOT_LIMIT
+
+*Type:* Integer  
+*Default:* {{1000}}  
+*Purpose:* {{limit}} used for generated snapshots
+
+{code:language=bash}
+CORRELATION_SNAPSHOT_LIMIT=1000
+{code}
+
+h3. CORRELATION_SNAPSHOT_TYPES
+
+*Type:* Comma-separated string  
+*Default:* {{all,domain,ip,url,hash,email}}  
+*Purpose:* IOC types to precompute for correlation snapshots
+
+{code:language=bash}
+CORRELATION_SNAPSHOT_TYPES=all,domain,ip,url,hash,email
+{code}
+
+---
+
+h2. Database Configuration
+
+h3. DATABASE_URL (REQUIRED)
+
+*Type:* PostgreSQL connection string  
+*Format:* {{postgresql+psycopg2://user:pass@host:port/db}}
+
+{code:language=bash}
+DATABASE_URL=postgresql+psycopg2://threatfeed:PASSWORD@postgres:5432/threatfeed
+{code}
+
+*Connection Pool:*
+* Pool size: controlled by {{DB_POOL_SIZE}} (default: 6)
+* Max overflow: controlled by {{DB_MAX_OVERFLOW}} (default: 4)
+* Pool pre-ping: Enabled (detects stale connections)
+* Pool recycle: controlled by {{DB_POOL_RECYCLE}} (default: 1800s)
+
+---
+
+h2. Cache Configuration
+
+h3. REDIS_URL (REQUIRED)
+
+*Type:* Redis connection string  
+*Format:* {{redis://[:password]@host:port/db}}
+
+{code:language=bash}
+REDIS_URL=redis://:PASSWORD@redis:6379/0
+{code}
+
+h3. DB_POOL_SIZE
+
+*Type:* Integer  
+*Default:* {{6}}  
+*Purpose:* Base SQLAlchemy connection pool size per process
+
+{code:language=bash}
+DB_POOL_SIZE=6
+{code}
+
+h3. DB_MAX_OVERFLOW
+
+*Type:* Integer  
+*Default:* {{4}}  
+*Purpose:* Additional burst connections above pool size
+
+{code:language=bash}
+DB_MAX_OVERFLOW=4
+{code}
+
+h3. DB_POOL_TIMEOUT
+
+*Type:* Integer (seconds)  
+*Default:* {{30}}  
+*Purpose:* Max wait time for a free DB connection from pool
+
+{code:language=bash}
+DB_POOL_TIMEOUT=30
+{code}
+
+h3. DB_POOL_RECYCLE
+
+*Type:* Integer (seconds)  
+*Default:* {{1800}}  
+*Purpose:* Lifetime of pooled DB connections before recycle
+
+{code:language=bash}
+DB_POOL_RECYCLE=1800
+{code}
+
+h3. CACHE_TTL
+
+*Type:* Integer (seconds)  
+*Default:* {{300}} (5 minutes)  
+*Purpose:* Response cache expiration time
+
+{code:language=bash}
+CACHE_TTL=300
+{code}
+
+---
+
+h2. Security Configuration
+
+h3. ALLOWED_HOSTS
+
+*Type:* Comma-separated hostnames  
+*Default:* {{*}} (allow all)  
+*Purpose:* Host header validation
+
+{code:language=bash}
+# Production example
+ALLOWED_HOSTS=localhost,threatfeed.example.com,10.0.0.5
+
+# Development (allow all)
+ALLOWED_HOSTS=*
+{code}
+
+h3. TRUSTED_PROXY_COUNT
+
+*Type:* Integer  
+*Default:* {{0}} (don't trust X-Forwarded-For)  
+*Purpose:* Number of trusted reverse proxies
+
+{code:language=bash}
+# Behind nginx only
+TRUSTED_PROXY_COUNT=1
+
+# Behind nginx + cloudflare
+TRUSTED_PROXY_COUNT=2
+
+# Direct connection (no proxy)
+TRUSTED_PROXY_COUNT=0
+{code}
+
+*How it works:*
+* {{0}}: Use {{request.remote_addr}} (direct connection)
+* {{1}}: Trust 1 proxy (take client IP from X-Forwarded-For)
+* {{2+}}: Trust N proxies (take IP at position from right)
+
+h3. CORS_ORIGINS
+
+*Type:* Comma-separated origins  
+*Default:* {{*}}  
+*Purpose:* CORS allowed origins (future)
+
+{code:language=bash}
+CORS_ORIGINS=https://dashboard.example.com,https://app.example.com
+{code}
+
+---
+
+h2. Integration Configuration
+
+h3. MISP Integration
+
+h4. MISP_URL
+
+*Type:* URL  
+*Default:* Empty (disabled)  
+*Purpose:* MISP instance base URL
+
+{code:language=bash}
+MISP_URL=https://misp.example.com
+{code}
+
+h4. MISP_API_KEY
+
+*Type:* String (API key)  
+*Default:* Empty (disabled)  
+*Purpose:* MISP API authentication
+
+{code:language=bash}
+MISP_API_KEY=your-misp-api-key-here
+{code}
+
+h4. MISP_VERIFY_SSL
+
+*Type:* Boolean  
+*Default:* {{true}} (SECURE DEFAULT)  
+*Purpose:* Verify MISP SSL certificates
+
+{code:language=bash}
+# Production (default, recommended)
+MISP_VERIFY_SSL=true
+
+# Development with self-signed certs ONLY
+MISP_VERIFY_SSL=false
+{code}
+
+*Security Note:* Changed from {{false}} to {{true}} in security audit. Always use {{true}} in production to prevent MITM attacks.
+
+h4. MISP_DAYS
+
+*Type:* Integer  
+*Default:* {{7}}  
+*Purpose:* Number of days to fetch MISP events
+
+{code:language=bash}
+MISP_DAYS=7
+{code}
+
+---
+
+h3. CrowdSec Integration
+
+h4. CROWDSEC_API_KEY
+
+*Type:* String (API key)  
+*Default:* Empty (disabled)  
+*Purpose:* CrowdSec API authentication
+
+{code:language=bash}
+CROWDSEC_API_KEY=your-crowdsec-api-key
+{code}
+
+h4. CROWDSEC_LISTS
+
+*Type:* Comma-separated list IDs  
+*Default:* Empty  
+*Purpose:* CrowdSec blocklists to fetch
+
+{code:language=bash}
+CROWDSEC_LISTS=list1,list2,list3
+{code}
+
+---
+
+h3. MalwareBazaar Integration
+
+h4. MALWAREBAZAAR_API_URL
+
+*Type:* URL  
+*Default:* {{https://mb-api.abuse.ch/api/v1/}}  
+*Purpose:* MalwareBazaar API endpoint
+
+{code:language=bash}
+MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
+{code}
+
+h4. MALWAREBAZAAR_AUTH_KEY
+
+*Type:* String (API key)  
+*Default:* Empty (optional)  
+*Purpose:* MalwareBazaar API authentication override. If empty, {{ABUSECH_AUTH_KEY}} is used.
+
+{code:language=bash}
+MALWAREBAZAAR_AUTH_KEY=your-api-key
+{code}
+
+h4. MALWAREBAZAAR_SINCE_DATE
+
+*Type:* ISO date (YYYY-MM-DD)  
+*Default:* Empty  
+*Purpose:* Fetch samples since this date
+
+{code:language=bash}
+MALWAREBAZAAR_SINCE_DATE=2025-01-01
+{code}
+
+h4. MALWAREBAZAAR_TAGS
+
+*Type:* Comma-separated string  
+*Default:* Empty  
+*Purpose:* Worker tag list used for automatic MalwareBazaar ingestion
+
+{code:language=bash}
+MALWAREBAZAAR_TAGS=TrickBot,Emotet
+{code}
+
+h4. MALWAREBAZAAR_LIMIT
+
+*Type:* Integer  
+*Default:* {{1000}}  
+*Purpose:* Max number of indicators fetched per MalwareBazaar worker run
+
+{code:language=bash}
+MALWAREBAZAAR_LIMIT=1000
+{code}
+
+---
+
+h3. MWDB Integration
+
+h4. MWDB_URL
+
+*Type:* URL  
+*Default:* Empty (disabled)  
+*Purpose:* MWDB instance base URL
+
+{code:language=bash}
+MWDB_URL=https://mwdb.cert.pl
+{code}
+
+h4. MWDB_AUTH_KEY
+
+*Type:* String (API key)  
+*Default:* Empty (disabled)  
+*Purpose:* MWDB API authentication
+
+{code:language=bash}
+MWDB_AUTH_KEY=your-mwdb-api-key
+{code}
+
+h4. MWDB_TAGS
+
+*Type:* Comma-separated string  
+*Default:* Empty  
+*Purpose:* Worker tag list used for automatic MWDB ingestion
+
+{code:language=bash}
+MWDB_TAGS=malware,apt
+{code}
+
+h4. MWDB_LIMIT
+
+*Type:* Integer  
+*Default:* {{1000}}  
+*Purpose:* Max number of indicators fetched per MWDB worker run
+
+{code:language=bash}
+MWDB_LIMIT=1000
+{code}
+
+---
+
+h3. abuse.ch Extended Integrations
+
+h4. ABUSECH_AUTH_KEY
+
+*Type:* String (API key)  
+*Default:* Empty  
+*Purpose:* Shared auth key for abuse.ch APIs (ThreatFox/YARAify/Hunting). Source-specific keys can override.
+
+{code:language=bash}
+ABUSECH_AUTH_KEY=your-auth-key
+{code}
+
+h4. THREATFOX_* variables
+
+{code:language=bash}
+THREATFOX_ENABLED=true
+THREATFOX_API_URL=https://threatfox-api.abuse.ch/api/v1/
+THREATFOX_AUTH_KEY=
+THREATFOX_DAYS=3
+THREATFOX_LIMIT=1000
+{code}
+
+h4. URLHAUS_* variables
+
+{code:language=bash}
+URLHAUS_ENABLED=true
+URLHAUS_FEED_URL=https://urlhaus.abuse.ch/downloads/text_online/
+URLHAUS_LIMIT=10000
+{code}
+
+h4. FEODOTRACKER_* variables
+
+{code:language=bash}
+FEODOTRACKER_ENABLED=true
+FEODOTRACKER_FEED_URL=https://feodotracker.abuse.ch/downloads/ipblocklist.txt
+FEODOTRACKER_LIMIT=10000
+{code}
+
+h4. YARAIFY_* variables
+
+{code:language=bash}
+YARAIFY_ENABLED=true
+YARAIFY_API_URL=https://yaraify-api.abuse.ch/api/v1/
+YARAIFY_AUTH_KEY=
+YARAIFY_IDENTIFIER=
+YARAIFY_LOOKUP_HASHES=
+YARAIFY_TASK_STATUS=processed
+YARAIFY_LIMIT=250
+{code}
+
+h4. HUNTING_FPLIST_* variables
+
+{code:language=bash}
+HUNTING_FPLIST_ENABLED=true
+HUNTING_API_URL=https://hunting-api.abuse.ch/api/v1/
+HUNTING_AUTH_KEY=
+HUNTING_FPLIST_FORMAT=csv
+HUNTING_FPLIST_LIMIT=10000
+{code}
+
+h4. ABUSECH hardening variables
+
+{code:language=bash}
+ABUSECH_TIMEOUT_S=30
+ABUSECH_RETRY_ATTEMPTS=4
+ABUSECH_RETRY_BASE_DELAY_S=1
+ABUSECH_CIRCUIT_FAIL_THRESHOLD=3
+ABUSECH_CIRCUIT_COOLDOWN_S=300
+{code}
+
+h4. Feed outbound rate limiting (all external feed integrations)
+
+{code:language=bash}
+FEED_RATE_LIMIT_ENABLED=true
+FEED_REQUESTS_PER_SECOND=10
+FEED_REQUESTS_PER_MINUTE=55
+{code}
+
+* Applies to outbound requests for: {{malwarebazaar}}, {{mwdb}}, and abuse.ch feeds/APIs.
+* Use {{FEED_RATE_LIMIT_ENABLED=false}} only in controlled benchmark/test scenarios.
+
+---
+
+h2. Worker Configuration
+
+h3. ENABLE_BACKGROUND_JOBS
+
+*Type:* Boolean  
+*Default:* {{true}}  
+*Purpose:* Enable background feed updates
+
+{code:language=bash}
+# Enable worker (default)
+ENABLE_BACKGROUND_JOBS=true
+
+# Disable worker (API-only mode)
+ENABLE_BACKGROUND_JOBS=false
+{code}
+
+h3. UPDATE_INTERVAL
+
+*Type:* Integer (seconds)  
+*Default:* {{600}} (10 minutes)  
+*Purpose:* Feed update interval
+
+{code:language=bash}
+# Update every 10 minutes (default)
+UPDATE_INTERVAL=600
+
+# Update every 5 minutes
+UPDATE_INTERVAL=300
+
+# Update every hour
+UPDATE_INTERVAL=3600
+{code}
+
+---
+
+h2. Docker Configuration
+
+h3. APP_PORT
+
+*Type:* Integer  
+*Default:* {{8080}}  
+*Purpose:* Application listening port
+
+{code:language=bash}
+APP_PORT=8080
+{code}
+
+h3. WORKERS
+
+*Type:* Integer  
+*Default:* {{3}}  
+*Purpose:* Number of Gunicorn workers
+
+{code:language=bash}
+# Shared-host baseline (4 vCPU / 12 GB budget)
+WORKERS=3
+{code}
+
+*Formula:* {{(2 × CPU_CORES) + 1}}
+
+h3. GUNICORN_TIMEOUT
+
+*Type:* Integer (seconds)  
+*Default:* {{120}}  
+*Purpose:* Gunicorn worker timeout
+
+{code:language=bash}
+GUNICORN_TIMEOUT=120
+{code}
+
+---
+
+h2. SSL/TLS Configuration
+
+h3. SSL_CERT_PATH
+
+*Type:* File path  
+*Default:* {{./ssl/cert.pem}}  
+*Purpose:* SSL certificate path (for nginx)
+
+{code:language=bash}
+SSL_CERT_PATH=./ssl/cert.pem
+{code}
+
+h3. SSL_KEY_PATH
+
+*Type:* File path  
+*Default:* {{./ssl/key.pem}}  
+*Purpose:* SSL private key path (for nginx)
+
+{code:language=bash}
+SSL_KEY_PATH=./ssl/key.pem
+{code}
+
+h3. SSL_CHAIN_PATH
+
+*Type:* File path  
+*Default:* Empty (optional)  
+*Purpose:* SSL certificate chain path
+
+{code:language=bash}
+SSL_CHAIN_PATH=./ssl/chain.pem
+{code}
+
+---
+
+h2. Network Configuration
+
+h3. HTTP_PORT
+
+*Type:* Integer  
+*Default:* {{80}}  
+*Purpose:* Nginx HTTP port (redirects to HTTPS)
+
+{code:language=bash}
+HTTP_PORT=80
+{code}
+
+h3. HTTPS_PORT
+
+*Type:* Integer  
+*Default:* {{7003}}  
+*Purpose:* Nginx HTTPS port
+
+{code:language=bash}
+HTTPS_PORT=7003
+{code}
+
+---
+
+h2. Example Configurations
+
+h3. Minimal Production (.env)
+
+{code:language=bash}
+# REQUIRED
+SECRET_KEY=<generate-with-python-command>
+DATABASE_URL=postgresql+psycopg2://user:pass@postgres:5432/threatfeed
+REDIS_URL=redis://:password@redis:6379/0
+
+# Security
+ALLOWED_HOSTS=your-domain.com
+TRUSTED_PROXY_COUNT=1
+MISP_VERIFY_SSL=true
+
+# At least one integration
+MISP_URL=https://misp.example.com
+MISP_API_KEY=your-key
+{code}
+
+h3. Full Production (.env)
+
+{code:language=bash}
+# Core (REQUIRED)
+SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+LOG_LEVEL=INFO
+
+# Database (REQUIRED)
+POSTGRES_DB=threatfeed
+POSTGRES_USER=threatfeed
+POSTGRES_PASSWORD=<strong-password>
+DATABASE_URL=postgresql+psycopg2://threatfeed:password@postgres:5432/threatfeed
+
+# Cache (REQUIRED)
+REDIS_PASSWORD=<strong-password>
+REDIS_URL=redis://:password@redis:6379/0
+CACHE_TTL=300
+
+# Security
+ALLOWED_HOSTS=threatfeed.example.com
+TRUSTED_PROXY_COUNT=1
+CORS_ORIGINS=https://dashboard.example.com
+
+# MISP
+MISP_URL=https://misp.example.com
+MISP_API_KEY=your-misp-api-key
+MISP_VERIFY_SSL=true
+MISP_DAYS=7
+
+# CrowdSec
+CROWDSEC_API_KEY=your-crowdsec-api-key
+CROWDSEC_LISTS=list1,list2,list3
+
+# MalwareBazaar
+MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
+MALWAREBAZAAR_AUTH_KEY=your-key
+MALWAREBAZAAR_SINCE_DATE=2025-01-01
+MALWAREBAZAAR_TAGS=TrickBot,Emotet
+MALWAREBAZAAR_LIMIT=1000
+
+# MWDB
+MWDB_URL=https://mwdb.cert.pl
+MWDB_AUTH_KEY=your-mwdb-key
+MWDB_TAGS=malware,apt
+MWDB_LIMIT=1000
+
+# abuse.ch Extended
+ABUSECH_AUTH_KEY=your-auth-key
+THREATFOX_ENABLED=true
+THREATFOX_DAYS=3
+URLHAUS_ENABLED=true
+FEODOTRACKER_ENABLED=true
+YARAIFY_ENABLED=false
+YARAIFY_IDENTIFIER=
+HUNTING_FPLIST_ENABLED=true
+HUNTING_FPLIST_FORMAT=csv
+
+# Worker
+ENABLE_BACKGROUND_JOBS=true
+UPDATE_INTERVAL=600
+
+# Network
+HTTP_PORT=80
+HTTPS_PORT=7003
+APP_PORT=8080
+WORKERS=4
+
+# SSL
+SSL_CERT_PATH=./ssl/cert.pem
+SSL_KEY_PATH=./ssl/key.pem
+SSL_CHAIN_PATH=./ssl/chain.pem
+{code}
+
+h3. Development (.env)
+
+{code:language=bash}
+# Minimal dev setup
+SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+DATABASE_URL=postgresql+psycopg2://threatfeed:dev@localhost:5432/threatfeed
+REDIS_URL=redis://localhost:6379/0
+LOG_LEVEL=DEBUG
+ALLOWED_HOSTS=*
+TRUSTED_PROXY_COUNT=0
+MISP_VERIFY_SSL=false  # Only for self-signed certs!
+{code}
+
+---
+
+h2. Configuration Validation
+
+h3. Startup Checks
+
+The application validates configuration at startup:
+
+# *SECRET_KEY:* Must be set and >= 32 characters
+# *DATABASE_URL:* Must be valid PostgreSQL connection
+# *REDIS_URL:* Must be valid Redis connection
+
+h3. Runtime Checks
+
+Health endpoint ({{/health}}) checks:
+* Database connectivity
+* Redis availability
+* MISP API reachability (if configured)
+* CrowdSec API validity (if configured)
+
+---
+
+h2. Configuration Management
+
+h3. Best Practices
+
+# *Never commit secrets* - Use {{.env}} file (gitignored)
+# *Use secrets management* - Vault, AWS Secrets Manager, etc.
+# *Rotate credentials* - Regularly rotate API keys and passwords
+# *Principle of least privilege* - Use read-only database user for queries
+# *Monitor configuration* - Log configuration changes
+
+h3. Secrets Management
+
+*Docker Secrets:*
+{code:language=yaml}
+services:
+  app:
+    secrets:
+      - secret_key
+      - db_password
+    environment:
+      SECRET_KEY_FILE: /run/secrets/secret_key
+      DATABASE_PASSWORD_FILE: /run/secrets/db_password
+{code}
+
+*Environment File:*
+{code:language=bash}
+# Generate secrets
+./scripts/generate-secrets.sh >> .env
+
+# Secure permissions
+chmod 600 .env
+{code}
+
+---
+
+h2. Troubleshooting
+
+h3. Common Issues
+
+*SECRET_KEY error:*
+{code:language=none}
+RuntimeError: SECURITY ERROR: SECRET_KEY environment variable must be set.
+{code}
+*Fix:* Generate and set SECRET_KEY as shown above
+
+*Database connection failed:*
+{code:language=none}
+sqlalchemy.exc.OperationalError: could not connect to server
+{code}
+*Fix:* Check DATABASE_URL, ensure PostgreSQL is running
+
+*Redis connection failed:*
+{code:language=none}
+redis.exceptions.ConnectionError: Error connecting to Redis
+{code}
+*Fix:* Check REDIS_URL, ensure Redis is running
+
+*MISP SSL verification failed:*
+{code:language=none}
+requests.exceptions.SSLError: certificate verify failed
+{code}
+*Fix:* Set {{MISP_VERIFY_SSL=false}} ONLY for development with self-signed certs
+
+---
+
+h2. See Also
+
+* [SECURITY_AUDIT_REPORT.md|../SECURITY_AUDIT_REPORT.md] - Security configuration requirements
+* [QUICKSTART.md|../QUICKSTART.md] - Quick setup guide
+* [DEPLOYMENT.md|../DEPLOYMENT.md] - Production deployment guide
+* [architecture.md|architecture.md] - System architecture
