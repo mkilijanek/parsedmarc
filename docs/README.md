@@ -9,6 +9,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - 📖 **[API Documentation](api.md)** - REST endpoints, formats, and integration examples
 - 🏗️ **[Architecture](architecture.md)** - System design and components
 - ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
+- ✅ **[Contributing](../CONTRIBUTING.md)** - Quality gate and CI merge policy
 - 🔌 **[Data Sources](data-sources.md)** - MISP, CrowdSec, MalwareBazaar, MWDB integration
 - 💾 **[Database](database.md)** - Schema, indexes, and queries
 - 💻 **[CLI Tool](cli.md)** - Manual ingestion commands
