@@ -31,4 +31,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -fsS http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--timeout", "120", "--worker-class", "sync", "app.main:create_app()"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${APP_PORT:-8080} --workers ${WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-120} --worker-class ${GUNICORN_WORKER_CLASS:-sync} 'app.main:create_app()'"]

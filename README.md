@@ -107,6 +107,11 @@ M12 performance benchmark (mixed traffic profile):
 python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 --concurrency 64
 ```
 
+M14 benchmark suite (3 runs, multiple traffic profiles, median summary):
+```bash
+python scripts/benchmark_suite_m14.py --base-url http://127.0.0.1:8080 --duration 20 --concurrency 64 --runs 3
+```
+
 Docker cluster benchmark (1 replica vs N replicas):
 ```bash
 bash scripts/benchmark_cluster_m12.sh 4 20 64

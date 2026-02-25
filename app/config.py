@@ -47,6 +47,11 @@ class Config:
     CORRELATION_LIMIT_MAX: int = field(default_factory=lambda: _env_int("CORRELATION_LIMIT_MAX", 5000))
     HEALTH_CACHE_TTL: int = field(default_factory=lambda: _env_int("HEALTH_CACHE_TTL", 5))
     CORRELATION_CACHE_TTL: int = field(default_factory=lambda: _env_int("CORRELATION_CACHE_TTL", 30))
+    CORRELATION_SNAPSHOT_ENABLED: bool = field(default_factory=lambda: _env_bool("CORRELATION_SNAPSHOT_ENABLED", True))
+    CORRELATION_SNAPSHOT_INTERVAL: int = field(default_factory=lambda: _env_int("CORRELATION_SNAPSHOT_INTERVAL", 60))
+    CORRELATION_SNAPSHOT_LIMIT: int = field(default_factory=lambda: _env_int("CORRELATION_SNAPSHOT_LIMIT", 1000))
+    CORRELATION_SNAPSHOT_MIN_SOURCES: int = field(default_factory=lambda: _env_int("CORRELATION_SNAPSHOT_MIN_SOURCES", 2))
+    CORRELATION_SNAPSHOT_TYPES: str = field(default_factory=lambda: _env_str("CORRELATION_SNAPSHOT_TYPES", "all,domain,ip,url,hash,email"))
 
     # DB / Redis
     DATABASE_URL: str = field(default_factory=lambda: _env_str("DATABASE_URL", "postgresql+psycopg2://threatfeed:threatfeed@localhost:5432/threatfeed"))

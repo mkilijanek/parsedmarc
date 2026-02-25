@@ -108,6 +108,56 @@ HEALTH_CACHE_TTL=5
 CORRELATION_CACHE_TTL=30
 ```
 
+### CORRELATION_SNAPSHOT_ENABLED
+
+**Type:** Boolean  
+**Default:** `true`  
+**Purpose:** Enable worker-driven preaggregation snapshots for `/correlations`
+
+```bash
+CORRELATION_SNAPSHOT_ENABLED=true
+```
+
+### CORRELATION_SNAPSHOT_INTERVAL
+
+**Type:** Integer (seconds)  
+**Default:** `60`  
+**Purpose:** Snapshot refresh interval in background worker
+
+```bash
+CORRELATION_SNAPSHOT_INTERVAL=60
+```
+
+### CORRELATION_SNAPSHOT_MIN_SOURCES
+
+**Type:** Integer  
+**Default:** `2`  
+**Purpose:** `min_sources` used for generated snapshots
+
+```bash
+CORRELATION_SNAPSHOT_MIN_SOURCES=2
+```
+
+### CORRELATION_SNAPSHOT_LIMIT
+
+**Type:** Integer  
+**Default:** `1000`  
+**Purpose:** `limit` used for generated snapshots
+
+```bash
+CORRELATION_SNAPSHOT_LIMIT=1000
+```
+
+### CORRELATION_SNAPSHOT_TYPES
+
+**Type:** Comma-separated string  
+**Default:** `all,domain,ip,url,hash,email`  
+**Purpose:** IOC types to precompute for correlation snapshots
+
+```bash
+CORRELATION_SNAPSHOT_TYPES=all,domain,ip,url,hash,email
+```
+
 ---
 
 ## Database Configuration
@@ -538,15 +588,25 @@ APP_PORT=8080
 ### WORKERS
 
 **Type:** Integer  
-**Default:** `4`  
+**Default:** `3`  
 **Purpose:** Number of Gunicorn workers
 
 ```bash
-# Recommended: 2-4 × CPU cores
-WORKERS=4
+# Shared-host baseline (4 vCPU / 12 GB budget)
+WORKERS=3
 ```
 
 **Formula:** `(2 × CPU_CORES) + 1`
+
+### GUNICORN_TIMEOUT
+
+**Type:** Integer (seconds)  
+**Default:** `120`  
+**Purpose:** Gunicorn worker timeout
+
+```bash
+GUNICORN_TIMEOUT=120
+```
 
 ---
 

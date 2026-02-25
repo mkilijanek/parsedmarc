@@ -50,6 +50,22 @@ The tool returns:
 - p50/p95/p99 latency
 - per-endpoint breakdown
 
+M14 suite with 3 runs and median summary:
+
+```bash
+python scripts/benchmark_suite_m14.py \
+  --base-url http://127.0.0.1:8080 \
+  --duration 20 \
+  --concurrency 64 \
+  --runs 3 \
+  --output-dir /tmp/m14-suite
+```
+
+Scenarios in suite:
+- `mixed`
+- `indicator_heavy`
+- `control_light`
+
 ## Docker Cluster Benchmark
 
 To compare single-instance vs scaled app replicas in Docker:
