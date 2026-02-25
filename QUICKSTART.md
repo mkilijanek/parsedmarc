@@ -113,6 +113,12 @@ firefox https://localhost:7003/
 
 ## 🔧 Komendy Pomocnicze
 
+### Local dev (venv)
+```bash
+bash scripts/dev-bootstrap.sh
+bash scripts/dev-test.sh
+```
+
 ### Makefile
 ```bash
 make help          # Pokaż dostępne komendy

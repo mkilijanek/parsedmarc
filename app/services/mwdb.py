@@ -11,6 +11,7 @@ from ..config import Config
 from ..db import SessionLocal
 from ..metrics import quality_normalized_total, quality_dropped_invalid_total, quality_dedup_merged_total
 from ..models import FeedStats, Indicator
+from .common import throttle_external_request
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,7 @@ def fetch_mwdb_by_tags(
         if older_than:
             params["older_than"] = older_than
 
+        throttle_external_request(source="mwdb")
         r = session.get(f"{base_url}/api/object", params=params, timeout=timeout_s)
         r.raise_for_status()
         data = r.json()  # expected key: "objects"

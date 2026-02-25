@@ -90,11 +90,19 @@ Kibana-like:
 
 ## Development
 
+Create local dev environment (venv):
+```bash
+bash scripts/dev-bootstrap.sh
+```
+
 Run tests locally:
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-pytest -q
+bash scripts/dev-test.sh
+```
+
+Run compile + tests:
+```bash
+bash scripts/dev-check.sh
 ```
 
 Quality backfill (re-normalize existing indicators):
@@ -155,6 +163,7 @@ Contribution and quality gate:
 - `MALWAREBAZAAR_LIMIT` (optional): max rows per run (default: `1000`).
 - `MWDB_TAGS` (optional): comma-separated tags for worker auto-ingestion.
 - `MWDB_LIMIT` (optional): max rows per run (default: `1000`).
+- outbound feed throttle (optional, enabled by default): `FEED_REQUESTS_PER_SECOND` (default: `10`), `FEED_REQUESTS_PER_MINUTE` (default: `55`), `FEED_RATE_LIMIT_ENABLED`.
 - abuse.ch extended integrations (optional): `THREATFOX_*`, `URLHAUS_*`, `YARAIFY_*`, `FEODOTRACKER_*`, `HUNTING_FPLIST_*`, with shared `ABUSECH_AUTH_KEY`.
 
 

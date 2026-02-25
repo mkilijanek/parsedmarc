@@ -25,7 +25,7 @@ from ..metrics import (
     quality_dedup_merged_total,
 )
 from ..models import FeedStats, Indicator
-from .common import retry_with_backoff
+from .common import retry_with_backoff, throttle_external_request
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -109,6 +109,7 @@ def _post_json_with_retry(
     retry_base_delay_s: float,
 ) -> Dict[str, Any]:
     def _do() -> Dict[str, Any]:
+        throttle_external_request(source="abusech_api")
         resp = requests.post(url, headers=headers, json=payload, timeout=timeout_s)
         resp.raise_for_status()
         data = resp.json()
@@ -131,6 +132,7 @@ def _get_text_with_retry(
     retry_base_delay_s: float,
 ) -> str:
     def _do() -> str:
+        throttle_external_request(source="abusech_feed")
         resp = requests.get(url, timeout=timeout_s)
         resp.raise_for_status()
         return resp.text
@@ -499,6 +501,7 @@ def fetch_hunting_fplist(
         )
     else:
         def _do_text() -> str:
+            throttle_external_request(source="abusech_hunting")
             resp = requests.post(api_url, headers=_abusech_headers(auth_key), json=payload, timeout=timeout_s)
             resp.raise_for_status()
             return resp.text
