@@ -9,6 +9,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - 📖 **[API Documentation](api.md)** - REST endpoints, formats, and integration examples
 - 🏗️ **[Architecture](architecture.md)** - System design and components
 - ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
+- ⚡ **[Performance](performance.md)** - SLOs, benchmarking, degradation and runbook
 - ✅ **[Contributing](../CONTRIBUTING.md)** - Quality gate and CI merge policy
 - 🔌 **[Data Sources](data-sources.md)** - MISP, CrowdSec, MalwareBazaar, MWDB integration
 - 💾 **[Database](database.md)** - Schema, indexes, and queries
@@ -49,6 +50,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 | **[api.md](api.md)** | API endpoints, formats, examples | Users, Integrators |
 | **[architecture.md](architecture.md)** | System design, data flow, scalability | Developers, Architects |
 | **[configuration.md](configuration.md)** | Environment variables, examples | Ops, Admins |
+| **[performance.md](performance.md)** | SLOs, benchmark harness, runbook | Ops, SRE, Developers |
 
 ### Integration Documentation
 

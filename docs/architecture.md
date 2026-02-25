@@ -480,7 +480,7 @@ docker compose up -d
 pytest tests/integration/ -v
 
 # Load tests
-locust -f tests/load_test.py --host=https://localhost:7003
+python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 --concurrency 64
 ```
 
 ---

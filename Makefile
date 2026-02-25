@@ -1,4 +1,4 @@
-.PHONY: up down logs ps test fmt
+.PHONY: up down logs ps test fmt benchmark
 
 up:
 	docker compose up -d --build
@@ -17,3 +17,6 @@ test:
 
 fmt:
 	python -m compileall app
+
+benchmark:
+	python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 --concurrency 64

@@ -64,7 +64,10 @@ def create_app() -> Flask:
         app=app,
         storage_uri=cfg.REDIS_URL,
         default_limits=["60 per minute"],
+        enabled=cfg.RATE_LIMITS_ENABLED,
     )
+    # Keep a strong reference on the app to prevent flask-limiter weakref GC issues under load.
+    app.limiter = limiter  # type: ignore[attr-defined]
     rps_window: deque[float] = deque()
     rps_lock = Lock()
 
@@ -350,8 +353,15 @@ def create_app() -> Flask:
             limit=limit,
             offset=offset,
         )
-        r = get_redis()
-        cached = r.get(cache_key)
+        r = None
+        cached = None
+        try:
+            r = get_redis()
+            cached = r.get(cache_key)
+        except Exception:
+            cache_access_total.labels(endpoint="indicators_html", status="error").inc()
+            logger.warning("cache_unavailable", extra={"endpoint": "indicators_html"})
+
         if cached:
             cache_access_total.labels(endpoint="indicators_html", status="hit").inc()
             resp = make_response(cached)
@@ -383,7 +393,12 @@ def create_app() -> Flask:
             min_conf=min_conf,
             max_conf=max_conf,
         )
-        r.setex(cache_key, cfg.CACHE_TTL, html)
+        if r is not None:
+            try:
+                r.setex(cache_key, cfg.CACHE_TTL, html)
+            except Exception:
+                cache_access_total.labels(endpoint="indicators_html", status="error").inc()
+                logger.warning("cache_write_failed", extra={"endpoint": "indicators_html"})
         resp = make_response(html)
         resp.headers["Content-Type"] = "text/html; charset=utf-8"
         return resp
@@ -478,11 +493,17 @@ def create_app() -> Flask:
             limit=limit,
             offset=offset,
         )
-        r = get_redis()
-        cached = r.get(cache_key)
+        r = None
+        cached = None
+        try:
+            r = get_redis()
+            cached = r.get(cache_key)
+        except Exception:
+            cache_access_total.labels(endpoint=f"export_{fmt}", status="error").inc()
+            logger.warning("cache_unavailable", extra={"endpoint": f"export_{fmt}"})
         if cached:
             cache_access_total.labels(endpoint=f"export_{fmt}", status="hit").inc()
-            func_, mime = FORMATTERS[fmt]
+            _, mime = FORMATTERS[fmt]
             resp = make_response(cached)
             resp.headers["Content-Type"] = mime
             return resp
@@ -512,8 +533,12 @@ def create_app() -> Flask:
             body = func_(rows)  # fallback
 
         _audit("export", "indicator", None, {"fmt": fmt, "count": len(rows), "q": q})
-        if not stream:
-            r.setex(cache_key, cfg.CACHE_TTL, body)
+        if not stream and r is not None:
+            try:
+                r.setex(cache_key, cfg.CACHE_TTL, body)
+            except Exception:
+                cache_access_total.labels(endpoint=f"export_{fmt}", status="error").inc()
+                logger.warning("cache_write_failed", extra={"endpoint": f"export_{fmt}"})
         if stream and fmt in {"elasticsearch", "cribl"}:
             def _iter():
                 for line in body.splitlines(True):

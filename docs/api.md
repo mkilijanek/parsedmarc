@@ -440,6 +440,7 @@ Permissions-Policy: geolocation=(), microphone=(), camera=()
 - **Export responses:** Cached for 5 minutes (CACHE_TTL)
 - **Cache backend:** Redis
 - **Cache key format:** `prefix|param1=value1|param2=value2`
+- **Degradation mode:** If Redis is unavailable, endpoints continue from DB path and expose cache error metrics.
 
 To bypass cache (not recommended in production):
 - Wait for TTL expiration

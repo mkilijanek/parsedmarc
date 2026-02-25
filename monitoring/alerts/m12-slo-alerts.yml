@@ -1,0 +1,39 @@
+groups:
+  - name: ioc_service_m12_slo
+    rules:
+      - alert: IOCServiceHighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{http_status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total[5m])), 0.001)
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: critical
+          milestone: m12
+        annotations:
+          summary: "IOC service 5xx rate above 1%"
+          description: "Error budget burn too high for 10 minutes."
+
+      - alert: IOCServiceP95LatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          milestone: m12
+        annotations:
+          summary: "IOC service p95 latency above 500 ms"
+          description: "Endpoint latency SLO breach detected."
+
+      - alert: IOCServiceCacheErrorSpike
+        expr: |
+          sum(rate(cache_access_total{status="error"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          milestone: m12
+        annotations:
+          summary: "IOC cache errors detected"
+          description: "Redis cache access errors exceed 1 req/s."

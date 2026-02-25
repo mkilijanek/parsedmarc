@@ -102,9 +102,15 @@ Quality backfill (re-normalize existing indicators):
 PYTHONPATH=. python scripts/backfill_quality_normalization.py
 ```
 
+M12 performance benchmark (mixed traffic profile):
+```bash
+python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 --concurrency 64
+```
+
 Contribution and quality gate:
 - See `CONTRIBUTING.md` for merge policy and smoke-test checklist.
 - CI (`.github/workflows/ci.yml`) enforces tests on Python 3.11/3.12 for pushes and PRs.
+- Performance artifacts: `docs/performance.md`, `monitoring/alerts/m12-slo-alerts.yml`, `monitoring/grafana/m12-dashboard.json`.
 
 
 ## Configuration

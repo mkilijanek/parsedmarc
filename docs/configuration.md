@@ -46,6 +46,18 @@ LOG_LEVEL=INFO
 REQUESTS_PER_SECOND_MAX=1000000
 ```
 
+### RATE_LIMITS_ENABLED
+
+**Type:** Boolean  
+**Default:** `true`  
+**Purpose:** Enable Flask-Limiter endpoint limits (`20/min`, `30/min`, etc.)
+
+```bash
+RATE_LIMITS_ENABLED=true
+```
+
+Use `false` only for controlled benchmark environments.
+
 ### QUERY_RESULT_LIMIT_MAX
 
 **Type:** Integer  

@@ -41,6 +41,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-}
       CACHE_TTL: ${CACHE_TTL:-300}
       APP_PORT: ${APP_PORT:-8080}
+      RATE_LIMITS_ENABLED: ${RATE_LIMITS_ENABLED:-true}
 
       # DB
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
