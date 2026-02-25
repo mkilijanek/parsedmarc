@@ -5,6 +5,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from .enrichment import enrich_metadata
+
 
 HASH_LENGTHS = {32, 40, 64, 96, 128}
 VALID_TYPES = {"ip", "domain", "url", "hash", "email", "object_id"}
@@ -152,7 +154,11 @@ def canonicalize_row(
         "tlp": str(row.get("tlp") or "WHITE").upper(),
         "is_active": bool(row.get("is_active", True)),
         "tags": normalize_tags(row.get("tags") or []),
-        "metadata": row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+        "metadata": enrich_metadata(
+            value=value,
+            ioc_type=ioc_type,
+            metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+        ),
     }
     return normalized, None
 

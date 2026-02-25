@@ -49,6 +49,7 @@ def test_canonicalize_row_applies_normalization_and_confidence():
     assert normalized["source_ref"] == "example.org"
     assert normalized["tags"] == ["apt", "malware"]
     assert 0 <= int(normalized["confidence"]) <= 100
+    assert normalized["metadata"]["enrichment"]["domain_root"] == "example.org"
 
 
 def test_dedup_rows_merges_metadata_tags_and_confidence():
@@ -87,3 +88,36 @@ def test_dedup_rows_merges_metadata_tags_and_confidence():
     assert one["metadata"] == {"a": 1, "b": 2}
     assert one["first_seen"] == datetime(2025, 1, 1, tzinfo=timezone.utc)
     assert one["last_seen"] == datetime(2025, 1, 3, tzinfo=timezone.utc)
+
+
+def test_canonicalize_row_url_enrichment():
+    row = {
+        "ioc_value": "https://sub.example.org/path",
+        "ioc_type": "url",
+        "source_ref": "",
+        "confidence": 60,
+        "metadata": {},
+    }
+    normalized, reason = canonicalize_row(row, source="urlhaus")
+    assert reason is None
+    assert normalized is not None
+    enr = normalized["metadata"]["enrichment"]
+    assert enr["url_host"] == "sub.example.org"
+    assert enr["url_host_type"] == "domain"
+    assert enr["url_host_root"] == "example.org"
+
+
+def test_canonicalize_row_ip_enrichment():
+    row = {
+        "ioc_value": "10.0.0.1",
+        "ioc_type": "ip",
+        "source_ref": "",
+        "confidence": 60,
+        "metadata": {},
+    }
+    normalized, reason = canonicalize_row(row, source="threatfox")
+    assert reason is None
+    assert normalized is not None
+    enr = normalized["metadata"]["enrichment"]
+    assert enr["ip_version"] == 4
+    assert enr["ip_is_private"] is True

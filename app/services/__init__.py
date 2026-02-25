@@ -16,3 +16,4 @@ from .quality import (
     normalize_value,
     infer_type_from_value,
 )
+from .enrichment import enrich_metadata
