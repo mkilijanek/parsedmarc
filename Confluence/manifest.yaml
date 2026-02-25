@@ -1,0 +1,122 @@
+# Confluence page tree manifest
+pages:
+  - id: home
+    title: "IOC Service Documentation"
+    parent: ""
+    file: pages/00-home.wiki
+    source: docs/README.md
+    order: 1
+  - id: getting-started
+    title: "Getting Started"
+    parent: "home"
+    file: pages/10-getting-started.wiki
+    source: README.md
+    order: 2
+  - id: quickstart
+    title: "Quickstart"
+    parent: "getting-started"
+    file: pages/11-quickstart.wiki
+    source: QUICKSTART.md
+    order: 3
+  - id: deployment
+    title: "Deployment"
+    parent: "getting-started"
+    file: pages/12-deployment.wiki
+    source: DEPLOYMENT.md
+    order: 4
+  - id: security
+    title: "Security"
+    parent: "getting-started"
+    file: pages/13-security.wiki
+    source: SECURITY.md
+    order: 5
+  - id: contributing
+    title: "Contributing"
+    parent: "getting-started"
+    file: pages/14-contributing.wiki
+    source: CONTRIBUTING.md
+    order: 6
+  - id: operations
+    title: "Operations"
+    parent: "home"
+    file: pages/20-operations.wiki
+    source: docs/runbook.md
+    order: 7
+  - id: configuration
+    title: "Configuration"
+    parent: "operations"
+    file: pages/21-configuration.wiki
+    source: docs/configuration.md
+    order: 8
+  - id: data-sources
+    title: "Data Sources"
+    parent: "operations"
+    file: pages/22-data-sources.wiki
+    source: docs/data-sources.md
+    order: 9
+  - id: api
+    title: "API Reference"
+    parent: "operations"
+    file: pages/23-api-reference.wiki
+    source: docs/api.md
+    order: 10
+  - id: database
+    title: "Database"
+    parent: "operations"
+    file: pages/24-database.wiki
+    source: docs/database.md
+    order: 11
+  - id: web-ui
+    title: "Web UI"
+    parent: "operations"
+    file: pages/25-web-ui.wiki
+    source: docs/web-ui.md
+    order: 12
+  - id: ssl
+    title: "SSL"
+    parent: "operations"
+    file: pages/26-ssl.wiki
+    source: docs/ssl.md
+    order: 13
+  - id: runbook
+    title: "Runbook"
+    parent: "operations"
+    file: pages/27-runbook.wiki
+    source: docs/runbook.md
+    order: 14
+  - id: engineering
+    title: "Engineering"
+    parent: "home"
+    file: pages/30-engineering.wiki
+    source: docs/architecture.md
+    order: 15
+  - id: architecture
+    title: "Architecture"
+    parent: "engineering"
+    file: pages/31-architecture.wiki
+    source: docs/architecture.md
+    order: 16
+  - id: cli
+    title: "CLI"
+    parent: "engineering"
+    file: pages/32-cli.wiki
+    source: docs/cli.md
+    order: 17
+  - id: performance
+    title: "Performance"
+    parent: "engineering"
+    file: pages/33-performance.wiki
+    source: docs/performance.md
+    order: 18
+  - id: maintenance
+    title: "Maintenance Plan"
+    parent: "engineering"
+    file: pages/34-maintenance-plan.wiki
+    source: docs/maintenance-plan.md
+    order: 19
+  - id: m16
+    title: "M16 Finalization"
+    parent: "engineering"
+    file: pages/35-m16-finalization.wiki
+    source: docs/m16-finalization.md
+    order: 20

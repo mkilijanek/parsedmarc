@@ -1,7 +1,10 @@
-.PHONY: up down logs ps test fmt benchmark benchmark-cluster gate readiness dev-bootstrap dev-test dev-check
+.PHONY: up down logs ps test fmt benchmark benchmark-cluster gate readiness dev-bootstrap dev-test dev-check deploy
 
 up:
 	docker compose up -d --build
+
+deploy:
+	bash scripts/deploy-compose.sh
 
 down:
 	docker compose down

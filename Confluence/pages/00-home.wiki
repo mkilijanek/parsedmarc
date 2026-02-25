@@ -1,0 +1,406 @@
+h1. IOC Service Documentation
+
+{info:title=Documentation Metadata}
+Purpose: Central entry page for the IOC Service documentation tree.\\
+Source file: {code}docs/README.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed Aggregation system.
+
+---
+
+h2. Quick Links
+
+* 📖 *[API Documentation|api.md]* - REST endpoints, formats, and integration examples
+* 🏗️ *[Architecture|architecture.md]* - System design and components
+* ⚙️ *[Configuration|configuration.md]* - Environment variables and settings
+* ⚡ *[Performance|performance.md]* - SLOs, benchmarking, degradation and runbook
+* 🛠️ *[Runbook|runbook.md]* - Incident response and release gate procedures
+* 🧭 *[M16 Finalization|m16-finalization.md]* - Go/no-go and closure checklist
+* 📆 *[Maintenance Plan|maintenance-plan.md]* - 90-day operating cadence and KPI policy
+* ✅ *[Contributing|../CONTRIBUTING.md]* - Quality gate and CI merge policy
+* 🔌 *[Data Sources|data-sources.md]* - MISP, CrowdSec, MalwareBazaar, MWDB integration
+* 💾 *[Database|database.md]* - Schema, indexes, and queries
+* 💻 *[CLI Tool|cli.md]* - Manual ingestion commands
+* 🌐 *[Web UI|web-ui.md]* - Browser interface guide
+* 🔒 *[SSL/TLS|ssl.md]* - Certificate management
+
+---
+
+h2. Getting Started
+
+h3. For Users
+
+# *[QUICKSTART.md|../QUICKSTART.md]* - Get running in 5 minutes
+# *[Configuration|configuration.md]* - Configure your deployment
+# *[API Documentation|api.md]* - Start querying IOCs
+
+h3. For Developers
+
+# *[Architecture|architecture.md]* - Understand the system
+# *[Database|database.md]* - Schema and data model
+# *[Data Sources|data-sources.md]* - Add new integrations
+
+h3. For Security Teams
+
+# *[SECURITY_AUDIT_REPORT.md|../SECURITY_AUDIT_REPORT.md]* - Security analysis
+# *[SECURITY.md|../SECURITY.md]* - Security policy
+# *[API Documentation|api.md#security-headers]* - Security features
+
+---
+
+h2. Documentation Structure
+
+h3. Core Documentation
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| *[api.md|api.md]* | API endpoints, formats, examples | Users, Integrators |
+| *[architecture.md|architecture.md]* | System design, data flow, scalability | Developers, Architects |
+| *[configuration.md|configuration.md]* | Environment variables, examples | Ops, Admins |
+| *[performance.md|performance.md]* | SLOs, benchmark harness, runbook | Ops, SRE, Developers |
+| *[runbook.md|runbook.md]* | Incident response and rollback procedures | Ops, SRE |
+| *[m16-finalization.md|m16-finalization.md]* | Final release decision and residual risks | Tech Leads, Ops |
+| *[maintenance-plan.md|maintenance-plan.md]* | Post-release operating plan | Ops, SRE |
+
+h3. Integration Documentation
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| *[data-sources.md|data-sources.md]* | Source integrations, normalization | Developers, Threat Intel |
+| *[database.md|database.md]* | Schema, indexes, queries | DBAs, Developers |
+| *[cli.md|cli.md]* | Manual ingestion tool | Operators, Analysts |
+
+h3. User Documentation
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| *[web-ui.md|web-ui.md]* | Web interface guide | End Users |
+| *[ssl.md|ssl.md]* | TLS certificate management | Ops, Admins |
+
+---
+
+h2. Key Features
+
+h3. 🔍 Unified Search
+
+Kibana-like query syntax with boolean operators:
+
+{code:language=none}
+type:ip AND confidence:>70 AND (tags:apt OR tags:malware)
+{code}
+
+h3. 🔗 IOC Correlation
+
+Cross-source correlation endpoint:
+
+{code:language=bash}
+curl "https://localhost:7003/correlations?min_sources=2&type=domain"
+{code}
+
+h3. 📤 17 Export Formats
+
+* *Basic:* TXT, CSV, JSON, XML
+* *Firewalls:* FortiGate, Check Point, Palo Alto, F5
+* *SIEMs:* Sentinel, Defender, ArcSight, Splunk, Elasticsearch
+
+h3. 🔄 Auto-Update
+
+Background worker fetches from MISP and CrowdSec every 10 minutes (configurable).
+
+h3. 🔒 Security
+
+* TLS 1.2+ with modern ciphers
+* Rate limiting per endpoint
+* Comprehensive security headers
+* Audit logging
+* IP tracking with proxy awareness
+
+h3. ⚡ Performance
+
+* PostgreSQL connection pooling
+* Redis response caching (5 min TTL)
+* Database-native exports
+* GIN/B-tree indexes
+* {{limit}}/{{offset}} pagination on view and export endpoints
+* Optional NDJSON streaming for {{elasticsearch}} and {{cribl}} exports
+* Global hard cap: {{REQUESTS_PER_SECOND_MAX}} (default 1,000,000 req/s)
+
+---
+
+h2. API Quick Reference
+
+h3. Health & Monitoring
+
+{code:language=bash}
+curl https://localhost:7003/health
+curl https://localhost:7003/metrics
+{code}
+
+h3. Search & View
+
+{code:language=bash}
+# HTML interface
+curl https://localhost:7003/indicators
+
+# With filters
+curl "https://localhost:7003/indicators?type=ip&min_conf=80&tlp=AMBER"
+{code}
+
+h3. Export Formats
+
+{code:language=bash}
+# Plain text
+curl https://localhost:7003/indicators/txt
+
+# FortiGate blocklist
+curl https://localhost:7003/indicators/fortigate
+
+# Elasticsearch bulk
+curl https://localhost:7003/indicators/elasticsearch
+
+# Splunk HEC
+curl https://localhost:7003/indicators/splunk
+{code}
+
+See *[API Documentation|api.md]* for full details.
+
+---
+
+h2. Configuration Quick Reference
+
+h3. Required Variables
+
+{code:language=bash}
+SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+DATABASE_URL=postgresql+psycopg2://user:pass@postgres:5432/threatfeed
+REDIS_URL=redis://:password@redis:6379/0
+{code}
+
+h3. Security (Production)
+
+{code:language=bash}
+ALLOWED_HOSTS=your-domain.com
+TRUSTED_PROXY_COUNT=1
+MISP_VERIFY_SSL=true
+{code}
+
+h3. Integrations
+
+{code:language=bash}
+# MISP
+MISP_URL=https://misp.example.com
+MISP_API_KEY=your-key
+
+# CrowdSec
+CROWDSEC_API_KEY=your-key
+CROWDSEC_LISTS=list1,list2,list3
+{code}
+
+See *[Configuration|configuration.md]* for all variables.
+
+---
+
+h2. Architecture Overview
+
+{code:language=none}
+┌─────────────┐
+│   Nginx     │ ← TLS termination, rate limiting
+│  (Reverse   │
+│   Proxy)    │
+└──────┬──────┘
+       │
+┌──────▼──────────────────────────────┐
+│      Flask Application              │
+│  ┌────────┐  ┌────────┐  ┌────────┐│
+│  │  API   │  │ Web UI │  │ Worker ││
+│  └────────┘  └────────┘  └────────┘│
+└──────┬──────────┬──────────┬────────┘
+       │          │          │
+   ┌───▼───┐  ┌──▼───┐  ┌──▼────┐
+   │ PostgreSQL│ Redis│ │External│
+   │ (Storage) │(Cache││Sources │
+   └───────────┘└──────┘└────────┘
+{code}
+
+See *[Architecture|architecture.md]* for details.
+
+---
+
+h2. Data Flow
+
+h3. Ingestion (Background Worker)
+
+{code:language=none}
+External API → Fetch → Normalize → Upsert → Update Stats
+     ↓
+  (MISP, CrowdSec)
+{code}
+
+h3. Query (API Request)
+
+{code:language=none}
+Request → Cache Check → Database Query → Format → Response
+   ↓            ↓              ↓
+Security    Hit/Miss      Parameterized SQL
+Headers
+{code}
+
+See *[Architecture|architecture.md#data-flow]* for details.
+
+---
+
+h2. Database Schema
+
+h3. Core Tables
+
+* *ti.indicators* - IOC storage with provenance
+* *ti.feed_stats* - Feed health and statistics
+* *ti.audit_log* - API access logging
+
+h3. Key Indexes
+
+* B-tree on (source, source_ref, is_active)
+* GIN on tags array
+* GIN on metadata JSONB
+* pg_trgm for wildcard search
+
+See *[Database|database.md]* for schema details.
+
+---
+
+h2. Security
+
+h3. Critical Security Fixes
+
+The system has undergone comprehensive security audit:
+
+* ✅ *SECRET_KEY enforcement* - Required, minimum 32 characters
+* ✅ *MISP SSL verification* - Enabled by default
+* ✅ *IP tracking security* - Proxy-aware with TRUSTED_PROXY_COUNT
+* ✅ *Security headers* - CSP, HSTS, X-Frame-Options, etc.
+* ✅ *Secure cookies* - HttpOnly, Secure, SameSite
+* ✅ *Rate limiting* - All endpoints protected
+
+See *[SECURITY_AUDIT_REPORT.md|../SECURITY_AUDIT_REPORT.md]* for full audit.
+
+h3. Best Practices
+
+# *Always use HTTPS* in production
+# *Set strong SECRET_KEY* (32+ characters)
+# *Enable MISP_VERIFY_SSL* (default: true)
+# *Configure ALLOWED_HOSTS* for production
+# *Set TRUSTED_PROXY_COUNT* if behind proxy
+# *Use VPN/private network* for /metrics endpoint
+
+---
+
+h2. CLI Tool
+
+Manual IOC ingestion from MalwareBazaar and MWDB:
+
+{code:language=bash}
+python -m app.cli fetch \
+  --data-source bazaar \
+  --tags TrickBot,Emotet \
+  --since 2025-01-01 \
+  --until 2025-01-31
+{code}
+
+See *[CLI Documentation|cli.md]* for full usage.
+
+---
+
+h2. Troubleshooting
+
+h3. Common Issues
+
+*SECRET_KEY not set:*
+{code:language=none}
+RuntimeError: SECURITY ERROR: SECRET_KEY environment variable must be set.
+{code}
+*Fix:* Generate with {{python -c 'import secrets; print(secrets.token_hex(32))'}}
+
+*Database connection failed:*
+{code:language=none}
+sqlalchemy.exc.OperationalError: could not connect to server
+{code}
+*Fix:* Check DATABASE_URL, ensure PostgreSQL is running
+
+*Redis connection failed:*
+{code:language=none}
+redis.exceptions.ConnectionError
+{code}
+*Fix:* Check REDIS_URL, ensure Redis is running
+
+See individual docs for more troubleshooting.
+
+---
+
+h2. Support & Contributing
+
+h3. Getting Help
+
+* 📚 *Documentation:* Start here!
+* 🐛 *Issues:* Check logs: {{docker compose logs app}}
+* 🔍 *Debugging:* Set {{LOG_LEVEL=DEBUG}}
+
+h3. Development
+
+{code:language=bash}
+# Setup
+git clone <repo>
+cd ioc-service
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Run tests
+pytest tests/ -v
+
+# Run app
+export SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+python -m flask --app app.main run --debug
+{code}
+
+---
+
+h2. Additional Resources
+
+h3. In Repository
+
+* *[README.md|../README.md]* - Project overview
+* *[QUICKSTART.md|../QUICKSTART.md]* - Quick setup guide
+* *[DEPLOYMENT.md|../DEPLOYMENT.md]* - Production deployment
+* *[SECURITY.md|../SECURITY.md]* - Security policy
+* *[SECURITY_AUDIT_REPORT.md|../SECURITY_AUDIT_REPORT.md]* - Security audit
+
+h3. External
+
+* *Flask:* https://flask.palletsprojects.com/
+* *SQLAlchemy:* https://www.sqlalchemy.org/
+* *PostgreSQL:* https://www.postgresql.org/docs/
+* *Redis:* https://redis.io/docs/
+* *MISP:* https://www.misp-project.org/
+
+---
+
+h2. Document Versions
+
+| Document | Last Updated | Version |
+|----------|--------------|---------|
+| api.md | 2025-12-18 | 1.0 |
+| architecture.md | 2025-12-18 | 1.0 |
+| configuration.md | 2025-12-18 | 1.0 |
+| data-sources.md | 2025-12-18 | 1.0 |
+| database.md | 2025-12-18 | 1.0 |
+| cli.md | 2025-12-18 | 1.0 |
+| web-ui.md | 2025-12-18 | 1.0 |
+| ssl.md | 2025-12-18 | 1.0 |
+
+---
+
+*Note:* This documentation reflects the state of the codebase after security audit and remediation (commit: {{claude/security-audit-kili-2Ah1l}}).

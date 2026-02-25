@@ -1,0 +1,281 @@
+h1. CLI
+
+{info:title=Documentation Metadata}
+Purpose: Command-line ingestion workflows.\\
+Source file: {code}docs/cli.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+h2. Overview
+
+The CLI tool ({{app.cli}}) provides manual ingestion of IOCs from MalwareBazaar and MWDB repositories. It offers fine-grained control over what data gets imported.
+
+---
+
+h2. Installation
+
+{code:language=bash}
+# In project directory
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+{code}
+
+---
+
+h2. Basic Usage
+
+{code:language=bash}
+python -m app.cli fetch \
+  --data-source {bazaar|mwdb} \
+  --tags TAG1,TAG2 \
+  --since YYYY-MM-DD \
+  --until YYYY-MM-DD \
+  [--config-file path/to/config] \
+  [--limit 1000] \
+  [--dry-run]
+{code}
+
+---
+
+h2. Commands
+
+h3. fetch
+
+Fetch indicators from a data source and insert into database.
+
+*Arguments:*
+
+| Argument | Required | Description | Example |
+|----------|----------|-------------|---------|
+| {{--data-source}} | Yes | Data source | {{bazaar}}, {{mwdb}} |
+| {{--tags}} | Yes | Tags to query (repeatable) | {{--tags TrickBot --tags Emotet}} |
+| {{--since}} | No | Start date/time | {{2025-01-01}} or ISO datetime |
+| {{--until}} | No | End date/time | {{2025-01-31}} or ISO datetime |
+| {{--limit}} | No | Max items per tag | Default: 1000 |
+| {{--dry-run}} | No | Don't write to DB, print stats | Flag |
+| {{--config-file}} | No | Config file path | {{./config/cli.env}} |
+
+---
+
+h2. Examples
+
+h3. MalwareBazaar by Tags
+
+{code:language=bash}
+# Fetch TrickBot and Emotet samples from January 2025
+python -m app.cli fetch \
+  --data-source bazaar \
+  --tags TrickBot,Emotet \
+  --since 2025-01-01 \
+  --until 2025-01-31
+{code}
+
+h3. MWDB with Config File
+
+{code:language=bash}
+# Use config file for auth and parameters
+python -m app.cli fetch \
+  --data-source mwdb \
+  --tags malware,apt \
+  --config-file ./config/cli.env
+{code}
+
+h3. Dry Run
+
+{code:language=bash}
+# Check what would be fetched without inserting
+python -m app.cli fetch \
+  --data-source bazaar \
+  --tags Qakbot \
+  --since 2025-01-01 \
+  --dry-run
+{code}
+
+Output:
+{code:language=json}
+{
+  "data_source": "bazaar",
+  "tags": ["Qakbot"],
+  "count": 523
+}
+{code}
+
+---
+
+h2. Configuration File
+
+h3. Format
+
+Supports JSON ({{.json}}) or KEY=VALUE ({{.env}}) format:
+
+{code:language=bash}
+# config/cli.env
+DATABASE_URL=postgresql://user:pass@localhost:5432/iocdb
+TAGS=TrickBot,Emotet
+SINCE=2025-01-01
+UNTIL=2025-01-31
+MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
+ABUSECH_AUTH_KEY=your-key
+# optional override for MalwareBazaar only:
+# MALWAREBAZAAR_AUTH_KEY=your-key
+MWDB_URL=https://mwdb.cert.pl
+MWDB_AUTH_KEY=your-key
+{code}
+
+h3. Supported Keys
+
+* {{DATABASE_URL}} - PostgreSQL connection string
+* {{TAGS}} - Comma-separated tags
+* {{SINCE}} - Start date (YYYY-MM-DD or ISO)
+* {{UNTIL}} - End date (YYYY-MM-DD or ISO)
+* {{MALWAREBAZAAR_API_URL}} - MalwareBazaar API endpoint
+* {{ABUSECH_AUTH_KEY}} - Shared abuse.ch API key (preferred)
+* {{MALWAREBAZAAR_AUTH_KEY}} - MalwareBazaar-only override key (optional)
+* {{MWDB_URL}} - MWDB instance URL
+* {{MWDB_AUTH_KEY}} - MWDB API key
+
+h3. Precedence
+
+# *CLI flags* - Highest priority
+# *Config file* - Via {{--config-file}}
+# *Environment variables* - Lowest priority (DATABASE_URL only)
+
+---
+
+h2. Output
+
+h3. Success
+
+{code:language=json}
+{
+  "data_source": "bazaar",
+  "tags": ["TrickBot", "Emotet"],
+  "ingested": 150,
+  "updated": 23,
+  "total_rows": 173
+}
+{code}
+
+h3. Error
+
+{code:language=none}
+SystemExit: No tags provided. Use --tags or TAGS in --config-file.
+{code}
+
+---
+
+h2. Database Requirements
+
+h3. Schema
+
+The CLI requires the {{ti}} schema with {{indicators}} table:
+
+{code:language=sql}
+-- Must exist before running CLI
+CREATE SCHEMA ti;
+CREATE TABLE ti.indicators (...);
+{code}
+
+See [database.md|database.md] for full schema.
+
+h3. Connection
+
+{code:language=bash}
+# Via environment variable
+export DATABASE_URL='postgresql://user:pass@host:5432/db'
+
+# Via config file
+DATABASE_URL=postgresql://user:pass@host:5432/db
+
+# Both work, environment has priority
+{code}
+
+---
+
+h2. Integration
+
+h3. Scheduled Ingestion
+
+{code:language=bash}
+#!/bin/bash
+# /etc/cron.d/ioc-ingest
+# Run daily at 2 AM
+
+0 2 * * * user cd /app && \
+  python -m app.cli fetch \
+    --data-source bazaar \
+    --tags TrickBot,Emotet \
+    --since $(date -d '7 days ago' +\%Y-\%m-\%d) \
+    --config-file /app/config/cli.env
+{code}
+
+h3. CI/CD Pipeline
+
+{code:language=yaml}
+# .gitlab-ci.yml
+ingest_iocs:
+  stage: deploy
+  script:
+    - python -m app.cli fetch
+        --data-source mwdb
+        --tags ${IOC_TAGS}
+        --since ${START_DATE}
+        --config-file ./config/prod.env
+  only:
+    - schedules
+{code}
+
+---
+
+h2. Error Handling
+
+h3. Connection Errors
+
+{code:language=python}
+# API unreachable
+requests.exceptions.ConnectionError
+
+# Database unreachable
+psycopg2.OperationalError
+{code}
+
+h3. Authentication Errors
+
+{code:language=python}
+# Invalid API key
+requests.exceptions.HTTPError: 401 Unauthorized
+
+# Database auth failed
+psycopg2.OperationalError: password authentication failed
+{code}
+
+h3. Data Errors
+
+{code:language=python}
+# Invalid date format
+ValueError: time data '2025/01/01' does not match format
+
+# Empty result
+# Returns success with count: 0
+{code}
+
+---
+
+h2. Limitations
+
+* *Worker auto-update exists* - CLI is still useful for ad-hoc/manual ingestion and one-off backfills
+* *Tag-based only* - Cannot query by hash or other fields
+* *Rate limits* - Subject to API provider limits
+* *No streaming* - Loads all results in memory
+* *Single-threaded* - One source at a time
+
+---
+
+h2. See Also
+
+* [Data Sources|data-sources.md] - Source details and API formats
+* [Configuration|configuration.md] - Environment variables
+* [Database|database.md] - Schema and tables

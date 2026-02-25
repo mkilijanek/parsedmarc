@@ -1,0 +1,126 @@
+h1. SSL
+
+{info:title=Documentation Metadata}
+Purpose: TLS certificate setup and validation.\\
+Source file: {code}docs/ssl.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+h2. Overview
+
+The application uses Nginx as a TLS-terminating reverse proxy with automatic certificate management.
+
+---
+
+h2. SSL Setup
+
+h3. Automated (Recommended)
+
+{code:language=bash}
+./scripts/setup-ssl.sh
+{code}
+
+Creates:
+* Self-signed certificate for development
+* 2048-bit RSA key
+* 365-day validity
+* Stored in {{./ssl/}}
+
+h3. Manual
+
+{code:language=bash}
+# Generate private key
+openssl genrsa -out ssl/key.pem 2048
+
+# Generate certificate
+openssl req -new -x509 -key ssl/key.pem -out ssl/cert.pem -days 365
+{code}
+
+---
+
+h2. Production Certificates
+
+h3. Let's Encrypt
+
+{code:language=bash}
+# Install certbot
+apt-get install certbot python3-certbot-nginx
+
+# Obtain certificate
+certbot certonly --nginx -d your-domain.com
+
+# Configure paths
+SSL_CERT_PATH=/etc/letsencrypt/live/your-domain.com/fullchain.pem
+SSL_KEY_PATH=/etc/letsencrypt/live/your-domain.com/privkey.pem
+{code}
+
+h3. Commercial CA
+
+# Generate CSR
+# Submit to CA
+# Receive certificate
+# Configure paths in {{.env}}
+
+---
+
+h2. Configuration
+
+h3. Environment Variables
+
+{code:language=bash}
+SSL_CERT_PATH=./ssl/cert.pem
+SSL_KEY_PATH=./ssl/key.pem
+SSL_CHAIN_PATH=./ssl/chain.pem  # Optional
+{code}
+
+h3. Nginx Config
+
+{code:language=nginx}
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:...';
+ssl_prefer_server_ciphers off;
+ssl_session_cache shared:SSL:10m;
+ssl_session_timeout 10m;
+{code}
+
+---
+
+h2. Security Features
+
+* *TLS 1.2+* only
+* *Modern cipher suites*
+* *HSTS* header
+* *OCSP stapling* (if chain provided)
+* *HTTP/2* enabled
+
+---
+
+h2. Troubleshooting
+
+h3. Certificate Errors
+
+{code:language=bash}
+# Verify certificate
+openssl x509 -in ssl/cert.pem -text -noout
+
+# Check expiration
+openssl x509 -in ssl/cert.pem -noout -enddate
+
+# Test TLS handshake
+openssl s_client -connect localhost:7003
+{code}
+
+h3. Browser Warnings
+
+Self-signed certificates trigger warnings:
+* Click "Advanced" → "Proceed"
+* Or import certificate to trusted store
+
+---
+
+h2. See Also
+
+* [Configuration|configuration.md] - SSL variables
+* [DEPLOYMENT.md|../DEPLOYMENT.md] - Production setup

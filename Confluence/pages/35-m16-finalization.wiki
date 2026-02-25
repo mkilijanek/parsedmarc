@@ -1,0 +1,46 @@
+h1. M16 Finalization
+
+{info:title=Documentation Metadata}
+Purpose: Finalization checklist and readiness outcomes.\\
+Source file: {code}docs/m16-finalization.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+h2. Scope Completed
+
+* M14 performance/capacity tuning and benchmark suite.
+* M15 operational hardening (release gate, chaos checks, runbook, CI gate).
+* M16 closure package (readiness script, maintenance plan, backlog v2).
+
+h2. Go / No-Go Checklist
+
+# Tests pass ({{pytest -q}}): required
+# Release gate passes ({{scripts/m15_premerge_gate.sh}}): required
+# Chaos fallback check passes ({{scripts/m15_chaos_check.sh}}): required for production release
+# M16 readiness report generated ({{scripts/m16_release_readiness.sh}}): required
+# Documentation updated ({{configuration}}, {{performance}}, {{runbook}}, {{maintenance-plan}}): required
+
+h2. Current Decision
+
+* *GO (conditional)* for production-like rollout with current host budget ({{4 vCPU / 12 GB}} for app container test profile).
+
+Conditions:
+* Keep Redis and PostgreSQL healthy and monitored.
+* Keep M15 gate in CI as mandatory check.
+* Address known dependency vulnerabilities tracked by GitHub/Dependabot before public exposure increase.
+
+h2. Residual Risks
+
+# Tail latency under highly DB-heavy spikes ({{/indicators}} large limits) can still rise (p99).
+# Upstream source instability can reduce feed freshness despite app health.
+# Dependency vulnerabilities currently reported in default branch need remediation planning.
+
+h2. Backlog v2 (Priority Order)
+
+# Implement async export job for very large responses (queue + downloadable artifact).
+# Introduce DB read replica routing for heavy read endpoints.
+# Add authenticated access tier for {{/metrics}} and privileged exports.
+# Expand chaos matrix (DB restart, packet loss, slow Redis).
+# Add automatic weekly benchmark trend report persisted to artifacts.

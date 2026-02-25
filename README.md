@@ -17,25 +17,32 @@ cp .env.example .env
 ./scripts/generate-secrets.sh >> .env
 ```
 
-2) Create dev TLS cert (self-signed):
-```bash
-./scripts/setup-ssl.sh
-```
-
-3) Configure integrations (optional):
+2) Configure integrations (optional):
 - CrowdSec: set `CROWDSEC_API_KEY` and `CROWDSEC_LISTS` (comma-separated list IDs)
 - MISP: set `MISP_URL`, `MISP_API_KEY`, and `MISP_VERIFY_SSL`
 
-4) Start:
+3) Start automated deploy (DB + Redis + app, host port `7003` by default):
+```bash
+bash scripts/deploy-compose.sh
+```
+
+Alternative:
 ```bash
 docker compose up -d --build
 ```
 
-5) Validate:
+4) Validate:
 ```bash
+curl http://localhost:7003/health
+curl http://localhost:7003/indicators
+curl http://localhost:7003/indicators/arcsight | head
+```
+
+Optional TLS edge (`nginx` profile):
+```bash
+./scripts/setup-ssl.sh
+docker compose --profile edge up -d nginx
 curl -k https://localhost:7003/health
-curl -k https://localhost:7003/indicators
-curl -k https://localhost:7003/indicators/arcsight | head
 ```
 
 ## Endpoints
@@ -149,6 +156,7 @@ Contribution and quality gate:
 - See `CONTRIBUTING.md` for merge policy and smoke-test checklist.
 - CI (`.github/workflows/ci.yml`) enforces tests on Python 3.11/3.12 for pushes and PRs.
 - Performance artifacts: `docs/performance.md`, `monitoring/alerts/m12-slo-alerts.yml`, `monitoring/grafana/m12-dashboard.json`.
+- Confluence package (pages/subpages for Confluence 9.2.13): `Confluence/README.md`, `Confluence/manifest.yaml`, `Confluence/pages/*.wiki`.
 
 
 ## Configuration

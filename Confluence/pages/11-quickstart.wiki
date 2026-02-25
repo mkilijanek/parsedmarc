@@ -1,0 +1,442 @@
+h1. Quickstart
+
+{info:title=Documentation Metadata}
+Purpose: Fast setup and operational shortcuts for local/prod usage.\\
+Source file: {code}QUICKSTART.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+h2. 📦 Zawartość Archiwum
+
+Otrzymałeś kompletny, production-ready system agregacji threat intelligence składający się z:
+
+h3. Struktura Projektu
+{code:language=none}
+threat-feed-aggregator/
+├── app/                        # Aplikacja Python/Flask
+│   ├── __init__.py
+│   ├── main.py                # Główna aplikacja Flask
+│   ├── db.py                  # Zarządzanie bazą danych
+│   ├── models.py              # Modele SQLAlchemy
+│   ├── worker.py              # Background worker
+│   └── services/
+│       ├── crowdsec.py        # Integracja CrowdSec (TLP:AMBER)
+│       └── misp.py            # Integracja MISP (TLP z tagów)
+├── database/
+│   └── init.sql               # Schemat PostgreSQL
+├── nginx/
+│   └── nginx.conf             # Konfiguracja reverse proxy
+├── scripts/
+│   ├── generate-secrets.sh    # Generator sekretów
+│   └── setup-ssl.sh           # Setup SSL/TLS
+├── .github/workflows/
+│   └── docker-build.yml       # CI/CD pipeline
+├── docker-compose.yml         # Orkiestracja kontenerów
+├── Dockerfile                 # Obraz aplikacji
+├── requirements.txt           # Zależności Python
+├── .env.example               # Szablon konfiguracji
+├── Makefile                   # Pomocnicze komendy
+├── README.md                  # Pełna dokumentacja
+├── DEPLOYMENT.md              # Przewodnik wdrożenia
+├── SECURITY.md                # Polityka bezpieczeństwa
+└── LICENSE                    # Licencja MIT
+{code}
+
+h2. 🚀 Instalacja Krok po Kroku
+
+h3. 1. Rozpakowanie
+{code:language=bash}
+tar -xzf threat-feed-aggregator.tar.gz
+cd threat-feed-aggregator
+{code}
+
+h3. 2. Generowanie Sekretów
+{code:language=bash}
+chmod +x scripts/*.sh
+./scripts/generate-secrets.sh
+{code}
+
+To wygeneruje:
+* Hasło PostgreSQL (32 chars)
+* Hasło Redis (32 chars)
+* Flask secret key (128 chars)
+
+h3. 3. Konfiguracja SSL
+
+*Opcja A: Self-signed (test/dev)*
+{code:language=bash}
+./scripts/setup-ssl.sh
+{code}
+
+*Opcja B: Let's Encrypt (produkcja)*
+{code:language=bash}
+sudo certbot certonly --standalone -d twoja-domena.pl
+sudo cp /etc/letsencrypt/live/twoja-domena.pl/fullchain.pem ssl/cert.pem
+sudo cp /etc/letsencrypt/live/twoja-domena.pl/privkey.pem ssl/key.pem
+sudo chown $USER:$USER ssl/*.pem
+{code}
+
+h3. 4. Konfiguracja Integracji
+
+Edytuj {{.env}} i dodaj credentials:
+
+{code:language=bash}
+vim .env
+
+# CrowdSec (opcjonalne)
+CROWDSEC_API_KEY=twój_klucz_api
+CROWDSEC_LISTS=lista1,lista2
+
+# MISP (opcjonalne)
+MISP_URL=https://twoja-misp.pl
+MISP_API_KEY=twój_klucz_api
+MISP_VERIFY_SSL=false
+{code}
+
+h3. 5. Uruchomienie
+{code:language=bash}
+# Opcja A: Używając Makefile
+make start
+
+# Opcja B: Bezpośrednio Docker Compose
+docker-compose up -d
+
+# Sprawdź status
+docker-compose ps
+{code}
+
+h3. 6. Weryfikacja
+{code:language=bash}
+# Health check
+curl -k https://localhost:7003/health
+
+# Statystyki
+curl -k https://localhost:7003/api/stats
+
+# Web UI
+firefox https://localhost:7003/
+{code}
+
+h2. 🔧 Komendy Pomocnicze
+
+h3. Local dev (venv)
+{code:language=bash}
+bash scripts/dev-bootstrap.sh
+bash scripts/dev-test.sh
+{code}
+
+h3. Makefile
+{code:language=bash}
+make help          # Pokaż dostępne komendy
+make setup         # Pełny setup (secrets + SSL)
+make start         # Uruchom wszystko
+make stop          # Zatrzymaj wszystko
+make restart       # Restart
+make logs          # Zobacz logi
+make health        # Sprawdź health
+make clean         # Usuń wszystko (UWAGA!)
+{code}
+
+h3. Docker Compose
+{code:language=bash}
+# Logi
+docker-compose logs -f app
+docker-compose logs -f worker
+docker-compose logs -f db
+
+# Restart pojedynczego serwisu
+docker-compose restart app
+
+# Rebuild
+docker-compose build
+docker-compose up -d
+
+# Shell w kontenerze
+docker-compose exec app bash
+docker-compose exec db psql -U threatfeed
+{code}
+
+h2. 🎯 Kluczowe Endpointy
+
+h3. API
+* {{GET /health}} - Health check
+* {{GET /api/stats}} - Statystyki systemu
+* {{GET /indicators}} - Wszystkie wskaźniki (web UI)
+* {{GET /indicators/<format>}} - Export w formatach:
+* txt, csv, json, xml
+* fortigate, fortigate_ips
+* checkpoint, paloalto
+* sentinel, defender
+* arcsight, splunk, elasticsearch
+* cribl, f5, imperva, fidelis
+
+h3. Formaty Export
+{code:language=bash}
+# Plain text
+curl -k https://localhost:7003/indicators/txt
+
+# FortiGate
+curl -k https://localhost:7003/indicators/fortigate
+
+# Microsoft Sentinel (STIX 2.1)
+curl -k https://localhost:7003/indicators/sentinel
+
+# ArcSight CEF
+curl -k https://localhost:7003/indicators/arcsight
+
+# Elasticsearch Bulk NDJSON
+curl -k https://localhost:7003/indicators/elasticsearch
+{code}
+
+h2. 🛡️ Bezpieczeństwo
+
+h3. Krytyczne Punkty
+# *TLP Handling*
+* CrowdSec: ZAWSZE TLP:AMBER (commercial source)
+* MISP: TLP z tagów (domyślnie GREEN)
+
+# *MISP Filtering*
+* TYLKO wskaźniki z {{to_ids=True}}
+* {{enforce_warninglist=True}} (unikaj false positives)
+
+# *Secrets*
+* NIGDY nie commituj {{.env}}
+* Rotacja sekretów co 90 dni
+* Backup {{.env}} w bezpiecznym miejscu
+
+# *SSL/TLS*
+* Minimum TLS 1.2
+* Strong ciphers only
+* HSTS enabled (31536000s)
+
+h2. 📊 Monitoring
+
+h3. Health Checks
+{code:language=bash}
+# Szybki check
+curl -k https://localhost:7003/health | jq
+
+# Docker health
+docker-compose ps
+
+# Logi błędów
+docker-compose logs app | grep ERROR
+{code}
+
+h3. Metryki
+{code:language=bash}
+# Statystyki wskaźników
+curl -k https://localhost:7003/api/stats | jq
+
+# Status feedów
+docker-compose exec db psql -U threatfeed -d threatfeed -c "SELECT * FROM feed_stats;"
+
+# Aktywne wskaźniki
+docker-compose exec db psql -U threatfeed -d threatfeed -c "SELECT COUNT(*) FROM indicators WHERE is_active = TRUE;"
+{code}
+
+h2. 🔍 Troubleshooting
+
+h3. Problem: Kontenery nie startują
+{code:language=bash}
+# Sprawdź logi
+docker-compose logs
+
+# Sprawdź porty
+sudo netstat -tulpn | grep -E '7003|5432|6379'
+
+# Restart
+docker-compose down
+docker-compose up -d
+{code}
+
+h3. Problem: Brak połączenia z bazą
+{code:language=bash}
+# Sprawdź PostgreSQL
+docker-compose exec db psql -U threatfeed -c "SELECT 1"
+
+# Sprawdź hasło w .env
+grep POSTGRES_PASSWORD .env
+
+# Restart bazy
+docker-compose restart db
+{code}
+
+h3. Problem: SSL certificate errors
+{code:language=bash}
+# Regeneruj certyfikat
+./scripts/setup-ssl.sh
+
+# Sprawdź certyfikat
+openssl x509 -in ssl/cert.pem -text -noout
+
+# Sprawdź nginx
+docker-compose logs nginx
+{code}
+
+h3. Problem: Worker nie aktualizuje
+{code:language=bash}
+# Sprawdź logi workera
+docker-compose logs -f worker
+
+# Sprawdź credentials w .env
+grep -E 'CROWDSEC|MISP' .env
+
+# Manualny test
+docker-compose exec app python -c "from app.services.crowdsec import update_all_crowdsec_lists; update_all_crowdsec_lists()"
+{code}
+
+h2. 🗄️ Backup & Restore
+
+h3. Backup Bazy Danych
+{code:language=bash}
+# Dump bazy
+docker-compose exec db pg_dump -U threatfeed threatfeed > backup_$(date +%Y%m%d).sql
+
+# Backup z kompresją
+docker-compose exec db pg_dump -U threatfeed threatfeed | gzip > backup_$(date +%Y%m%d).sql.gz
+{code}
+
+h3. Restore
+{code:language=bash}
+# Restore z pliku
+cat backup.sql | docker-compose exec -T db psql -U threatfeed threatfeed
+
+# Restore z gzip
+zcat backup.sql.gz | docker-compose exec -T db psql -U threatfeed threatfeed
+{code}
+
+h3. Backup .env
+{code:language=bash}
+# Zaszyfrowany backup
+gpg -c .env  # Tworzy .env.gpg
+
+# Restore
+gpg -d .env.gpg > .env
+{code}
+
+h2. 🔄 Aktualizacje
+
+h3. Aktualizacja Systemu
+{code:language=bash}
+# Pull najnowszej wersji
+git pull
+
+# Rebuild obrazów
+docker-compose build
+
+# Restart z nową wersją
+docker-compose down
+docker-compose up -d
+
+# Weryfikacja
+curl -k https://localhost:7003/health
+{code}
+
+h3. Aktualizacja Zależności Python
+{code:language=bash}
+# W kontenerze
+docker-compose exec app pip list --outdated
+
+# Lokalnie
+pip list --outdated -r requirements.txt
+{code}
+
+h2. 📈 Skalowanie
+
+h3. Zwiększenie Wydajności
+{code:language=bash}
+# Więcej workerów Gunicorn (w .env)
+WORKERS=8  # 2-4 × liczba rdzeni CPU
+
+# Więcej pamięci PostgreSQL (docker-compose.yml)
+POSTGRES_SHARED_BUFFERS=512MB
+POSTGRES_EFFECTIVE_CACHE_SIZE=2GB
+
+# Zwiększ pamięć Redis (docker-compose.yml)
+--maxmemory 1gb
+{code}
+
+h3. Horizontal Scaling
+Dla większych deploymentów:
+# Load balancer (HAProxy/Nginx)
+# Wiele instancji app
+# PostgreSQL replication
+# Redis cluster
+
+h2. 🎓 Dalsze Kroki
+
+h3. 1. Implementacja Brakujących Formatów
+Plik {{app/formatters.py}} wymaga implementacji 17 formatów export.
+Zobacz specyfikację w README.md sekcja "Supported Formats".
+
+h3. 2. Web UI z Kibana Search
+Plik {{app/main.py}} - endpoint {{/indicators}} wymaga:
+* Kibana-style query parser
+* Filtry (type, TLP, confidence, source)
+* Paginacja
+* ARIA accessibility
+
+h3. 3. Dodatkowe Formatery
+Implementuj pozostałe formaty w {{app/formatters.py}}:
+* FortiGate IPS, Check Point, Palo Alto
+* Microsoft Defender, Sentinel
+* F5, Imperva, Fidelis
+* Cribl, Splunk, Elasticsearch, ArcSight
+
+h3. 4. Testy
+{code:language=bash}
+# Dodaj testy w tests/
+pytest tests/ -v
+{code}
+
+h2. 📞 Support
+
+h3. Dokumentacja
+* README.md - Kompletna dokumentacja
+* DEPLOYMENT.md - Przewodnik wdrożenia
+* SECURITY.md - Polityka bezpieczeństwa
+
+h3. Logs
+{code:language=bash}
+# Wszystkie logi
+docker-compose logs
+
+# Specific service
+docker-compose logs -f app
+{code}
+
+h3. Problemy
+Jeśli napotkasz problemy:
+# Sprawdź logi ({{docker-compose logs}})
+# Zweryfikuj konfigurację ({{.env}})
+# Sprawdź connectivity do external services
+# Przejrzyj dokumentację w README.md
+
+h2. ✅ Checklist Produkcyjny
+
+Przed wdrożeniem na produkcję:
+
+* [ ] Wygenerowano silne sekr ety (32+ chars)
+* [ ] SSL certyfikat od trusted CA (nie self-signed)
+* [ ] Skonfigurowano MISP i/lub CrowdSec credentials
+* [ ] Firewall skonfigurowany (tylko 7003/tcp exposed)
+* [ ] {{.env}} zabezpieczony (chmod 600)
+* [ ] Backup {{.env}} w bezpiecznym miejscu
+* [ ] Monitorowanie skonfigurowane
+* [ ] Health checks działają
+* [ ] Logi są zbierane i analizowane
+* [ ] Plan backup i restore przetestowany
+* [ ] Dokumentacja dostępna dla zespołu
+* [ ] Secrets rotation schedule ustawiony
+
+h2. 🎉 Gotowe!
+
+System jest teraz gotowy do użycia. Dostęp:
+* Web UI: https://localhost:7003/
+* Health: https://localhost:7003/health
+* API Stats: https://localhost:7003/api/stats
+
+Powodzenia! 🛡️
