@@ -1,4 +1,4 @@
-.PHONY: up down logs ps test fmt benchmark benchmark-cluster gate readiness
+.PHONY: up down logs ps test fmt benchmark benchmark-cluster gate readiness dev-bootstrap dev-test dev-check
 
 up:
 	docker compose up -d --build
@@ -29,3 +29,12 @@ gate:
 
 readiness:
 	bash scripts/m16_release_readiness.sh
+
+dev-bootstrap:
+	bash scripts/dev-bootstrap.sh
+
+dev-test:
+	bash scripts/dev-test.sh
+
+dev-check:
+	bash scripts/dev-check.sh

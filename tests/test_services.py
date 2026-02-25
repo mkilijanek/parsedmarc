@@ -23,7 +23,7 @@ from app.services.misp import (
     TYPE_MAPPING,
     _normalize_value,
 )
-from app.services.common import retry_with_backoff
+from app.services.common import ExternalFeedRateLimiter, retry_with_backoff, throttle_external_request
 from app.services.mwdb import update_mwdb_indicators
 from app.services.malwarebazaar import update_malwarebazaar_indicators
 from app.services.mwdb import _build_tag_query
@@ -328,6 +328,63 @@ class TestRetryLogic:
         # Should have some delay due to backoff (0.1 + 0.2 = 0.3s minimum)
         assert duration >= 0.3
         assert result == "success"
+
+
+class TestExternalFeedRateLimiter:
+    def test_per_second_limit_waits(self, monkeypatch):
+        now = {"t": 0.0}
+        sleeps = []
+
+        def fake_monotonic():
+            return now["t"]
+
+        def fake_sleep(delay):
+            sleeps.append(delay)
+            now["t"] += delay
+
+        monkeypatch.setattr("app.services.common.time.monotonic", fake_monotonic)
+        monkeypatch.setattr("app.services.common.time.sleep", fake_sleep)
+
+        limiter = ExternalFeedRateLimiter(per_second=1, per_minute=0)
+        limiter.acquire(source="test")
+        limiter.acquire(source="test")
+
+        assert sleeps
+        assert sleeps[0] >= 1.0
+
+    def test_per_minute_limit_waits(self, monkeypatch):
+        now = {"t": 0.0}
+        sleeps = []
+
+        def fake_monotonic():
+            return now["t"]
+
+        def fake_sleep(delay):
+            sleeps.append(delay)
+            now["t"] += delay
+
+        monkeypatch.setattr("app.services.common.time.monotonic", fake_monotonic)
+        monkeypatch.setattr("app.services.common.time.sleep", fake_sleep)
+
+        limiter = ExternalFeedRateLimiter(per_second=0, per_minute=2)
+        limiter.acquire(source="test")
+        limiter.acquire(source="test")
+        limiter.acquire(source="test")
+
+        assert sleeps
+        assert sleeps[0] >= 60.0
+
+    def test_throttle_can_be_disabled_via_env(self, monkeypatch):
+        monkeypatch.setenv("FEED_RATE_LIMIT_ENABLED", "false")
+
+        called = {"waits": 0}
+
+        def fail_acquire(*args, **kwargs):
+            called["waits"] += 1
+
+        monkeypatch.setattr("app.services.common.ExternalFeedRateLimiter.acquire", fail_acquire)
+        throttle_external_request(source="test")
+        assert called["waits"] == 0
 
 
 # ============================================================================
