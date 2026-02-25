@@ -36,6 +36,128 @@ Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(3
 LOG_LEVEL=INFO
 ```
 
+### REQUESTS_PER_SECOND_MAX
+
+**Type:** Integer  
+**Default:** `1000000`  
+**Purpose:** Global hard safety cap for incoming request rate (application-level guardrail)
+
+```bash
+REQUESTS_PER_SECOND_MAX=1000000
+```
+
+### RATE_LIMITS_ENABLED
+
+**Type:** Boolean  
+**Default:** `true`  
+**Purpose:** Enable Flask-Limiter endpoint limits (`20/min`, `30/min`, etc.)
+
+```bash
+RATE_LIMITS_ENABLED=true
+```
+
+Use `false` only for controlled benchmark environments.
+
+### QUERY_RESULT_LIMIT_MAX
+
+**Type:** Integer  
+**Default:** `10000`  
+**Purpose:** Maximum `limit` accepted by `/indicators`
+
+```bash
+QUERY_RESULT_LIMIT_MAX=10000
+```
+
+### EXPORT_RESULT_LIMIT_MAX
+
+**Type:** Integer  
+**Default:** `200000`  
+**Purpose:** Maximum `limit` accepted by `/indicators/<format>`
+
+```bash
+EXPORT_RESULT_LIMIT_MAX=200000
+```
+
+### CORRELATION_LIMIT_MAX
+
+**Type:** Integer  
+**Default:** `5000`  
+**Purpose:** Maximum `limit` accepted by `/correlations`
+
+```bash
+CORRELATION_LIMIT_MAX=5000
+```
+
+### HEALTH_CACHE_TTL
+
+**Type:** Integer (seconds)  
+**Default:** `5`  
+**Purpose:** Short-lived Redis cache for `/health` to reduce DB/Redis probe pressure under load
+
+```bash
+HEALTH_CACHE_TTL=5
+```
+
+### CORRELATION_CACHE_TTL
+
+**Type:** Integer (seconds)  
+**Default:** `30`  
+**Purpose:** Redis cache TTL for `/correlations` responses
+
+```bash
+CORRELATION_CACHE_TTL=30
+```
+
+### CORRELATION_SNAPSHOT_ENABLED
+
+**Type:** Boolean  
+**Default:** `true`  
+**Purpose:** Enable worker-driven preaggregation snapshots for `/correlations`
+
+```bash
+CORRELATION_SNAPSHOT_ENABLED=true
+```
+
+### CORRELATION_SNAPSHOT_INTERVAL
+
+**Type:** Integer (seconds)  
+**Default:** `60`  
+**Purpose:** Snapshot refresh interval in background worker
+
+```bash
+CORRELATION_SNAPSHOT_INTERVAL=60
+```
+
+### CORRELATION_SNAPSHOT_MIN_SOURCES
+
+**Type:** Integer  
+**Default:** `2`  
+**Purpose:** `min_sources` used for generated snapshots
+
+```bash
+CORRELATION_SNAPSHOT_MIN_SOURCES=2
+```
+
+### CORRELATION_SNAPSHOT_LIMIT
+
+**Type:** Integer  
+**Default:** `1000`  
+**Purpose:** `limit` used for generated snapshots
+
+```bash
+CORRELATION_SNAPSHOT_LIMIT=1000
+```
+
+### CORRELATION_SNAPSHOT_TYPES
+
+**Type:** Comma-separated string  
+**Default:** `all,domain,ip,url,hash,email`  
+**Purpose:** IOC types to precompute for correlation snapshots
+
+```bash
+CORRELATION_SNAPSHOT_TYPES=all,domain,ip,url,hash,email
+```
+
 ---
 
 ## Database Configuration
@@ -50,10 +172,10 @@ DATABASE_URL=postgresql+psycopg2://threatfeed:PASSWORD@postgres:5432/threatfeed
 ```
 
 **Connection Pool:**
-- Pool size: 10 connections
-- Max overflow: 20 additional connections
+- Pool size: controlled by `DB_POOL_SIZE` (default: 6)
+- Max overflow: controlled by `DB_MAX_OVERFLOW` (default: 4)
 - Pool pre-ping: Enabled (detects stale connections)
-- Pool recycle: 1800 seconds (30 minutes)
+- Pool recycle: controlled by `DB_POOL_RECYCLE` (default: 1800s)
 
 ---
 
@@ -66,6 +188,46 @@ DATABASE_URL=postgresql+psycopg2://threatfeed:PASSWORD@postgres:5432/threatfeed
 
 ```bash
 REDIS_URL=redis://:PASSWORD@redis:6379/0
+```
+
+### DB_POOL_SIZE
+
+**Type:** Integer  
+**Default:** `6`  
+**Purpose:** Base SQLAlchemy connection pool size per process
+
+```bash
+DB_POOL_SIZE=6
+```
+
+### DB_MAX_OVERFLOW
+
+**Type:** Integer  
+**Default:** `4`  
+**Purpose:** Additional burst connections above pool size
+
+```bash
+DB_MAX_OVERFLOW=4
+```
+
+### DB_POOL_TIMEOUT
+
+**Type:** Integer (seconds)  
+**Default:** `30`  
+**Purpose:** Max wait time for a free DB connection from pool
+
+```bash
+DB_POOL_TIMEOUT=30
+```
+
+### DB_POOL_RECYCLE
+
+**Type:** Integer (seconds)  
+**Default:** `1800`  
+**Purpose:** Lifetime of pooled DB connections before recycle
+
+```bash
+DB_POOL_RECYCLE=1800
 ```
 
 ### CACHE_TTL
@@ -222,7 +384,7 @@ MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
 
 **Type:** String (API key)  
 **Default:** Empty (optional)  
-**Purpose:** MalwareBazaar API authentication (optional)
+**Purpose:** MalwareBazaar API authentication override. If empty, `ABUSECH_AUTH_KEY` is used.
 
 ```bash
 MALWAREBAZAAR_AUTH_KEY=your-api-key
@@ -236,6 +398,26 @@ MALWAREBAZAAR_AUTH_KEY=your-api-key
 
 ```bash
 MALWAREBAZAAR_SINCE_DATE=2025-01-01
+```
+
+#### MALWAREBAZAAR_TAGS
+
+**Type:** Comma-separated string  
+**Default:** Empty  
+**Purpose:** Worker tag list used for automatic MalwareBazaar ingestion
+
+```bash
+MALWAREBAZAAR_TAGS=TrickBot,Emotet
+```
+
+#### MALWAREBAZAAR_LIMIT
+
+**Type:** Integer  
+**Default:** `1000`  
+**Purpose:** Max number of indicators fetched per MalwareBazaar worker run
+
+```bash
+MALWAREBAZAAR_LIMIT=1000
 ```
 
 ---
@@ -260,6 +442,98 @@ MWDB_URL=https://mwdb.cert.pl
 
 ```bash
 MWDB_AUTH_KEY=your-mwdb-api-key
+```
+
+#### MWDB_TAGS
+
+**Type:** Comma-separated string  
+**Default:** Empty  
+**Purpose:** Worker tag list used for automatic MWDB ingestion
+
+```bash
+MWDB_TAGS=malware,apt
+```
+
+#### MWDB_LIMIT
+
+**Type:** Integer  
+**Default:** `1000`  
+**Purpose:** Max number of indicators fetched per MWDB worker run
+
+```bash
+MWDB_LIMIT=1000
+```
+
+---
+
+### abuse.ch Extended Integrations
+
+#### ABUSECH_AUTH_KEY
+
+**Type:** String (API key)  
+**Default:** Empty  
+**Purpose:** Shared auth key for abuse.ch APIs (ThreatFox/YARAify/Hunting). Source-specific keys can override.
+
+```bash
+ABUSECH_AUTH_KEY=your-auth-key
+```
+
+#### THREATFOX_* variables
+
+```bash
+THREATFOX_ENABLED=true
+THREATFOX_API_URL=https://threatfox-api.abuse.ch/api/v1/
+THREATFOX_AUTH_KEY=
+THREATFOX_DAYS=3
+THREATFOX_LIMIT=1000
+```
+
+#### URLHAUS_* variables
+
+```bash
+URLHAUS_ENABLED=true
+URLHAUS_FEED_URL=https://urlhaus.abuse.ch/downloads/text_online/
+URLHAUS_LIMIT=10000
+```
+
+#### FEODOTRACKER_* variables
+
+```bash
+FEODOTRACKER_ENABLED=true
+FEODOTRACKER_FEED_URL=https://feodotracker.abuse.ch/downloads/ipblocklist.txt
+FEODOTRACKER_LIMIT=10000
+```
+
+#### YARAIFY_* variables
+
+```bash
+YARAIFY_ENABLED=true
+YARAIFY_API_URL=https://yaraify-api.abuse.ch/api/v1/
+YARAIFY_AUTH_KEY=
+YARAIFY_IDENTIFIER=
+YARAIFY_LOOKUP_HASHES=
+YARAIFY_TASK_STATUS=processed
+YARAIFY_LIMIT=250
+```
+
+#### HUNTING_FPLIST_* variables
+
+```bash
+HUNTING_FPLIST_ENABLED=true
+HUNTING_API_URL=https://hunting-api.abuse.ch/api/v1/
+HUNTING_AUTH_KEY=
+HUNTING_FPLIST_FORMAT=csv
+HUNTING_FPLIST_LIMIT=10000
+```
+
+#### ABUSECH hardening variables
+
+```bash
+ABUSECH_TIMEOUT_S=30
+ABUSECH_RETRY_ATTEMPTS=4
+ABUSECH_RETRY_BASE_DELAY_S=1
+ABUSECH_CIRCUIT_FAIL_THRESHOLD=3
+ABUSECH_CIRCUIT_COOLDOWN_S=300
 ```
 
 ---
@@ -314,15 +588,25 @@ APP_PORT=8080
 ### WORKERS
 
 **Type:** Integer  
-**Default:** `4`  
+**Default:** `3`  
 **Purpose:** Number of Gunicorn workers
 
 ```bash
-# Recommended: 2-4 × CPU cores
-WORKERS=4
+# Shared-host baseline (4 vCPU / 12 GB budget)
+WORKERS=3
 ```
 
 **Formula:** `(2 × CPU_CORES) + 1`
+
+### GUNICORN_TIMEOUT
+
+**Type:** Integer (seconds)  
+**Default:** `120`  
+**Purpose:** Gunicorn worker timeout
+
+```bash
+GUNICORN_TIMEOUT=120
+```
 
 ---
 
@@ -441,10 +725,25 @@ CROWDSEC_LISTS=list1,list2,list3
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
 MALWAREBAZAAR_AUTH_KEY=your-key
 MALWAREBAZAAR_SINCE_DATE=2025-01-01
+MALWAREBAZAAR_TAGS=TrickBot,Emotet
+MALWAREBAZAAR_LIMIT=1000
 
 # MWDB
 MWDB_URL=https://mwdb.cert.pl
 MWDB_AUTH_KEY=your-mwdb-key
+MWDB_TAGS=malware,apt
+MWDB_LIMIT=1000
+
+# abuse.ch Extended
+ABUSECH_AUTH_KEY=your-auth-key
+THREATFOX_ENABLED=true
+THREATFOX_DAYS=3
+URLHAUS_ENABLED=true
+FEODOTRACKER_ENABLED=true
+YARAIFY_ENABLED=false
+YARAIFY_IDENTIFIER=
+HUNTING_FPLIST_ENABLED=true
+HUNTING_FPLIST_FORMAT=csv
 
 # Worker
 ENABLE_BACKGROUND_JOBS=true

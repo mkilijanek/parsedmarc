@@ -1,0 +1,37 @@
+groups:
+  - name: ioc_service_m15_ops
+    rules:
+      - alert: IOCServiceHighP99
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          milestone: m15
+        annotations:
+          summary: "IOC service p99 latency above 1s"
+          description: "Sustained tail-latency degradation."
+
+      - alert: IOCServiceErrorBudgetBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{http_status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total[5m])), 0.001)
+          ) > 0.005
+        for: 10m
+        labels:
+          severity: critical
+          milestone: m15
+        annotations:
+          summary: "IOC service error budget burn > 0.5%"
+          description: "5xx ratio exceeds short-window burn threshold."
+
+      - alert: IOCServiceDBP95Slow
+        expr: histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (le, endpoint)) > 0.6
+        for: 10m
+        labels:
+          severity: warning
+          milestone: m15
+        annotations:
+          summary: "DB query p95 above 600ms"
+          description: "Database response time degraded for at least one endpoint."

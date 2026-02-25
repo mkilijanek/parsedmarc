@@ -6,7 +6,6 @@ import json
 import time
 from datetime import datetime, timezone
 from typing import Iterable, Dict, Any, List
-import orjson
 
 from .models import Indicator
 
@@ -37,6 +36,14 @@ def _severity_from_confidence(conf: int) -> str:
 
 def _tlp_lower(tlp: str) -> str:
     return (tlp or "GREEN").lower()
+
+
+def _json_pretty(payload: Any) -> str:
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _json_compact(payload: Any) -> str:
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
 def export_txt(indicators: Iterable[Indicator]) -> str:
     # One per line: value
@@ -71,7 +78,7 @@ def export_json(indicators: Iterable[Indicator]) -> str:
         }
         for ind in indicators
     ]
-    return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode()
+    return _json_pretty(payload)
 
 def export_xml(indicators: Iterable[Indicator]) -> str:
     # Minimal XML suitable for ingestion pipelines; not vendor-specific
@@ -145,7 +152,7 @@ def export_sentinel_stix(indicators: Iterable[Indicator]) -> str:
             "tags": ind.tags or [],
         })
     payload = {"sourcesystem": "ThreatFeedAggregator", "indicators": objs}
-    return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode()
+    return _json_pretty(payload)
 
 # 4.6 Microsoft Defender for Endpoint (CSV)
 _DEFENDER_TYPE_MAP = {
@@ -194,7 +201,7 @@ def export_imperva_json(indicators: Iterable[Indicator]) -> str:
             "comment": "Threat feed indicator",
         })
     payload = {"name": "ThreatFeed-Blocklist", "entries": entries}
-    return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode()
+    return _json_pretty(payload)
 
 # 4.9 ArcSight (CEF)
 def export_arcsight_cef(indicators: Iterable[Indicator]) -> str:
@@ -214,14 +221,14 @@ def export_elasticsearch_bulk(indicators: Iterable[Indicator], index_name: str =
     now = _utc_iso(datetime.now(timezone.utc))
     for ind in indicators:
         doc_id = f"{ind.source}-{_sanitize_name(ind.value)}"
-        out.append(orjson.dumps({"index": {"_index": index_name, "_id": doc_id}}).decode())
-        out.append(orjson.dumps({
+        out.append(_json_compact({"index": {"_index": index_name, "_id": doc_id}}))
+        out.append(_json_compact({
             "@timestamp": now,
             "indicator": {"value": ind.value, "type": ind.type, "confidence": ind.confidence},
             "tlp": ind.tlp,
             "source": ind.source,
             "tags": ind.tags or [],
-        }).decode())
+        }))
     return "\n".join(out) + ("\n" if out else "")
 
 # 4.11 Cribl NDJSON with ECS-ish fields
@@ -229,7 +236,7 @@ def export_cribl_ndjson(indicators: Iterable[Indicator]) -> str:
     out = []
     ts = int(time.time())
     for ind in indicators:
-        out.append(orjson.dumps({
+        out.append(_json_compact({
             "_time": ts,
             "source": "threat-feed-aggregator",
             "sourcetype": "threat_intelligence",
@@ -244,7 +251,7 @@ def export_cribl_ndjson(indicators: Iterable[Indicator]) -> str:
             },
             "tlp": ind.tlp,
             "tags": ind.tags or [],
-        }).decode())
+        }))
     return "\n".join(out) + ("\n" if out else "")
 
 # 4.12 Splunk HEC batch
@@ -267,7 +274,7 @@ def export_splunk_hec(indicators: Iterable[Indicator], index: str = "threat_inte
                 "tags": ind.tags or [],
             }
         })
-    return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode()
+    return _json_pretty(payload)
 
 # 4.13 Fidelis STIX 2.1 Bundle
 def export_fidelis_stix_bundle(indicators: Iterable[Indicator]) -> str:
@@ -303,7 +310,7 @@ def export_fidelis_stix_bundle(indicators: Iterable[Indicator]) -> str:
             }
         })
     payload = {"type": "bundle", "id": bundle_id, "objects": objects}
-    return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode()
+    return _json_pretty(payload)
 
 # Registry for routes
 FORMATTERS = {

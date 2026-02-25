@@ -151,6 +151,7 @@ export|fmt=csv|q=...|type=...
 - Reduces database load
 - Improves response latency
 - Enables horizontal scaling
+- Adds visibility via cache hit/miss metrics (`cache_access_total`)
 
 ### 4. Background Worker
 
@@ -203,6 +204,7 @@ External Source → API Fetch → Normalization → Database Upsert → Feed Sta
 4. **Upsert:** `ON CONFLICT DO UPDATE` for idempotency
 5. **Audit:** Log ingestion stats and errors
 6. **Cache:** Clear relevant cache keys
+7. **Quality/Enrichment:** Canonical normalization, dedup, and metadata enrichment
 
 ### Query Flow (API Request)
 
@@ -215,12 +217,14 @@ Client Request → Nginx → Flask → Cache Check → Database Query → Format
 
 **Steps:**
 1. **Nginx:** TLS termination, rate limiting, security headers
-2. **Flask:** Parse query, validate syntax (max 500 chars)
-3. **Cache:** Check Redis for cached response
-4. **Database:** Execute parameterized SQL query
-5. **Format:** Apply output formatter (txt/csv/json/...)
-6. **Cache:** Store result in Redis (TTL: 5 minutes)
-7. **Response:** Return with security headers
+2. **Global Guardrail:** In-process hard cap `REQUESTS_PER_SECOND_MAX` (default 1,000,000 req/s)
+3. **Flask:** Parse query, validate syntax (max 500 chars)
+4. **Cache:** Check Redis for cached response
+5. **Database:** Execute parameterized SQL query with latency metrics (`db_query_duration_seconds`)
+6. **Correlation (optional):** Aggregate active IOCs across distinct sources via `/correlations`
+7. **Format:** Apply output formatter (txt/csv/json/...)
+8. **Cache:** Store result in Redis (TTL: 5 minutes)
+9. **Response:** Return with security headers
 
 ---
 
@@ -394,17 +398,17 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 | Component | Technology | Version | Purpose |
 |-----------|------------|---------|---------|
 | Application | Python | 3.11 | Runtime |
-| Web Framework | Flask | 3.0.3 | HTTP server |
+| Web Framework | Flask | 3.1.3 | HTTP server |
 | WSGI Server | Gunicorn | 22.0.0 | Production server |
 | Database | PostgreSQL | 16+ | Data storage |
 | Cache | Redis | 7+ | Response cache |
 | Reverse Proxy | Nginx | 1.24+ | TLS, rate limiting |
 | ORM | SQLAlchemy | 2.0.36 | Database abstraction |
-| HTTP Client | requests | 2.32.3 | External API calls |
+| HTTP Client | requests | 2.32.4 | External API calls |
 | Rate Limiting | Flask-Limiter | 3.7.0 | API rate limiting |
 | Metrics | prometheus-client | 0.20.0 | Metrics export |
 | MISP Client | pymisp | 2.4.179 | MISP integration |
-| JSON | orjson | 3.10.7 | Fast JSON serialization |
+| JSON | stdlib `json` | Python 3.11+ | JSON serialization |
 
 ---
 
@@ -476,7 +480,7 @@ docker compose up -d
 pytest tests/integration/ -v
 
 # Load tests
-locust -f tests/load_test.py --host=https://localhost:7003
+python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 --concurrency 64
 ```
 
 ---

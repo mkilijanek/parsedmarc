@@ -1,0 +1,73 @@
+name: Release Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build docker-compose images
+        run: |
+          docker compose build app worker
+
+      - name: Prepare release bundle
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          BUNDLE_ROOT="release-bundle"
+          BUNDLE_NAME="ioc-service-${TAG}-bundle"
+          mkdir -p "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts"
+
+          # Compose and image build context essentials.
+          cp docker-compose.yml "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
+          cp docker-compose.nginx.snippet.yml "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
+          cp Dockerfile "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
+          cp .env.example "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
+
+          # Shell scripts for benchmarking and container administration.
+          cp scripts/benchmark_cluster_m12.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/m15_chaos_check.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/m15_premerge_gate.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/m16_release_readiness.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/setup-ssl.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/generate-secrets.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/dev-env.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/load-secrets.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+
+          # Benchmark helpers used by .sh wrappers.
+          cp scripts/benchmark_m12.py "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/benchmark_suite_m14.py "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+
+          cat > "${BUNDLE_ROOT}/${BUNDLE_NAME}/MANIFEST.txt" <<'EOF'
+Included files:
+- docker-compose.yml
+- docker-compose.nginx.snippet.yml
+- Dockerfile
+- .env.example
+- scripts/*.sh for benchmark/admin tasks
+- scripts/benchmark_m12.py
+- scripts/benchmark_suite_m14.py
+EOF
+
+          tar -C "${BUNDLE_ROOT}" -czf "${BUNDLE_NAME}.tar.gz" "${BUNDLE_NAME}"
+          echo "ASSET_PATH=${BUNDLE_NAME}.tar.gz" >> "${GITHUB_ENV}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: ${{ env.ASSET_PATH }}
+
+      - name: Attach bundle to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET_PATH }}

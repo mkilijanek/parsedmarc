@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
+from collections import deque
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, Response, jsonify, request, make_response, redirect, url_for
+from flask import Flask, Response, jsonify, request, make_response, redirect, url_for, stream_with_context
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy import select, func, and_, or_, text
@@ -20,8 +23,20 @@ from .cache import get_redis
 from .security import validate_search_query, enforce_allowed_hosts, get_client_ip
 from .query_parser import parse_kibana_query, Term, Token
 from .formatters import FORMATTERS
+from .services.correlation import query_correlations
 
-from .metrics import request_count, request_duration, active_indicators, generate_latest, CONTENT_TYPE_LATEST
+from .metrics import (
+    request_count,
+    request_duration,
+    active_indicators,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+    correlation_queries_total,
+    correlation_query_duration_seconds,
+    correlation_groups_returned_total,
+    cache_access_total,
+    db_query_duration_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +65,24 @@ def create_app() -> Flask:
         app=app,
         storage_uri=cfg.REDIS_URL,
         default_limits=["60 per minute"],
+        enabled=cfg.RATE_LIMITS_ENABLED,
     )
+    # Keep a strong reference on the app to prevent flask-limiter weakref GC issues under load.
+    app.limiter = limiter  # type: ignore[attr-defined]
+    rps_window: deque[float] = deque()
+    rps_lock = Lock()
 
     @app.before_request
     def _sec_headers():
+        # Hard upper bound for inbound request rate (configured default: 1,000,000 req/s).
+        now = time.time()
+        with rps_lock:
+            cutoff = now - 1.0
+            while rps_window and rps_window[0] < cutoff:
+                rps_window.popleft()
+            if len(rps_window) >= max(1, int(cfg.REQUESTS_PER_SECOND_MAX)):
+                return jsonify({"error": "Global request rate exceeded"}), 429
+            rps_window.append(now)
         enforce_allowed_hosts()
 
     @app.after_request
@@ -111,6 +140,20 @@ def create_app() -> Flask:
         # stable ordering
         segs = [prefix] + [f"{k}={parts[k]}" for k in sorted(parts.keys())]
         return "|".join(segs)
+
+    def _parse_limit_offset(*, default_limit: int, max_limit: int) -> tuple[int, int] | tuple[None, None]:
+        try:
+            limit = int(request.args.get("limit", str(default_limit)))
+            offset = int(request.args.get("offset", "0"))
+        except ValueError:
+            return None, None
+        if limit < 1:
+            limit = 1
+        if limit > max_limit:
+            limit = max_limit
+        if offset < 0:
+            offset = 0
+        return limit, offset
 
     def _apply_term(db: Session, term: Term):
         field = term.field
@@ -225,7 +268,18 @@ def create_app() -> Flask:
     @app.get("/health")
     @limiter.limit("60 per minute")
     def health():
-        cfg = Config()
+        health_cache_key = _cache_key("health", deep=True)
+        try:
+            r = get_redis()
+            cached = r.get(health_cache_key)
+            if isinstance(cached, (str, bytes, bytearray)) and len(cached) > 0:
+                cache_access_total.labels(endpoint="health", status="hit").inc()
+                return Response(cached, mimetype="application/json")
+            cache_access_total.labels(endpoint="health", status="miss").inc()
+        except Exception:
+            cache_access_total.labels(endpoint="health", status="error").inc()
+            r = None
+
         checks = {"database": False, "redis": False, "misp": False, "crowdsec": False}
         # DB check
         try:
@@ -262,7 +316,14 @@ def create_app() -> Flask:
         checks["crowdsec"] = bool(cfg.CROWDSEC_API_KEY)
 
         status = "healthy" if all(checks.values()) else "degraded"
-        return jsonify({"status": status, "checks": checks})
+        payload = {"status": status, "checks": checks}
+        body = json.dumps(payload, separators=(",", ":"))
+        if r is not None:
+            try:
+                r.setex(health_cache_key, max(1, cfg.HEALTH_CACHE_TTL), body)
+            except Exception:
+                cache_access_total.labels(endpoint="health", status="error").inc()
+        return Response(body, mimetype="application/json")
 
     @app.get("/")
     def index():
@@ -295,20 +356,42 @@ def create_app() -> Flask:
             max_conf = int(request.args.get("max_conf")) if request.args.get("max_conf") else None
         except ValueError:
             return jsonify({"error": "min_conf/max_conf must be integers"}), 400
+        limit, offset = _parse_limit_offset(default_limit=1000, max_limit=max(1, cfg.QUERY_RESULT_LIMIT_MAX))
+        if limit is None or offset is None:
+            return jsonify({"error": "limit/offset must be integers"}), 400
 
         # Cache HTML response by params
-        cfg = Config()
-        cache_key = _cache_key("indicators_html", q=q or "", type=type_filter, tlp=tlp, source=source, min=min_conf, max=max_conf)
-        r = get_redis()
-        cached = r.get(cache_key)
+        cache_key = _cache_key(
+            "indicators_html",
+            q=q or "",
+            type=type_filter,
+            tlp=tlp,
+            source=source,
+            min=min_conf,
+            max=max_conf,
+            limit=limit,
+            offset=offset,
+        )
+        r = None
+        cached = None
+        try:
+            r = get_redis()
+            cached = r.get(cache_key)
+        except Exception:
+            cache_access_total.labels(endpoint="indicators_html", status="error").inc()
+            logger.warning("cache_unavailable", extra={"endpoint": "indicators_html"})
+
         if cached:
+            cache_access_total.labels(endpoint="indicators_html", status="hit").inc()
             resp = make_response(cached)
             resp.headers["Content-Type"] = "text/html; charset=utf-8"
             return resp
+        cache_access_total.labels(endpoint="indicators_html", status="miss").inc()
 
         db = _db()
         try:
-            rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=1000, offset=0)
+            with db_query_duration_seconds.labels(endpoint="indicators_view").time():
+                rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=limit, offset=offset)
         except Exception as e:
             db.close()
             return jsonify({"error": str(e)}), 400
@@ -320,8 +403,21 @@ def create_app() -> Flask:
 
         _audit("query", "indicator", None, {"q": q, "type": type_filter, "tlp": tlp, "source": source})
 
-        html = _render_indicators(rows, q=q, type_filter=type_filter, tlp=tlp, source=source, min_conf=min_conf, max_conf=max_conf)
-        r.setex(cache_key, cfg.CACHE_TTL, html)
+        html = _render_indicators(
+            rows,
+            q=q,
+            type_filter=type_filter,
+            tlp=tlp,
+            source=source,
+            min_conf=min_conf,
+            max_conf=max_conf,
+        )
+        if r is not None:
+            try:
+                r.setex(cache_key, cfg.CACHE_TTL, html)
+            except Exception:
+                cache_access_total.labels(endpoint="indicators_html", status="error").inc()
+                logger.warning("cache_write_failed", extra={"endpoint": "indicators_html"})
         resp = make_response(html)
         resp.headers["Content-Type"] = "text/html; charset=utf-8"
         return resp
@@ -335,6 +431,69 @@ def create_app() -> Flask:
         if not src or any(c in src for c in [' ', '\t', '\n', '\r', '/', '\\']):
             return jsonify({"error": "Invalid source"}), 400
         return redirect(url_for("indicators_view", source=src))
+
+    @app.get("/correlations")
+    @limiter.limit("20 per minute")
+    def correlations():
+        try:
+            min_sources = int(request.args.get("min_sources", "2"))
+            limit = int(request.args.get("limit", "1000"))
+        except ValueError:
+            correlation_queries_total.labels(status="error").inc()
+            return jsonify({"error": "min_sources/limit must be integers"}), 400
+        ioc_type = (request.args.get("type") or "all").lower()
+        if ioc_type not in {"all", "ip", "domain", "url", "hash", "email", "object_id"}:
+            correlation_queries_total.labels(status="error").inc()
+            return jsonify({"error": "invalid type"}), 400
+
+        cache_key = _cache_key(
+            "correlations",
+            min_sources=max(2, min_sources),
+            limit=min(limit, max(1, cfg.CORRELATION_LIMIT_MAX)),
+            type=ioc_type,
+        )
+        r = None
+        try:
+            r = get_redis()
+            cached = r.get(cache_key)
+            if isinstance(cached, (str, bytes, bytearray)) and len(cached) > 0:
+                cache_access_total.labels(endpoint="correlations", status="hit").inc()
+                return Response(cached, mimetype="application/json")
+            cache_access_total.labels(endpoint="correlations", status="miss").inc()
+        except Exception:
+            cache_access_total.labels(endpoint="correlations", status="error").inc()
+
+        db = _db()
+        try:
+            with correlation_query_duration_seconds.time():
+                with db_query_duration_seconds.labels(endpoint="correlations").time():
+                    groups = query_correlations(
+                        db,
+                        min_sources=min_sources,
+                        limit=min(limit, max(1, cfg.CORRELATION_LIMIT_MAX)),
+                        ioc_type=ioc_type,
+                    )
+            correlation_queries_total.labels(status="success").inc()
+            correlation_groups_returned_total.inc(len(groups))
+            payload = {
+                "count": len(groups),
+                "min_sources": max(2, min_sources),
+                "type": ioc_type,
+                "limit": min(limit, max(1, cfg.CORRELATION_LIMIT_MAX)),
+                "items": groups,
+            }
+            body = json.dumps(payload, separators=(",", ":"))
+            if r is not None:
+                try:
+                    r.setex(cache_key, max(1, cfg.CORRELATION_CACHE_TTL), body)
+                except Exception:
+                    cache_access_total.labels(endpoint="correlations", status="error").inc()
+            return Response(body, mimetype="application/json")
+        except Exception:
+            correlation_queries_total.labels(status="error").inc()
+            raise
+        finally:
+            db.close()
 
     @app.get("/indicators/<fmt>")
     @limiter.limit("30 per minute")
@@ -350,6 +509,10 @@ def create_app() -> Flask:
         type_filter = (request.args.get("type") or "all").lower()
         tlp = (request.args.get("tlp") or "all").upper()
         source = (request.args.get("source") or "all").lower()
+        stream = (request.args.get("stream") or "").strip().lower() in {"1", "true", "yes"}
+        limit, offset = _parse_limit_offset(default_limit=100000, max_limit=max(1, cfg.EXPORT_RESULT_LIMIT_MAX))
+        if limit is None or offset is None:
+            return jsonify({"error": "limit/offset must be integers"}), 400
 
         mime_map = {
             "txt": "text/plain; charset=utf-8",
@@ -363,19 +526,36 @@ def create_app() -> Flask:
             "fidelis": "application/json; charset=utf-8",
         }
 
-        cfg = Config()
-        cache_key = _cache_key("export", fmt=fmt, q=q or "", type=type_filter, tlp=tlp, source=source)
-        r = get_redis()
-        cached = r.get(cache_key)
+        cache_key = _cache_key(
+            "export",
+            fmt=fmt,
+            q=q or "",
+            type=type_filter,
+            tlp=tlp,
+            source=source,
+            limit=limit,
+            offset=offset,
+        )
+        r = None
+        cached = None
+        try:
+            r = get_redis()
+            cached = r.get(cache_key)
+        except Exception:
+            cache_access_total.labels(endpoint=f"export_{fmt}", status="error").inc()
+            logger.warning("cache_unavailable", extra={"endpoint": f"export_{fmt}"})
         if cached:
-            func_, mime = FORMATTERS[fmt]
+            cache_access_total.labels(endpoint=f"export_{fmt}", status="hit").inc()
+            _, mime = FORMATTERS[fmt]
             resp = make_response(cached)
             resp.headers["Content-Type"] = mime
             return resp
+        cache_access_total.labels(endpoint=f"export_{fmt}", status="miss").inc()
 
         db = _db()
         try:
-            rows = _query_indicators(db, q, type_filter, tlp, source, None, None, limit=100000, offset=0)
+            with db_query_duration_seconds.labels(endpoint=f"export_{fmt}").time():
+                rows = _query_indicators(db, q, type_filter, tlp, source, None, None, limit=limit, offset=offset)
         except Exception as e:
             db.close()
             return jsonify({"error": str(e)}), 400
@@ -396,7 +576,17 @@ def create_app() -> Flask:
             body = func_(rows)  # fallback
 
         _audit("export", "indicator", None, {"fmt": fmt, "count": len(rows), "q": q})
-        r.setex(cache_key, cfg.CACHE_TTL, body)
+        if not stream and r is not None:
+            try:
+                r.setex(cache_key, cfg.CACHE_TTL, body)
+            except Exception:
+                cache_access_total.labels(endpoint=f"export_{fmt}", status="error").inc()
+                logger.warning("cache_write_failed", extra={"endpoint": f"export_{fmt}"})
+        if stream and fmt in {"elasticsearch", "cribl"}:
+            def _iter():
+                for line in body.splitlines(True):
+                    yield line
+            return Response(stream_with_context(_iter()), mimetype=mime)
         resp = make_response(body)
         resp.headers["Content-Type"] = mime
         return resp
