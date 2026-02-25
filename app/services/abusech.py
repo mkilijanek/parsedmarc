@@ -20,9 +20,13 @@ from ..metrics import (
     feed_fetched_rows_total,
     feed_deactivated_rows_total,
     feed_update_duration_seconds,
+    quality_normalized_total,
+    quality_dropped_invalid_total,
+    quality_dedup_merged_total,
 )
 from ..models import FeedStats, Indicator
 from .common import retry_with_backoff
+from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
 _CIRCUIT_STATE: Dict[str, Dict[str, float]] = {}
@@ -570,6 +574,7 @@ def _upsert_source_rows(
     meta: Dict[str, Any],
 ) -> Dict[str, int]:
     incoming = {str(r.get("ioc_value") or "").strip() for r in rows if str(r.get("ioc_value") or "").strip()}
+    incoming_types = {str(r.get("ioc_type") or "").strip() for r in rows if str(r.get("ioc_type") or "").strip()}
     existing = db.query(Indicator.id, Indicator.value).filter(Indicator.source == source).all()
     existing_map = {value: ind_id for (ind_id, value) in existing}
     to_deactivate = [existing_map[v] for v in existing_map.keys() if v not in incoming]
@@ -578,14 +583,30 @@ def _upsert_source_rows(
             {"is_active": False, "last_seen": now}, synchronize_session=False
         )
 
+    related_sources_map: Dict[tuple[str, str], set[str]] = {}
+    if incoming and incoming_types:
+        related_rows = (
+            db.query(Indicator.value, Indicator.type, Indicator.source)
+            .filter(Indicator.value.in_(list(incoming)))
+            .filter(Indicator.type.in_(list(incoming_types)))
+            .all()
+        )
+        for value, ioc_type, rel_source in related_rows:
+            related_sources_map.setdefault((str(value), str(ioc_type)), set()).add(str(rel_source))
+
     for item in rows:
         value = str(item.get("ioc_value") or "").strip()
         if not value:
             continue
+        ioc_type = str(item.get("ioc_type") or _infer_ioc_type(value))
+        metadata_obj = dict(item.get("metadata") or {})
+        rel_sources = set(related_sources_map.get((value, ioc_type), set()))
+        rel_sources.add(source)
+        metadata_obj["related_sources"] = sorted(rel_sources)
         source_ref = str(item.get("source_ref") or value)
         stmt = pg_insert(Indicator.__table__).values(
             value=value,
-            type=str(item.get("ioc_type") or _infer_ioc_type(value)),
+            type=ioc_type,
             source=source,
             source_id=source_ref,
             first_seen=item.get("first_seen") or now,
@@ -593,7 +614,7 @@ def _upsert_source_rows(
             confidence=int(item.get("confidence") or 50),
             tlp=str(item.get("tlp") or "WHITE"),
             is_active=bool(item.get("is_active", True)),
-            metadata={source: item.get("metadata") or {}},
+            metadata={source: metadata_obj},
             tags=list(item.get("tags") or []),
         ).on_conflict_do_update(
             index_elements=["value", "source", "source_id"],
@@ -602,7 +623,7 @@ def _upsert_source_rows(
                 "is_active": True,
                 "confidence": int(item.get("confidence") or 50),
                 "tlp": str(item.get("tlp") or "WHITE"),
-                "metadata": {source: item.get("metadata") or {}},
+                "metadata": {source: metadata_obj},
                 "tags": list(item.get("tags") or []),
             },
         )
@@ -627,6 +648,21 @@ def _upsert_source_rows(
         )
     )
     return {"fetched": len(rows), "deactivated": len(to_deactivate)}
+
+
+def _quality_prepare_rows(source: str, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    canonical: List[Dict[str, Any]] = []
+    for row in rows:
+        normalized, reason = canonicalize_row(row, source=source)
+        if normalized is None:
+            quality_dropped_invalid_total.labels(source=source, reason=(reason or "invalid")).inc()
+            continue
+        canonical.append(normalized)
+    deduped, merged = dedup_rows(canonical)
+    quality_normalized_total.labels(source=source).inc(len(deduped))
+    if merged:
+        quality_dedup_merged_total.labels(source=source).inc(merged)
+    return deduped
 
 
 def _mark_feed_error(db, *, source: str, now: datetime, error: str) -> None:
@@ -785,6 +821,7 @@ def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
                     continue
                 try:
                     rows = fetch_fn()
+                    rows = _quality_prepare_rows(source, rows)
                     stats = _upsert_source_rows(
                         db,
                         source=source,

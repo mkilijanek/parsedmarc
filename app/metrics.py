@@ -10,3 +10,6 @@ feed_fetch_total = Counter('feed_fetch_total', 'Feed fetch attempts', ['source',
 feed_fetched_rows_total = Counter('feed_fetched_rows_total', 'Fetched rows per feed', ['source'])
 feed_deactivated_rows_total = Counter('feed_deactivated_rows_total', 'Deactivated rows per feed', ['source'])
 feed_update_duration_seconds = Histogram('feed_update_duration_seconds', 'Feed update duration', ['source'])
+quality_normalized_total = Counter('quality_normalized_total', 'Rows normalized by quality pipeline', ['source'])
+quality_dropped_invalid_total = Counter('quality_dropped_invalid_total', 'Rows dropped by quality pipeline', ['source', 'reason'])
+quality_dedup_merged_total = Counter('quality_dedup_merged_total', 'Rows merged during batch deduplication', ['source'])

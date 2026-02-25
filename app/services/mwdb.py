@@ -9,7 +9,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..config import Config
 from ..db import SessionLocal
+from ..metrics import quality_normalized_total, quality_dropped_invalid_total, quality_dedup_merged_total
 from ..models import FeedStats, Indicator
+from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +207,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
         logger.info("mwdb_skipped_no_tags")
         return {"fetched": 0, "deactivated": 0}
 
-    rows = list(
+    raw_rows = list(
         fetch_mwdb_by_tags(
             base_url=cfg.MWDB_URL,
             auth_key=cfg.MWDB_AUTH_KEY,
@@ -215,8 +217,20 @@ def update_mwdb_indicators() -> Dict[str, int]:
             limit=max(1, int(cfg.MWDB_LIMIT)),
         )
     )
+    canonical_rows: List[Dict[str, Any]] = []
+    for r in raw_rows:
+        normalized, reason = canonicalize_row(r, source="mwdb")
+        if normalized is None:
+            quality_dropped_invalid_total.labels(source="mwdb", reason=(reason or "invalid")).inc()
+            continue
+        canonical_rows.append(normalized)
+    rows, merged = dedup_rows(canonical_rows)
+    quality_normalized_total.labels(source="mwdb").inc(len(rows))
+    if merged:
+        quality_dedup_merged_total.labels(source="mwdb").inc(merged)
 
     incoming = {r["ioc_value"] for r in rows if r.get("ioc_value")}
+    incoming_types = {str(r.get("ioc_type") or "") for r in rows if r.get("ioc_type")}
     db = SessionLocal()
     try:
         existing = db.query(Indicator.id, Indicator.value).filter(Indicator.source == "mwdb").all()
@@ -227,13 +241,29 @@ def update_mwdb_indicators() -> Dict[str, int]:
                 {"is_active": False, "last_seen": now}, synchronize_session=False
             )
 
+        related_sources_map: Dict[tuple[str, str], set[str]] = {}
+        if incoming and incoming_types:
+            related_rows = (
+                db.query(Indicator.value, Indicator.type, Indicator.source)
+                .filter(Indicator.value.in_(list(incoming)))
+                .filter(Indicator.type.in_(list(incoming_types)))
+                .all()
+            )
+            for value, ioc_type, rel_source in related_rows:
+                related_sources_map.setdefault((str(value), str(ioc_type)), set()).add(str(rel_source))
+
         for item in rows:
             value = str(item.get("ioc_value") or "").strip()
             if not value:
                 continue
+            ioc_type = str(item.get("ioc_type") or "hash")
+            metadata_obj = dict(item.get("metadata") or {})
+            rel_sources = set(related_sources_map.get((value, ioc_type), set()))
+            rel_sources.add("mwdb")
+            metadata_obj["related_sources"] = sorted(rel_sources)
             stmt = pg_insert(Indicator.__table__).values(
                 value=value,
-                type=(item.get("ioc_type") or "hash"),
+                type=ioc_type,
                 source="mwdb",
                 source_id=str(item.get("source_ref") or value),
                 first_seen=item.get("first_seen") or now,
@@ -241,7 +271,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
                 confidence=int(item.get("confidence") or 60),
                 tlp=str(item.get("tlp") or "GREEN"),
                 is_active=True,
-                metadata={"mwdb": item.get("metadata") or {}},
+                metadata={"mwdb": metadata_obj},
                 tags=list(item.get("tags") or []),
             ).on_conflict_do_update(
                 index_elements=["value", "source", "source_id"],
@@ -250,7 +280,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
                     "is_active": True,
                     "confidence": int(item.get("confidence") or 60),
                     "tlp": str(item.get("tlp") or "GREEN"),
-                    "metadata": {"mwdb": item.get("metadata") or {}},
+                    "metadata": {"mwdb": metadata_obj},
                     "tags": list(item.get("tags") or []),
                 },
             )

@@ -95,6 +95,11 @@ pip install -r requirements.txt
 pytest -q
 ```
 
+Quality backfill (re-normalize existing indicators):
+```bash
+PYTHONPATH=. python scripts/backfill_quality_normalization.py
+```
+
 Contribution and quality gate:
 - See `CONTRIBUTING.md` for merge policy and smoke-test checklist.
 - CI (`.github/workflows/ci.yml`) enforces tests on Python 3.11/3.12 for pushes and PRs.
