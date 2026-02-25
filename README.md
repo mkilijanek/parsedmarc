@@ -122,6 +122,11 @@ M15 chaos check (Redis outage fallback validation):
 bash scripts/m15_chaos_check.sh
 ```
 
+M16 readiness report:
+```bash
+bash scripts/m16_release_readiness.sh
+```
+
 Docker cluster benchmark (1 replica vs N replicas):
 ```bash
 bash scripts/benchmark_cluster_m12.sh 4 20 64

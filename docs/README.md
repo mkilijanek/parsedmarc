@@ -11,6 +11,8 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
 - ⚡ **[Performance](performance.md)** - SLOs, benchmarking, degradation and runbook
 - 🛠️ **[Runbook](runbook.md)** - Incident response and release gate procedures
+- 🧭 **[M16 Finalization](m16-finalization.md)** - Go/no-go and closure checklist
+- 📆 **[Maintenance Plan](maintenance-plan.md)** - 90-day operating cadence and KPI policy
 - ✅ **[Contributing](../CONTRIBUTING.md)** - Quality gate and CI merge policy
 - 🔌 **[Data Sources](data-sources.md)** - MISP, CrowdSec, MalwareBazaar, MWDB integration
 - 💾 **[Database](database.md)** - Schema, indexes, and queries
@@ -53,6 +55,8 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 | **[configuration.md](configuration.md)** | Environment variables, examples | Ops, Admins |
 | **[performance.md](performance.md)** | SLOs, benchmark harness, runbook | Ops, SRE, Developers |
 | **[runbook.md](runbook.md)** | Incident response and rollback procedures | Ops, SRE |
+| **[m16-finalization.md](m16-finalization.md)** | Final release decision and residual risks | Tech Leads, Ops |
+| **[maintenance-plan.md](maintenance-plan.md)** | Post-release operating plan | Ops, SRE |
 
 ### Integration Documentation
 

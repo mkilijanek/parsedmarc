@@ -1,4 +1,4 @@
-.PHONY: up down logs ps test fmt benchmark benchmark-cluster
+.PHONY: up down logs ps test fmt benchmark benchmark-cluster gate readiness
 
 up:
 	docker compose up -d --build
@@ -23,3 +23,9 @@ benchmark:
 
 benchmark-cluster:
 	bash scripts/benchmark_cluster_m12.sh 4 20 64
+
+gate:
+	bash scripts/m15_premerge_gate.sh
+
+readiness:
+	bash scripts/m16_release_readiness.sh
