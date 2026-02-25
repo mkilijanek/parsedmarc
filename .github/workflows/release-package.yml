@@ -1,6 +1,17 @@
 name: Release Package
 
 on:
+  push:
+    branches:
+      - main
+      - kili
+      - kili-dev
+      - kordek
+  pull_request:
+    branches:
+      - main
+      - kili
+      - kordek
   release:
     types: [published]
 
@@ -8,7 +19,14 @@ permissions:
   contents: write
 
 jobs:
+  noop:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Release packaging workflow is active; package build runs only on release events."
+
   package-and-build:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,16 +65,16 @@ jobs:
           cp scripts/benchmark_m12.py "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
           cp scripts/benchmark_suite_m14.py "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
 
-          cat > "${BUNDLE_ROOT}/${BUNDLE_NAME}/MANIFEST.txt" <<'EOF'
-Included files:
-- docker-compose.yml
-- docker-compose.nginx.snippet.yml
-- Dockerfile
-- .env.example
-- scripts/*.sh for benchmark/admin tasks
-- scripts/benchmark_m12.py
-- scripts/benchmark_suite_m14.py
-EOF
+          {
+            echo "Included files:"
+            echo "- docker-compose.yml"
+            echo "- docker-compose.nginx.snippet.yml"
+            echo "- Dockerfile"
+            echo "- .env.example"
+            echo "- scripts/*.sh for benchmark/admin tasks"
+            echo "- scripts/benchmark_m12.py"
+            echo "- scripts/benchmark_suite_m14.py"
+          } > "${BUNDLE_ROOT}/${BUNDLE_NAME}/MANIFEST.txt"
 
           tar -C "${BUNDLE_ROOT}" -czf "${BUNDLE_NAME}.tar.gz" "${BUNDLE_NAME}"
           echo "ASSET_PATH=${BUNDLE_NAME}.tar.gz" >> "${GITHUB_ENV}"
