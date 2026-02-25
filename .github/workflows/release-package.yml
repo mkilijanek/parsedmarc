@@ -1,6 +1,17 @@
 name: Release Package
 
 on:
+  push:
+    branches:
+      - main
+      - kili
+      - kili-dev
+      - kordek
+  pull_request:
+    branches:
+      - main
+      - kili
+      - kordek
   release:
     types: [published]
 
@@ -8,7 +19,14 @@ permissions:
   contents: write
 
 jobs:
+  noop:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Release packaging workflow is active; package build runs only on release events."
+
   package-and-build:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

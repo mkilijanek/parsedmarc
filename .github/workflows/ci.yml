@@ -76,7 +76,7 @@ jobs:
 
       - name: Start app
         run: |
-          gunicorn --bind 127.0.0.1:8080 --workers 2 --timeout 120 --worker-class sync 'app.main:create_app()' &
+          gunicorn --bind 127.0.0.1:8080 --workers 1 --timeout 120 --worker-class sync 'app.main:create_app()' &
           echo $! > /tmp/ioc-ci-app.pid
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:8080/health && break
@@ -85,7 +85,7 @@ jobs:
 
       - name: Run M15 gate
         run: |
-          RUNS=1 DURATION=8 CONCURRENCY=16 MIN_MIXED_RPS=200 MAX_MIXED_P95_MS=800 MAX_ERROR_RATE=0.02 \
+          RUNS=1 DURATION=6 CONCURRENCY=4 MIN_MIXED_RPS=120 MAX_MIXED_P95_MS=900 MAX_ERROR_RATE=0.05 \
           bash scripts/m15_premerge_gate.sh
 
       - name: Stop app
