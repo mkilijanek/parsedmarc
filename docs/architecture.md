@@ -398,17 +398,17 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 | Component | Technology | Version | Purpose |
 |-----------|------------|---------|---------|
 | Application | Python | 3.11 | Runtime |
-| Web Framework | Flask | 3.0.3 | HTTP server |
+| Web Framework | Flask | 3.1.3 | HTTP server |
 | WSGI Server | Gunicorn | 22.0.0 | Production server |
 | Database | PostgreSQL | 16+ | Data storage |
 | Cache | Redis | 7+ | Response cache |
 | Reverse Proxy | Nginx | 1.24+ | TLS, rate limiting |
 | ORM | SQLAlchemy | 2.0.36 | Database abstraction |
-| HTTP Client | requests | 2.32.3 | External API calls |
+| HTTP Client | requests | 2.32.4 | External API calls |
 | Rate Limiting | Flask-Limiter | 3.7.0 | API rate limiting |
 | Metrics | prometheus-client | 0.20.0 | Metrics export |
 | MISP Client | pymisp | 2.4.179 | MISP integration |
-| JSON | orjson | 3.10.7 | Fast JSON serialization |
+| JSON | stdlib `json` | Python 3.11+ | JSON serialization |
 
 ---
 
