@@ -33,6 +33,7 @@ from app.services.abusech import (
     _pick_ioc_from_csv_row,
     fetch_urlhaus_urls,
     fetch_feodotracker_ips,
+    fetch_yaraify_lookup_hashes,
     update_abusech_indicators,
 )
 
@@ -710,6 +711,15 @@ class TestAbuseChHelpers:
         assert ioc == "bad.example.com"
         assert ioc_type == "domain"
 
+    def test_pick_ioc_from_hunting_csv_shape(self):
+        ioc, ioc_type = _pick_ioc_from_csv_row({
+            "time_stamp": "2026-02-25 10:28:04",
+            "entry_type": "sha256_hash",
+            "entry_value": "b7dcf1d156c1d47f27d960d59cceda1fb49276fff182e3078854a08dbb9281cc",
+        })
+        assert ioc == "b7dcf1d156c1d47f27d960d59cceda1fb49276fff182e3078854a08dbb9281cc"
+        assert ioc_type == "hash"
+
 
 class TestAbuseChFetchers:
     @patch("app.services.abusech.requests.get")
@@ -735,6 +745,33 @@ class TestAbuseChFetchers:
         assert len(rows) == 2
         assert all(r["ioc_type"] == "ip" for r in rows)
         assert rows[0]["source"] == "feodotracker"
+
+    @patch("app.services.abusech.requests.Session")
+    def test_fetch_yaraify_lookup_hashes(self, mock_session_cls):
+        mock_session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "query_status": "ok",
+            "data": [{
+                "sha256_hash": "c" * 64,
+                "first_seen": "2026-02-25 12:00:00",
+                "task_id": "task-1",
+            }]
+        }
+        mock_session.post.return_value = mock_response
+        mock_session_cls.return_value = mock_session
+
+        rows = list(fetch_yaraify_lookup_hashes(
+            api_url="https://yaraify-api.abuse.ch/api/v1/",
+            auth_key="key",
+            search_terms=["c" * 64],
+            limit=5,
+        ))
+        assert len(rows) == 1
+        assert rows[0]["ioc_value"] == "c" * 64
+        assert rows[0]["ioc_type"] == "hash"
+        assert rows[0]["source"] == "yaraify"
 
 
 class TestAbuseChUpdater:
@@ -788,6 +825,60 @@ class TestAbuseChUpdater:
         assert fake_db.executed >= 2
         assert fake_db.committed >= 1
         assert fake_db.closed == 1
+
+    @patch("app.services.abusech.SessionLocal")
+    @patch("app.services.abusech.fetch_hunting_fplist")
+    @patch("app.services.abusech.fetch_yaraify_lookup_hashes")
+    @patch("app.services.abusech.fetch_yaraify_tasks")
+    @patch("app.services.abusech.fetch_feodotracker_ips")
+    @patch("app.services.abusech.fetch_urlhaus_urls")
+    @patch("app.services.abusech.fetch_threatfox_iocs")
+    def test_update_abusech_yaraify_lookup_fallback(
+        self,
+        mock_threatfox,
+        mock_urlhaus,
+        mock_feodo,
+        mock_yaraify_tasks,
+        mock_yaraify_lookup,
+        mock_hunting,
+        mock_sessionlocal,
+    ):
+        mock_threatfox.return_value = iter([])
+        mock_urlhaus.return_value = iter([])
+        mock_feodo.return_value = iter([])
+        mock_yaraify_tasks.return_value = iter([])
+        mock_yaraify_lookup.return_value = iter([{
+            "ioc_value": "d" * 64,
+            "ioc_type": "hash",
+            "source_ref": "task-x",
+            "first_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "last_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "confidence": 55,
+            "tlp": "GREEN",
+            "is_active": True,
+            "tags": ["lookup_hash"],
+            "metadata": {"task_id": "task-x"},
+        }])
+        mock_hunting.return_value = iter([])
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "YARAIFY_ENABLED": "true",
+            "YARAIFY_IDENTIFIER": "",
+            "YARAIFY_LOOKUP_HASHES": "d" * 64,
+            "THREATFOX_ENABLED": "false",
+            "URLHAUS_ENABLED": "false",
+            "FEODOTRACKER_ENABLED": "false",
+            "HUNTING_FPLIST_ENABLED": "false",
+            "ABUSECH_AUTH_KEY": "key",
+        }, clear=False):
+            result = update_abusech_indicators()
+
+        assert "yaraify" in result
+        assert result["yaraify"]["fetched"] == 1
+        mock_yaraify_lookup.assert_called_once()
 
 
 # ============================================================================

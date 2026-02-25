@@ -6,6 +6,7 @@ from .abusech import (
     fetch_urlhaus_urls,
     fetch_feodotracker_ips,
     fetch_yaraify_tasks,
+    fetch_yaraify_lookup_hashes,
     fetch_hunting_fplist,
     update_abusech_indicators,
 )

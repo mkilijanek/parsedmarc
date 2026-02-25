@@ -85,6 +85,7 @@ class Config:
     YARAIFY_API_URL: str = field(default_factory=lambda: _env_str("YARAIFY_API_URL", "https://yaraify-api.abuse.ch/api/v1/"))
     YARAIFY_AUTH_KEY: str = field(default_factory=lambda: _env_str("YARAIFY_AUTH_KEY", ""))
     YARAIFY_IDENTIFIER: str = field(default_factory=lambda: _env_str("YARAIFY_IDENTIFIER", ""))
+    YARAIFY_LOOKUP_HASHES: str = field(default_factory=lambda: _env_str("YARAIFY_LOOKUP_HASHES", ""))
     YARAIFY_TASK_STATUS: str = field(default_factory=lambda: _env_str("YARAIFY_TASK_STATUS", "processed"))
     YARAIFY_LIMIT: int = field(default_factory=lambda: _env_int("YARAIFY_LIMIT", 250))
 

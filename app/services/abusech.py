@@ -252,12 +252,85 @@ def fetch_yaraify_tasks(
             return
 
 
+def fetch_yaraify_lookup_hashes(
+    *,
+    api_url: str,
+    auth_key: str,
+    search_terms: List[str],
+    limit: int = 250,
+    timeout_s: int = 30,
+) -> Iterator[Dict[str, Any]]:
+    yielded = 0
+    session = requests.Session()
+    headers = _abusech_headers(auth_key)
+    for term in search_terms:
+        search_term = (term or "").strip()
+        if not search_term:
+            continue
+        payload = {"query": "lookup_hash", "search_term": search_term}
+        resp = session.post(api_url, headers=headers, json=payload, timeout=timeout_s)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("query_status") != "ok":
+            logger.warning(
+                "yaraify_lookup_hash_failed",
+                extra={"search_term": search_term, "status": data.get("query_status")},
+            )
+            continue
+        entries = data.get("data", []) or []
+        if isinstance(entries, dict):
+            entries = [entries]
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            ioc_value = str(
+                item.get("sha256_hash")
+                or item.get("sha1_hash")
+                or item.get("md5_hash")
+                or item.get("sha3_384")
+                or search_term
+            ).strip()
+            if not ioc_value:
+                continue
+            fs = _parse_dt(item.get("first_seen")) or datetime.now(tz=timezone.utc)
+            yield {
+                "ioc_value": ioc_value,
+                "ioc_type": "hash",
+                "source": "yaraify",
+                "source_ref": str(item.get("task_id") or search_term),
+                "first_seen": fs,
+                "last_seen": fs,
+                "confidence": 55,
+                "tlp": "GREEN",
+                "is_active": True,
+                "tags": ["lookup_hash"],
+                "metadata": dict(item),
+            }
+            yielded += 1
+            if yielded >= max(1, min(limit, 1000)):
+                return
+
+
 def _pick_ioc_from_csv_row(row: Dict[str, str]) -> tuple[str, str] | tuple[None, None]:
+    lowered = {str(k).strip().lower(): str(v).strip() for k, v in row.items()}
+
+    entry_value = lowered.get("entry_value", "")
+    entry_type = lowered.get("entry_type", "").lower()
+    if entry_value:
+        if entry_type in {"ip"}:
+            return entry_value, "ip"
+        if entry_type in {"domain"}:
+            return entry_value, "domain"
+        if entry_type in {"url"}:
+            return entry_value, "url"
+        if entry_type in {"sha256_hash", "sha1_hash", "md5_hash", "sha3_384", "hash"}:
+            return entry_value, "hash"
+        return entry_value, _infer_ioc_type(entry_value)
+
     candidates = [
         "ioc", "value", "indicator", "ip", "domain", "url",
         "sha256_hash", "md5_hash", "sha1_hash", "hash",
     ]
-    lowered = {str(k).strip().lower(): str(v).strip() for k, v in row.items()}
     for key in candidates:
         val = lowered.get(key, "")
         if not val:
@@ -314,7 +387,13 @@ def fetch_hunting_fplist(
                 return
         return
 
-    reader = csv.DictReader(io.StringIO(resp.text))
+    csv_lines = []
+    for line in resp.text.splitlines():
+        ln = line.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        csv_lines.append(line)
+    reader = csv.DictReader(io.StringIO("\n".join(csv_lines)))
     for row in reader:
         ioc, ioc_type = _pick_ioc_from_csv_row(row)
         if not ioc or not ioc_type:
@@ -437,16 +516,30 @@ def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
                     limit=max(1, int(cfg.FEODOTRACKER_LIMIT)),
                 )
             )
-        if cfg.YARAIFY_ENABLED and (cfg.YARAIFY_IDENTIFIER or "").strip():
-            source_rows["yaraify"] = list(
-                fetch_yaraify_tasks(
-                    api_url=cfg.YARAIFY_API_URL,
-                    auth_key=cfg.YARAIFY_AUTH_KEY or auth_key,
-                    identifier=cfg.YARAIFY_IDENTIFIER.strip(),
-                    task_status=cfg.YARAIFY_TASK_STATUS,
-                    limit=max(1, int(cfg.YARAIFY_LIMIT)),
+        if cfg.YARAIFY_ENABLED:
+            yk = cfg.YARAIFY_AUTH_KEY or auth_key
+            identifier = (cfg.YARAIFY_IDENTIFIER or "").strip()
+            if identifier:
+                source_rows["yaraify"] = list(
+                    fetch_yaraify_tasks(
+                        api_url=cfg.YARAIFY_API_URL,
+                        auth_key=yk,
+                        identifier=identifier,
+                        task_status=cfg.YARAIFY_TASK_STATUS,
+                        limit=max(1, int(cfg.YARAIFY_LIMIT)),
+                    )
                 )
-            )
+            else:
+                search_terms = [x.strip() for x in (cfg.YARAIFY_LOOKUP_HASHES or "").split(",") if x.strip()]
+                if search_terms:
+                    source_rows["yaraify"] = list(
+                        fetch_yaraify_lookup_hashes(
+                            api_url=cfg.YARAIFY_API_URL,
+                            auth_key=yk,
+                            search_terms=search_terms,
+                            limit=max(1, int(cfg.YARAIFY_LIMIT)),
+                        )
+                    )
         if cfg.HUNTING_FPLIST_ENABLED:
             source_rows["abusech_hunting_fplist"] = list(
                 fetch_hunting_fplist(
