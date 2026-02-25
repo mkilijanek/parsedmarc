@@ -113,6 +113,7 @@ If Redis cache is unavailable:
 ## Monitoring Artifacts
 
 - Alert rules: `monitoring/alerts/m12-slo-alerts.yml`
+- Operations alerts: `monitoring/alerts/m15-operations-alerts.yml`
 - Dashboard template: `monitoring/grafana/m12-dashboard.json`
 
 Both artifacts are intentionally generic and can be imported into existing Prometheus/Grafana deployment.
@@ -136,3 +137,17 @@ Both artifacts are intentionally generic and can be imported into existing Prome
 - Ensure cache error metric returns near zero.
 - Validate latency returns below p95 target.
 - Re-run benchmark profile to confirm recovery.
+
+## M15 Release Gate
+
+Local pre-merge gate:
+
+```bash
+bash scripts/m15_premerge_gate.sh
+```
+
+Chaos fallback check:
+
+```bash
+bash scripts/m15_chaos_check.sh
+```

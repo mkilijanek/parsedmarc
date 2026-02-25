@@ -10,6 +10,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - 🏗️ **[Architecture](architecture.md)** - System design and components
 - ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
 - ⚡ **[Performance](performance.md)** - SLOs, benchmarking, degradation and runbook
+- 🛠️ **[Runbook](runbook.md)** - Incident response and release gate procedures
 - ✅ **[Contributing](../CONTRIBUTING.md)** - Quality gate and CI merge policy
 - 🔌 **[Data Sources](data-sources.md)** - MISP, CrowdSec, MalwareBazaar, MWDB integration
 - 💾 **[Database](database.md)** - Schema, indexes, and queries
@@ -51,6 +52,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 | **[architecture.md](architecture.md)** | System design, data flow, scalability | Developers, Architects |
 | **[configuration.md](configuration.md)** | Environment variables, examples | Ops, Admins |
 | **[performance.md](performance.md)** | SLOs, benchmark harness, runbook | Ops, SRE, Developers |
+| **[runbook.md](runbook.md)** | Incident response and rollback procedures | Ops, SRE |
 
 ### Integration Documentation
 
