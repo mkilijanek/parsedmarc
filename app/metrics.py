@@ -16,3 +16,5 @@ quality_dedup_merged_total = Counter('quality_dedup_merged_total', 'Rows merged 
 correlation_queries_total = Counter('correlation_queries_total', 'Correlation API queries', ['status'])
 correlation_query_duration_seconds = Histogram('correlation_query_duration_seconds', 'Correlation query duration')
 correlation_groups_returned_total = Counter('correlation_groups_returned_total', 'Correlation groups returned')
+cache_access_total = Counter('cache_access_total', 'Cache accesses', ['endpoint', 'status'])
+db_query_duration_seconds = Histogram('db_query_duration_seconds', 'Database query duration', ['endpoint'])

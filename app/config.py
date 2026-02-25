@@ -40,6 +40,10 @@ class Config:
     # Core
     SECRET_KEY: str = field(default_factory=_get_secret_key)
     LOG_LEVEL: str = field(default_factory=lambda: _env_str("LOG_LEVEL", "INFO").upper())
+    REQUESTS_PER_SECOND_MAX: int = field(default_factory=lambda: _env_int("REQUESTS_PER_SECOND_MAX", 1000000))
+    QUERY_RESULT_LIMIT_MAX: int = field(default_factory=lambda: _env_int("QUERY_RESULT_LIMIT_MAX", 10000))
+    EXPORT_RESULT_LIMIT_MAX: int = field(default_factory=lambda: _env_int("EXPORT_RESULT_LIMIT_MAX", 200000))
+    CORRELATION_LIMIT_MAX: int = field(default_factory=lambda: _env_int("CORRELATION_LIMIT_MAX", 5000))
 
     # DB / Redis
     DATABASE_URL: str = field(default_factory=lambda: _env_str("DATABASE_URL", "postgresql+psycopg2://threatfeed:threatfeed@localhost:5432/threatfeed"))

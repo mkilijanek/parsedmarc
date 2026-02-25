@@ -151,6 +151,7 @@ export|fmt=csv|q=...|type=...
 - Reduces database load
 - Improves response latency
 - Enables horizontal scaling
+- Adds visibility via cache hit/miss metrics (`cache_access_total`)
 
 ### 4. Background Worker
 
@@ -216,13 +217,14 @@ Client Request → Nginx → Flask → Cache Check → Database Query → Format
 
 **Steps:**
 1. **Nginx:** TLS termination, rate limiting, security headers
-2. **Flask:** Parse query, validate syntax (max 500 chars)
-3. **Cache:** Check Redis for cached response
-4. **Database:** Execute parameterized SQL query
-5. **Correlation (optional):** Aggregate active IOCs across distinct sources via `/correlations`
-5. **Format:** Apply output formatter (txt/csv/json/...)
-6. **Cache:** Store result in Redis (TTL: 5 minutes)
-7. **Response:** Return with security headers
+2. **Global Guardrail:** In-process hard cap `REQUESTS_PER_SECOND_MAX` (default 1,000,000 req/s)
+3. **Flask:** Parse query, validate syntax (max 500 chars)
+4. **Cache:** Check Redis for cached response
+5. **Database:** Execute parameterized SQL query with latency metrics (`db_query_duration_seconds`)
+6. **Correlation (optional):** Aggregate active IOCs across distinct sources via `/correlations`
+7. **Format:** Apply output formatter (txt/csv/json/...)
+8. **Cache:** Store result in Redis (TTL: 5 minutes)
+9. **Response:** Return with security headers
 
 ---
 

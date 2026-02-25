@@ -116,6 +116,18 @@ class TestMetricsEndpoint:
         response = client.get("/metrics")
         assert response.status_code == 200
 
+    def test_metrics_include_m11_performance_metrics(self, client, sample_indicators, fake_redis):
+        """Test M11 cache/database metrics are exported."""
+        with patch("app.main.get_redis", return_value=fake_redis):
+            client.get("/indicators?type=ip")
+            client.get("/indicators?type=ip")
+
+        response = client.get("/metrics")
+        assert response.status_code == 200
+        text = response.get_data(as_text=True)
+        assert "cache_access_total" in text
+        assert "db_query_duration_seconds" in text
+
 
 # ============================================================================
 # Index/Dashboard Endpoint
@@ -208,6 +220,19 @@ class TestIndicatorsViewEndpoint:
         response = client.get("/indicators")
         assert response.status_code == 200
 
+    def test_indicators_view_limit_offset(self, client, sample_indicators):
+        """Test indicators view supports limit/offset pagination params."""
+        response = client.get("/indicators?limit=1&offset=0")
+        assert response.status_code == 200
+        assert "text/html" in response.content_type
+
+    def test_indicators_view_invalid_limit_offset(self, client):
+        """Test indicators view rejects non-integer limit/offset."""
+        response = client.get("/indicators?limit=abc")
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "error" in data
+
 
 # ============================================================================
 # Sources Redirect Endpoint
@@ -284,6 +309,45 @@ class TestCorrelationEndpoint:
     def test_correlations_invalid_params(self, client):
         response = client.get("/correlations?min_sources=abc")
         assert response.status_code == 400
+
+    def test_correlations_limit_guardrail(self, client, test_db):
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        test_db.add_all([
+            Indicator(
+                value="guardrail.example.org",
+                type="domain",
+                source="mwdb",
+                source_id="g1",
+                confidence=70,
+                tlp="GREEN",
+                is_active=True,
+                tags=["x"],
+                metadata_={},
+                first_seen=now,
+                last_seen=now,
+            ),
+            Indicator(
+                value="guardrail.example.org",
+                type="domain",
+                source="threatfox",
+                source_id="g2",
+                confidence=75,
+                tlp="GREEN",
+                is_active=True,
+                tags=["y"],
+                metadata_={},
+                first_seen=now,
+                last_seen=now,
+            ),
+        ])
+        test_db.commit()
+
+        response = client.get("/correlations?min_sources=2&type=domain&limit=99999999")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["limit"] == 5000
 
 
 # ============================================================================
@@ -423,6 +487,22 @@ class TestExportEndpoints:
         """Test that export endpoints have rate limiting."""
         response = client.get("/indicators/json")
         assert response.status_code == 200
+
+    def test_export_limit_offset(self, client, sample_indicators):
+        """Test export endpoint supports limit/offset pagination params."""
+        response = client.get("/indicators/json?limit=1&offset=0")
+        assert response.status_code == 200
+        data = json.loads(response.get_data(as_text=True))
+        assert len(data) <= 1
+
+    def test_export_streaming_ndjson(self, client, sample_indicators):
+        """Test NDJSON export streaming mode."""
+        response = client.get("/indicators/elasticsearch?stream=1&limit=5")
+        assert response.status_code == 200
+        assert "application/x-ndjson" in response.content_type
+        body = response.get_data(as_text=True)
+        assert len(body.strip()) > 0
+        assert "\"index\"" in body
 
 
 # ============================================================================

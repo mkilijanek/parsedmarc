@@ -84,6 +84,7 @@ Kibana-like:
 - No hardcoded secrets; all secrets via environment variables.
 - DB queries compiled via SQLAlchemy expressions (parameterized).
 - Rate limiting: Nginx + Flask-Limiter (Redis backend).
+- App-level hard safety cap: `REQUESTS_PER_SECOND_MAX` (default `1_000_000` req/s).
 - Defense-in-depth validation of query strings (`max 500` chars, rejects obvious injection markers).
 - CrowdSec indicators are **always** enforced as `TLP:AMBER`.
 
@@ -109,6 +110,11 @@ Contribution and quality gate:
 ## Configuration
 
 - `MALWAREBAZAAR_SINCE_DATE` (optional): ISO date `YYYY-MM-DD`. When set, MALWAREBAZAAR_SINCE_DATE: ISO date `YYYY-MM-DD` (UTC). MalwareBazaar ingestion pulls entries from this date (inclusive) onward.
+- query/response safety limits:
+  - `REQUESTS_PER_SECOND_MAX` (default: `1000000`)
+  - `QUERY_RESULT_LIMIT_MAX` (default: `10000`)
+  - `EXPORT_RESULT_LIMIT_MAX` (default: `200000`)
+  - `CORRELATION_LIMIT_MAX` (default: `5000`)
 - `MALWAREBAZAAR_TAGS` (optional): comma-separated tags for worker auto-ingestion.
 - `MALWAREBAZAAR_LIMIT` (optional): max rows per run (default: `1000`).
 - `MWDB_TAGS` (optional): comma-separated tags for worker auto-ingestion.

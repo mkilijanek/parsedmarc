@@ -36,6 +36,46 @@ Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(3
 LOG_LEVEL=INFO
 ```
 
+### REQUESTS_PER_SECOND_MAX
+
+**Type:** Integer  
+**Default:** `1000000`  
+**Purpose:** Global hard safety cap for incoming request rate (application-level guardrail)
+
+```bash
+REQUESTS_PER_SECOND_MAX=1000000
+```
+
+### QUERY_RESULT_LIMIT_MAX
+
+**Type:** Integer  
+**Default:** `10000`  
+**Purpose:** Maximum `limit` accepted by `/indicators`
+
+```bash
+QUERY_RESULT_LIMIT_MAX=10000
+```
+
+### EXPORT_RESULT_LIMIT_MAX
+
+**Type:** Integer  
+**Default:** `200000`  
+**Purpose:** Maximum `limit` accepted by `/indicators/<format>`
+
+```bash
+EXPORT_RESULT_LIMIT_MAX=200000
+```
+
+### CORRELATION_LIMIT_MAX
+
+**Type:** Integer  
+**Default:** `5000`  
+**Purpose:** Maximum `limit` accepted by `/correlations`
+
+```bash
+CORRELATION_LIMIT_MAX=5000
+```
+
 ---
 
 ## Database Configuration

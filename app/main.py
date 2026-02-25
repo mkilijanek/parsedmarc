@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, Response, jsonify, request, make_response, redirect, url_for
+from flask import Flask, Response, jsonify, request, make_response, redirect, url_for, stream_with_context
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy import select, func, and_, or_, text
@@ -31,6 +33,8 @@ from .metrics import (
     correlation_queries_total,
     correlation_query_duration_seconds,
     correlation_groups_returned_total,
+    cache_access_total,
+    db_query_duration_seconds,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,9 +65,20 @@ def create_app() -> Flask:
         storage_uri=cfg.REDIS_URL,
         default_limits=["60 per minute"],
     )
+    rps_window: deque[float] = deque()
+    rps_lock = Lock()
 
     @app.before_request
     def _sec_headers():
+        # Hard upper bound for inbound request rate (configured default: 1,000,000 req/s).
+        now = time.time()
+        with rps_lock:
+            cutoff = now - 1.0
+            while rps_window and rps_window[0] < cutoff:
+                rps_window.popleft()
+            if len(rps_window) >= max(1, int(cfg.REQUESTS_PER_SECOND_MAX)):
+                return jsonify({"error": "Global request rate exceeded"}), 429
+            rps_window.append(now)
         enforce_allowed_hosts()
 
     @app.after_request
@@ -121,6 +136,20 @@ def create_app() -> Flask:
         # stable ordering
         segs = [prefix] + [f"{k}={parts[k]}" for k in sorted(parts.keys())]
         return "|".join(segs)
+
+    def _parse_limit_offset(*, default_limit: int, max_limit: int) -> tuple[int, int] | tuple[None, None]:
+        try:
+            limit = int(request.args.get("limit", str(default_limit)))
+            offset = int(request.args.get("offset", "0"))
+        except ValueError:
+            return None, None
+        if limit < 1:
+            limit = 1
+        if limit > max_limit:
+            limit = max_limit
+        if offset < 0:
+            offset = 0
+        return limit, offset
 
     def _apply_term(db: Session, term: Term):
         field = term.field
@@ -305,20 +334,35 @@ def create_app() -> Flask:
             max_conf = int(request.args.get("max_conf")) if request.args.get("max_conf") else None
         except ValueError:
             return jsonify({"error": "min_conf/max_conf must be integers"}), 400
+        limit, offset = _parse_limit_offset(default_limit=1000, max_limit=max(1, cfg.QUERY_RESULT_LIMIT_MAX))
+        if limit is None or offset is None:
+            return jsonify({"error": "limit/offset must be integers"}), 400
 
         # Cache HTML response by params
-        cfg = Config()
-        cache_key = _cache_key("indicators_html", q=q or "", type=type_filter, tlp=tlp, source=source, min=min_conf, max=max_conf)
+        cache_key = _cache_key(
+            "indicators_html",
+            q=q or "",
+            type=type_filter,
+            tlp=tlp,
+            source=source,
+            min=min_conf,
+            max=max_conf,
+            limit=limit,
+            offset=offset,
+        )
         r = get_redis()
         cached = r.get(cache_key)
         if cached:
+            cache_access_total.labels(endpoint="indicators_html", status="hit").inc()
             resp = make_response(cached)
             resp.headers["Content-Type"] = "text/html; charset=utf-8"
             return resp
+        cache_access_total.labels(endpoint="indicators_html", status="miss").inc()
 
         db = _db()
         try:
-            rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=1000, offset=0)
+            with db_query_duration_seconds.labels(endpoint="indicators_view").time():
+                rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=limit, offset=offset)
         except Exception as e:
             db.close()
             return jsonify({"error": str(e)}), 400
@@ -330,7 +374,15 @@ def create_app() -> Flask:
 
         _audit("query", "indicator", None, {"q": q, "type": type_filter, "tlp": tlp, "source": source})
 
-        html = _render_indicators(rows, q=q, type_filter=type_filter, tlp=tlp, source=source, min_conf=min_conf, max_conf=max_conf)
+        html = _render_indicators(
+            rows,
+            q=q,
+            type_filter=type_filter,
+            tlp=tlp,
+            source=source,
+            min_conf=min_conf,
+            max_conf=max_conf,
+        )
         r.setex(cache_key, cfg.CACHE_TTL, html)
         resp = make_response(html)
         resp.headers["Content-Type"] = "text/html; charset=utf-8"
@@ -363,13 +415,20 @@ def create_app() -> Flask:
         db = _db()
         try:
             with correlation_query_duration_seconds.time():
-                groups = query_correlations(db, min_sources=min_sources, limit=limit, ioc_type=ioc_type)
+                with db_query_duration_seconds.labels(endpoint="correlations").time():
+                    groups = query_correlations(
+                        db,
+                        min_sources=min_sources,
+                        limit=min(limit, max(1, cfg.CORRELATION_LIMIT_MAX)),
+                        ioc_type=ioc_type,
+                    )
             correlation_queries_total.labels(status="success").inc()
             correlation_groups_returned_total.inc(len(groups))
             return jsonify({
                 "count": len(groups),
                 "min_sources": max(2, min_sources),
                 "type": ioc_type,
+                "limit": min(limit, max(1, cfg.CORRELATION_LIMIT_MAX)),
                 "items": groups,
             })
         except Exception:
@@ -392,6 +451,10 @@ def create_app() -> Flask:
         type_filter = (request.args.get("type") or "all").lower()
         tlp = (request.args.get("tlp") or "all").upper()
         source = (request.args.get("source") or "all").lower()
+        stream = (request.args.get("stream") or "").strip().lower() in {"1", "true", "yes"}
+        limit, offset = _parse_limit_offset(default_limit=100000, max_limit=max(1, cfg.EXPORT_RESULT_LIMIT_MAX))
+        if limit is None or offset is None:
+            return jsonify({"error": "limit/offset must be integers"}), 400
 
         mime_map = {
             "txt": "text/plain; charset=utf-8",
@@ -405,19 +468,30 @@ def create_app() -> Flask:
             "fidelis": "application/json; charset=utf-8",
         }
 
-        cfg = Config()
-        cache_key = _cache_key("export", fmt=fmt, q=q or "", type=type_filter, tlp=tlp, source=source)
+        cache_key = _cache_key(
+            "export",
+            fmt=fmt,
+            q=q or "",
+            type=type_filter,
+            tlp=tlp,
+            source=source,
+            limit=limit,
+            offset=offset,
+        )
         r = get_redis()
         cached = r.get(cache_key)
         if cached:
+            cache_access_total.labels(endpoint=f"export_{fmt}", status="hit").inc()
             func_, mime = FORMATTERS[fmt]
             resp = make_response(cached)
             resp.headers["Content-Type"] = mime
             return resp
+        cache_access_total.labels(endpoint=f"export_{fmt}", status="miss").inc()
 
         db = _db()
         try:
-            rows = _query_indicators(db, q, type_filter, tlp, source, None, None, limit=100000, offset=0)
+            with db_query_duration_seconds.labels(endpoint=f"export_{fmt}").time():
+                rows = _query_indicators(db, q, type_filter, tlp, source, None, None, limit=limit, offset=offset)
         except Exception as e:
             db.close()
             return jsonify({"error": str(e)}), 400
@@ -438,7 +512,13 @@ def create_app() -> Flask:
             body = func_(rows)  # fallback
 
         _audit("export", "indicator", None, {"fmt": fmt, "count": len(rows), "q": q})
-        r.setex(cache_key, cfg.CACHE_TTL, body)
+        if not stream:
+            r.setex(cache_key, cfg.CACHE_TTL, body)
+        if stream and fmt in {"elasticsearch", "cribl"}:
+            def _iter():
+                for line in body.splitlines(True):
+                    yield line
+            return Response(stream_with_context(_iter()), mimetype=mime)
         resp = make_response(body)
         resp.headers["Content-Type"] = mime
         return resp

@@ -71,6 +71,8 @@ Returns Prometheus-compatible metrics for monitoring.
 - `correlation_queries_total` - Correlation API query count
 - `correlation_query_duration_seconds` - Correlation query latency
 - `correlation_groups_returned_total` - Returned correlation group count
+- `cache_access_total` - Cache hit/miss counter by endpoint
+- `db_query_duration_seconds` - Database query latency by endpoint
 
 **Security Note:** Deploy this endpoint behind internal network/VPN in production.
 
@@ -109,6 +111,8 @@ Unified indicator search and viewing endpoint with HTML interface.
 | `source` | string | Filter by data source | `misp`, `crowdsec`, `malwarebazaar`, `mwdb` |
 | `min_conf` | integer | Minimum confidence (0-100) | `70` |
 | `max_conf` | integer | Maximum confidence (0-100) | `90` |
+| `limit` | integer | Max rows returned (capped by `QUERY_RESULT_LIMIT_MAX`) | `1000` |
+| `offset` | integer | Result offset for pagination | `0` |
 
 **Search Query Syntax (Kibana-like):**
 
@@ -208,7 +212,11 @@ Export indicators in various formats for SIEM/firewall integration.
 
 **Rate Limit:** 30 requests/minute
 
-**Query Parameters:** Same as `/indicators` endpoint
+**Query Parameters:** Same as `/indicators` endpoint, plus:
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `stream` | boolean | Stream NDJSON response for `elasticsearch` and `cribl` (`1/true/yes`) | `false` |
 
 **Supported Formats:**
 
@@ -268,9 +276,10 @@ curl "https://localhost:7003/indicators/splunk" | \
 **Caching:** Export responses are cached in Redis for 5 minutes
 
 **Performance Notes:**
-- Exports are limited to 100,000 indicators
+- Exports are capped by `EXPORT_RESULT_LIMIT_MAX` (default: 200,000)
 - Large exports may take several seconds
 - Database-native exports (txt, csv, json) use PostgreSQL functions for better performance
+- Streaming mode is available for large NDJSON exports (`elasticsearch`, `cribl`)
 
 ---
 
@@ -393,6 +402,8 @@ Rate limits are enforced per client IP address:
 | `/sources/*` | 30/minute |
 | Default | 60/minute |
 
+Additionally, the app enforces a global hard cap `REQUESTS_PER_SECOND_MAX` (default: `1,000,000` req/s).
+
 **Rate Limit Headers:**
 ```
 X-RateLimit-Limit: 20
@@ -500,10 +511,12 @@ curl -k "https://localhost:7003/indicators/json" \
 ## API Limitations
 
 - Maximum query length: 500 characters
-- Maximum export limit: 100,000 indicators per request
+- Maximum `/indicators` page size is capped by `QUERY_RESULT_LIMIT_MAX` (default: 10,000)
+- Maximum export limit is capped by `EXPORT_RESULT_LIMIT_MAX` (default: 200,000)
+- Maximum correlation limit is capped by `CORRELATION_LIMIT_MAX` (default: 5,000)
 - Results are ordered by last_seen DESC
-- Pagination is not currently implemented (use limit/offset via query)
-- No streaming support for large exports
+- Pagination is available via `limit` and `offset`
+- Streaming is available for `elasticsearch` and `cribl` exports (`stream=1`)
 
 ---
 

@@ -109,6 +109,9 @@ Background worker fetches from MISP and CrowdSec every 10 minutes (configurable)
 - Redis response caching (5 min TTL)
 - Database-native exports
 - GIN/B-tree indexes
+- `limit`/`offset` pagination on view and export endpoints
+- Optional NDJSON streaming for `elasticsearch` and `cribl` exports
+- Global hard cap: `REQUESTS_PER_SECOND_MAX` (default 1,000,000 req/s)
 
 ---
 
