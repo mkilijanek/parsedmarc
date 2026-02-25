@@ -32,4 +32,28 @@ print("AUTO_DB_INIT: schema ensured")
 PY
 fi
 
+# Optional one-shot benchmark mode.
+# Usage:
+#   docker compose run --rm app --benchmark
+#   docker compose run --rm -e BENCHMARK_BASE_URL=http://app:8080 app --benchmark --duration 20 --concurrency 64
+if [ "${1:-}" = "--benchmark" ]; then
+  shift
+  BENCHMARK_BASE_URL="${BENCHMARK_BASE_URL:-http://app:8080}"
+  BENCHMARK_DURATION="${BENCHMARK_DURATION:-30}"
+  BENCHMARK_CONCURRENCY="${BENCHMARK_CONCURRENCY:-64}"
+  BENCHMARK_TIMEOUT="${BENCHMARK_TIMEOUT:-5}"
+  BENCHMARK_OUTPUT_JSON="${BENCHMARK_OUTPUT_JSON:-/tmp/m12-benchmark.json}"
+
+  echo "BENCHMARK: starting (base_url=${BENCHMARK_BASE_URL}, duration=${BENCHMARK_DURATION}s, concurrency=${BENCHMARK_CONCURRENCY})"
+  python /app/scripts/benchmark_m12.py \
+    --base-url "${BENCHMARK_BASE_URL}" \
+    --duration "${BENCHMARK_DURATION}" \
+    --concurrency "${BENCHMARK_CONCURRENCY}" \
+    --timeout "${BENCHMARK_TIMEOUT}" \
+    --output-json "${BENCHMARK_OUTPUT_JSON}" \
+    "$@"
+  echo "BENCHMARK: completed (report=${BENCHMARK_OUTPUT_JSON})"
+  exit 0
+fi
+
 exec "$@"

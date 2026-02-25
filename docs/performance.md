@@ -72,6 +72,21 @@ Implementation notes:
 - Uses `docker compose` for shared dependencies (`postgres`, `redis`) and starts app replicas as separate containers in the same Docker network.
 - Benchmark traffic is distributed across replica container IPs (client-side balancing).
 
+## Entrypoint Switch
+
+Container supports one-shot benchmark mode:
+
+```bash
+docker compose run --rm -e BENCHMARK_BASE_URL=http://app:8080 app --benchmark
+```
+
+Supported env vars:
+- `BENCHMARK_BASE_URL` (default: `http://app:8080`)
+- `BENCHMARK_DURATION` (default: `30`)
+- `BENCHMARK_CONCURRENCY` (default: `64`)
+- `BENCHMARK_TIMEOUT` (default: `5`)
+- `BENCHMARK_OUTPUT_JSON` (default: `/tmp/m12-benchmark.json`)
+
 ## Degradation Behavior
 
 If Redis cache is unavailable:

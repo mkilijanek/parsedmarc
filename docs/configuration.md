@@ -88,6 +88,26 @@ EXPORT_RESULT_LIMIT_MAX=200000
 CORRELATION_LIMIT_MAX=5000
 ```
 
+### HEALTH_CACHE_TTL
+
+**Type:** Integer (seconds)  
+**Default:** `5`  
+**Purpose:** Short-lived Redis cache for `/health` to reduce DB/Redis probe pressure under load
+
+```bash
+HEALTH_CACHE_TTL=5
+```
+
+### CORRELATION_CACHE_TTL
+
+**Type:** Integer (seconds)  
+**Default:** `30`  
+**Purpose:** Redis cache TTL for `/correlations` responses
+
+```bash
+CORRELATION_CACHE_TTL=30
+```
+
 ---
 
 ## Database Configuration

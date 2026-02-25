@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -267,7 +268,18 @@ def create_app() -> Flask:
     @app.get("/health")
     @limiter.limit("60 per minute")
     def health():
-        cfg = Config()
+        health_cache_key = _cache_key("health", deep=True)
+        try:
+            r = get_redis()
+            cached = r.get(health_cache_key)
+            if isinstance(cached, (str, bytes, bytearray)) and len(cached) > 0:
+                cache_access_total.labels(endpoint="health", status="hit").inc()
+                return Response(cached, mimetype="application/json")
+            cache_access_total.labels(endpoint="health", status="miss").inc()
+        except Exception:
+            cache_access_total.labels(endpoint="health", status="error").inc()
+            r = None
+
         checks = {"database": False, "redis": False, "misp": False, "crowdsec": False}
         # DB check
         try:
@@ -304,7 +316,14 @@ def create_app() -> Flask:
         checks["crowdsec"] = bool(cfg.CROWDSEC_API_KEY)
 
         status = "healthy" if all(checks.values()) else "degraded"
-        return jsonify({"status": status, "checks": checks})
+        payload = {"status": status, "checks": checks}
+        body = json.dumps(payload, separators=(",", ":"))
+        if r is not None:
+            try:
+                r.setex(health_cache_key, max(1, cfg.HEALTH_CACHE_TTL), body)
+            except Exception:
+                cache_access_total.labels(endpoint="health", status="error").inc()
+        return Response(body, mimetype="application/json")
 
     @app.get("/")
     def index():
@@ -427,6 +446,23 @@ def create_app() -> Flask:
             correlation_queries_total.labels(status="error").inc()
             return jsonify({"error": "invalid type"}), 400
 
+        cache_key = _cache_key(
+            "correlations",
+            min_sources=max(2, min_sources),
+            limit=min(limit, max(1, cfg.CORRELATION_LIMIT_MAX)),
+            type=ioc_type,
+        )
+        r = None
+        try:
+            r = get_redis()
+            cached = r.get(cache_key)
+            if isinstance(cached, (str, bytes, bytearray)) and len(cached) > 0:
+                cache_access_total.labels(endpoint="correlations", status="hit").inc()
+                return Response(cached, mimetype="application/json")
+            cache_access_total.labels(endpoint="correlations", status="miss").inc()
+        except Exception:
+            cache_access_total.labels(endpoint="correlations", status="error").inc()
+
         db = _db()
         try:
             with correlation_query_duration_seconds.time():
@@ -439,13 +475,20 @@ def create_app() -> Flask:
                     )
             correlation_queries_total.labels(status="success").inc()
             correlation_groups_returned_total.inc(len(groups))
-            return jsonify({
+            payload = {
                 "count": len(groups),
                 "min_sources": max(2, min_sources),
                 "type": ioc_type,
                 "limit": min(limit, max(1, cfg.CORRELATION_LIMIT_MAX)),
                 "items": groups,
-            })
+            }
+            body = json.dumps(payload, separators=(",", ":"))
+            if r is not None:
+                try:
+                    r.setex(cache_key, max(1, cfg.CORRELATION_CACHE_TTL), body)
+                except Exception:
+                    cache_access_total.labels(endpoint="correlations", status="error").inc()
+            return Response(body, mimetype="application/json")
         except Exception:
             correlation_queries_total.labels(status="error").inc()
             raise

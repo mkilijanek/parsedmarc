@@ -112,6 +112,11 @@ Docker cluster benchmark (1 replica vs N replicas):
 bash scripts/benchmark_cluster_m12.sh 4 20 64
 ```
 
+One-shot benchmark via container entrypoint switch:
+```bash
+docker compose run --rm -e BENCHMARK_BASE_URL=http://app:8080 app --benchmark
+```
+
 Contribution and quality gate:
 - See `CONTRIBUTING.md` for merge policy and smoke-test checklist.
 - CI (`.github/workflows/ci.yml`) enforces tests on Python 3.11/3.12 for pushes and PRs.

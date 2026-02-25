@@ -45,6 +45,8 @@ class Config:
     QUERY_RESULT_LIMIT_MAX: int = field(default_factory=lambda: _env_int("QUERY_RESULT_LIMIT_MAX", 10000))
     EXPORT_RESULT_LIMIT_MAX: int = field(default_factory=lambda: _env_int("EXPORT_RESULT_LIMIT_MAX", 200000))
     CORRELATION_LIMIT_MAX: int = field(default_factory=lambda: _env_int("CORRELATION_LIMIT_MAX", 5000))
+    HEALTH_CACHE_TTL: int = field(default_factory=lambda: _env_int("HEALTH_CACHE_TTL", 5))
+    CORRELATION_CACHE_TTL: int = field(default_factory=lambda: _env_int("CORRELATION_CACHE_TTL", 30))
 
     # DB / Redis
     DATABASE_URL: str = field(default_factory=lambda: _env_str("DATABASE_URL", "postgresql+psycopg2://threatfeed:threatfeed@localhost:5432/threatfeed"))
