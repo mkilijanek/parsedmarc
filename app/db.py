@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session, DeclarativeBase
 from sqlalchemy.pool import QueuePool
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://threatfeed:threatfeed@localhost:5432/threatfeed")
 
 class Base(DeclarativeBase):
     pass
