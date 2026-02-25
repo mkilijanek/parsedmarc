@@ -364,7 +364,7 @@ class TestMISPIntegration:
 
     def test_misp_missing_config(self):
         """Test MISP initialization fails with missing config."""
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict('os.environ', {'SECRET_KEY': 'a' * 32}, clear=True):
             from app.services.misp import _init_misp
             from app.config import Config
 
