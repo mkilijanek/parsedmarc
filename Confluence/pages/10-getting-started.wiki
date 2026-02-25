@@ -1,0 +1,203 @@
+h1. Getting Started
+
+{info:title=Documentation Metadata}
+Purpose: Entry point for installation and first-run setup.\\
+Source file: {code}README.md{code}\\
+Generated (UTC): 2026-02-25 15:51:58Z
+{info}
+
+h2. Content
+
+Production-ready threat feed aggregation and export service:
+* Ingests *CrowdSec* blocklists and *MISP* (IDS-flagged only, warninglist enforced)
+* Stores IOCs in *PostgreSQL 16* (JSONB + pg_trgm) with audit trail and feed stats
+* Caches exports/views in *Redis 7* (AOF, 512MB, LRU)
+* Serves HTTPS via *Nginx* (TLS 1.2+, HTTP/2, security headers, rate limiting)
+* Web UI: {{/indicators}} (Kibana-like search) with WCAG/ARIA attributes
+* Source shortcuts: {{/sources/<src>}} (e.g. {{/sources/bazaar}}, {{/sources/mwdb}})
+* 17 export formats via {{/indicators/<format>}}
+
+h2. Quickstart (Docker Compose)
+
+1) Copy env template and generate secrets:
+{code:language=bash}
+cp .env.example .env
+./scripts/generate-secrets.sh >> .env
+{code}
+
+2) Create dev TLS cert (self-signed):
+{code:language=bash}
+./scripts/setup-ssl.sh
+{code}
+
+3) Configure integrations (optional):
+* CrowdSec: set {{CROWDSEC_API_KEY}} and {{CROWDSEC_LISTS}} (comma-separated list IDs)
+* MISP: set {{MISP_URL}}, {{MISP_API_KEY}}, and {{MISP_VERIFY_SSL}}
+
+4) Start:
+{code:language=bash}
+docker compose up -d --build
+{code}
+
+5) Validate:
+{code:language=bash}
+curl -k https://localhost:7003/health
+curl -k https://localhost:7003/indicators
+curl -k https://localhost:7003/indicators/arcsight | head
+{code}
+
+h2. Endpoints
+
+* {{GET /health}} – health + integration checks
+* {{GET /}} – status overview
+* {{GET /indicators}} – unified view (HTML)
+* {{GET /indicators/<fmt>}} – export (TXT/CSV/JSON/XML + vendor formats)
+* {{GET /correlations}} – cross-source IOC correlation view (JSON)
+* {{GET /metrics}} – Prometheus metrics (deploy behind internal network/VPN if needed)
+
+h3. Export formats (17)
+
+Basic:
+* {{txt}}, {{csv}}, {{json}}, {{xml}}
+
+Firewall / blocklists:
+* {{fortigate}} (external block list)
+* {{fortigate_ips}}
+* {{checkpoint}}
+* {{paloalto}}
+
+SIEM / platforms:
+* {{sentinel}} (STIX wrapper JSON)
+* {{defender}} (CSV)
+* {{f5}} (iRule data group)
+* {{imperva}} (JSON)
+* {{arcsight}} (CEF)
+* {{elasticsearch}} (bulk NDJSON)
+* {{cribl}} (NDJSON)
+* {{splunk}} (HEC JSON)
+* {{fidelis}} (STIX 2.1 bundle)
+
+h2. Search syntax
+
+Kibana-like:
+* Operators: {{AND}}, {{OR}}, {{NOT}}
+* Predicates:
+* {{value:192.168.*}}
+* {{confidence:>70}} (also {{<}}, {{>=}}, {{<=}}, {{:}})
+* {{type:ip}}, {{tlp:AMBER}}, {{source:misp}}
+* {{tags:apt}}
+
+h2. Notes / Security
+
+* No hardcoded secrets; all secrets via environment variables.
+* DB queries compiled via SQLAlchemy expressions (parameterized).
+* Rate limiting: Nginx + Flask-Limiter (Redis backend).
+* App-level hard safety cap: {{REQUESTS_PER_SECOND_MAX}} (default {{1_000_000}} req/s).
+* Defense-in-depth validation of query strings ({{max 500}} chars, rejects obvious injection markers).
+* CrowdSec indicators are *always* enforced as {{TLP:AMBER}}.
+
+h2. Development
+
+Create local dev environment (venv):
+{code:language=bash}
+bash scripts/dev-bootstrap.sh
+{code}
+
+Run tests locally:
+{code:language=bash}
+bash scripts/dev-test.sh
+{code}
+
+Run compile + tests:
+{code:language=bash}
+bash scripts/dev-check.sh
+{code}
+
+Quality backfill (re-normalize existing indicators):
+{code:language=bash}
+PYTHONPATH=. python scripts/backfill_quality_normalization.py
+{code}
+
+M12 performance benchmark (mixed traffic profile):
+{code:language=bash}
+python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 --concurrency 64
+{code}
+
+M14 benchmark suite (3 runs, multiple traffic profiles, median summary):
+{code:language=bash}
+python scripts/benchmark_suite_m14.py --base-url http://127.0.0.1:8080 --duration 20 --concurrency 64 --runs 3
+{code}
+
+M15 release gate (tests + perf thresholds):
+{code:language=bash}
+bash scripts/m15_premerge_gate.sh
+{code}
+
+M15 chaos check (Redis outage fallback validation):
+{code:language=bash}
+bash scripts/m15_chaos_check.sh
+{code}
+
+M16 readiness report:
+{code:language=bash}
+bash scripts/m16_release_readiness.sh
+{code}
+
+Docker cluster benchmark (1 replica vs N replicas):
+{code:language=bash}
+bash scripts/benchmark_cluster_m12.sh 4 20 64
+{code}
+
+One-shot benchmark via container entrypoint switch:
+{code:language=bash}
+docker compose run --rm -e BENCHMARK_BASE_URL=http://app:8080 app --benchmark
+{code}
+
+Contribution and quality gate:
+* See {{CONTRIBUTING.md}} for merge policy and smoke-test checklist.
+* CI ({{.github/workflows/ci.yml}}) enforces tests on Python 3.11/3.12 for pushes and PRs.
+* Performance artifacts: {{docs/performance.md}}, {{monitoring/alerts/m12-slo-alerts.yml}}, {{monitoring/grafana/m12-dashboard.json}}.
+
+
+h2. Configuration
+
+* {{MALWAREBAZAAR_SINCE_DATE}} (optional): ISO date {{YYYY-MM-DD}}. When set, MALWAREBAZAAR_SINCE_DATE: ISO date {{YYYY-MM-DD}} (UTC). MalwareBazaar ingestion pulls entries from this date (inclusive) onward.
+* query/response safety limits:
+* {{REQUESTS_PER_SECOND_MAX}} (default: {{1000000}})
+* {{QUERY_RESULT_LIMIT_MAX}} (default: {{10000}})
+* {{EXPORT_RESULT_LIMIT_MAX}} (default: {{200000}})
+* {{CORRELATION_LIMIT_MAX}} (default: {{5000}})
+* {{MALWAREBAZAAR_TAGS}} (optional): comma-separated tags for worker auto-ingestion.
+* {{MALWAREBAZAAR_LIMIT}} (optional): max rows per run (default: {{1000}}).
+* {{MWDB_TAGS}} (optional): comma-separated tags for worker auto-ingestion.
+* {{MWDB_LIMIT}} (optional): max rows per run (default: {{1000}}).
+* outbound feed throttle (optional, enabled by default): {{FEED_REQUESTS_PER_SECOND}} (default: {{10}}), {{FEED_REQUESTS_PER_MINUTE}} (default: {{55}}), {{FEED_RATE_LIMIT_ENABLED}}.
+* abuse.ch extended integrations (optional): {{THREATFOX_*}}, {{URLHAUS_*}}, {{YARAIFY_*}}, {{FEODOTRACKER_*}}, {{HUNTING_FPLIST_*}}, with shared {{ABUSECH_AUTH_KEY}}.
+
+
+h2. CLI (IOC ingestion)
+
+Run locally:
+
+{code:language=bash}
+export DATABASE_URL='postgresql://iocuser:pass@localhost:5432/iocdb'
+python -m app.cli fetch --data-source bazaar --tags TrickBot --since 2025-01-01 --until 2025-01-31
+python -m app.cli fetch --data-source mwdb --tags EvilTag --since 2025-01-01 --config-file ./config/cli.env
+{code}
+
+h3. Config file
+{{--config-file}} supports JSON ({{.json}}) or {{.env}} style {{KEY=VALUE}}.
+Supported keys:
+* {{DATABASE_URL}}
+* {{TAGS}} (comma-separated)
+* {{SINCE}} (YYYY-MM-DD or ISO datetime)
+* {{UNTIL}} (YYYY-MM-DD or ISO datetime)
+* {{MALWAREBAZAAR_API_URL}}
+* {{MWDB_URL}}
+* {{MWDB_AUTH_KEY}}
+* {{ABUSECH_AUTH_KEY}} (preferred shared key for abuse.ch services)
+* {{MALWAREBAZAAR_AUTH_KEY}} (optional override)
+
+Precedence:
+* CLI flags override values from {{--config-file}}.
+* For {{DATABASE_URL}}, current precedence is: environment variable first, then {{--config-file}}.
