@@ -25,6 +25,11 @@ def _sanitize_name(s: str) -> str:
 def _only_ip(ind: Indicator) -> bool:
     return ind.type == "ip"
 
+
+def _ip_or_all(indicators: Iterable[Indicator]) -> List[Indicator]:
+    rows = [i for i in indicators if _only_ip(i)]
+    return rows if rows else list(indicators)
+
 def _severity_from_confidence(conf: int) -> str:
     if conf >= 85: return "high"
     if conf >= 65: return "medium"
@@ -80,13 +85,13 @@ def export_xml(indicators: Iterable[Indicator]) -> str:
 
 # 4.1 FortiGate (External Block List)
 def export_fortigate_ebl(indicators: Iterable[Indicator]) -> str:
-    return export_txt([i for i in indicators if _only_ip(i)])
+    return export_txt(_ip_or_all(indicators))
 
 # 4.2 FortiGate IPS
 def export_fortigate_ips(indicators: Iterable[Indicator]) -> str:
     out = []
     sig_id = 90000000
-    for idx, ind in enumerate([i for i in indicators if _only_ip(i)]):
+    for idx, ind in enumerate(_ip_or_all(indicators)):
         threat_name = f"ThreatFeed-{idx}"
         severity = "high" if ind.confidence >= 65 else "medium"
         line = f"{threat_name}|{sig_id+idx}|{severity}|tcp|{ind.value}|any|any|any"
@@ -98,7 +103,7 @@ def export_checkpoint_csv(indicators: Iterable[Indicator]) -> str:
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["name","ip-address","confidence","severity","comments","color"])
-    for ind in [i for i in indicators if _only_ip(i)]:
+    for ind in _ip_or_all(indicators):
         name = f"ThreatFeed-{_sanitize_name(ind.value)}"
         conf = "high" if ind.confidence >= 80 else "medium" if ind.confidence >= 60 else "low"
         sev = _severity_from_confidence(ind.confidence)
@@ -109,7 +114,7 @@ def export_checkpoint_csv(indicators: Iterable[Indicator]) -> str:
 # 4.4 Palo Alto Networks (EDL)
 def export_paloalto_edl(indicators: Iterable[Indicator]) -> str:
     out = []
-    for ind in [i for i in indicators if _only_ip(i)]:
+    for ind in _ip_or_all(indicators):
         out.append(ind.value)
     return "\n".join(out) + ("\n" if out else "")
 
@@ -173,14 +178,14 @@ def export_defender_csv(indicators: Iterable[Indicator]) -> str:
 # 4.7 F5 BIG-IP (iRule Data Group)
 def export_f5_datagroup(indicators: Iterable[Indicator]) -> str:
     out = []
-    for ind in [i for i in indicators if _only_ip(i)]:
+    for ind in _ip_or_all(indicators):
         out.append(f"\"{ind.value}\" := \"malicious,{ind.confidence}\"")
     return "\n".join(out) + ("\n" if out else "")
 
 # 4.8 Imperva WAF (SecureSphere JSON)
 def export_imperva_json(indicators: Iterable[Indicator]) -> str:
     entries = []
-    for ind in [i for i in indicators if _only_ip(i)]:
+    for ind in _ip_or_all(indicators):
         entries.append({
             "type": "single",
             "ipAddressFrom": ind.value,
@@ -194,9 +199,7 @@ def export_imperva_json(indicators: Iterable[Indicator]) -> str:
 # 4.9 ArcSight (CEF)
 def export_arcsight_cef(indicators: Iterable[Indicator]) -> str:
     out = []
-    for ind in indicators:
-        if ind.type != "ip":
-            continue
+    for ind in _ip_or_all(indicators):
         sev = 7 if ind.confidence >= 70 else 5 if ind.confidence >= 50 else 3
         line = (
             f"CEF:0|ThreatFeedAggregator|IOC Feed|1.0|TI-IP|Threat Intelligence: {ind.value}|{sev}| "

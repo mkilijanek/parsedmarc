@@ -120,9 +120,9 @@ class Indicator(Base):
     first_seen: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
     last_seen: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    confidence: Mapped[int] = mapped_column(Integer, server_default="50", nullable=False)
-    tlp: Mapped[str] = mapped_column(String(20), server_default="WHITE", nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    confidence: Mapped[int] = mapped_column(Integer, default=50, server_default="50", nullable=False)
+    tlp: Mapped[str] = mapped_column(String(20), default="WHITE", server_default="WHITE", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
 
     metadata_: Mapped[dict] = mapped_column("metadata", JSONCompat(), default=dict, nullable=False)
     tags: Mapped[list[str]] = mapped_column(StringArrayCompat(), default=list, nullable=False)

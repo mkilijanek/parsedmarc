@@ -2,10 +2,31 @@ from __future__ import annotations
 
 import os
 import re
-from flask import request, abort
+from flask import request as flask_request, abort
 from typing import Optional
 
 _MAX_QUERY_LEN = 500
+
+
+class _RequestAccessor:
+    """Patch-friendly request accessor for tests."""
+
+    __func__ = None
+
+    @property
+    def host(self):
+        return flask_request.host
+
+    @property
+    def headers(self):
+        return flask_request.headers
+
+    @property
+    def remote_addr(self):
+        return flask_request.remote_addr
+
+
+request = _RequestAccessor()
 
 def validate_search_query(query: str) -> bool:
     if query is None:
@@ -13,7 +34,7 @@ def validate_search_query(query: str) -> bool:
     if len(query) > _MAX_QUERY_LEN:
         return False
     # Defense-in-depth: even though we compile to SQLAlchemy safely, reject common SQLi payload markers
-    dangerous = ["--", ";", "/*", "*/", "DROP", "DELETE", "INSERT", "UPDATE", "ALTER"]
+    dangerous = ["--", ";", "/*", "*/", "DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "'", '"']
     up = query.upper()
     return not any(d in up for d in dangerous)
 

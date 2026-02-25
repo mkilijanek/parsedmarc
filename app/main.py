@@ -205,7 +205,7 @@ def create_app() -> Flask:
             stmt = stmt.where(_rpn_to_filter(db, rpn))
         if type_filter and type_filter != "all":
             stmt = stmt.where(Indicator.type == type_filter)
-        if tlp and tlp != "all":
+        if tlp and tlp != "ALL":
             stmt = stmt.where(Indicator.tlp == tlp)
         if source and source != "all":
             stmt = stmt.where(Indicator.source == source)
