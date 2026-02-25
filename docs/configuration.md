@@ -222,7 +222,7 @@ MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
 
 **Type:** String (API key)  
 **Default:** Empty (optional)  
-**Purpose:** MalwareBazaar API authentication (optional)
+**Purpose:** MalwareBazaar API authentication override. If empty, `ABUSECH_AUTH_KEY` is used.
 
 ```bash
 MALWAREBAZAAR_AUTH_KEY=your-api-key

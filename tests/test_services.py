@@ -670,6 +670,24 @@ class TestMalwareBazaarAutoUpdate:
         assert fake_db.closed == 1
         mock_fetch.assert_called_once()
 
+    @patch("app.services.malwarebazaar.SessionLocal")
+    @patch("app.services.malwarebazaar.fetch_malwarebazaar_by_tags")
+    def test_uses_abusech_key_fallback(self, mock_fetch, mock_sessionlocal):
+        mock_fetch.return_value = iter([])
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "MALWAREBAZAAR_TAGS": "trickbot",
+            "MALWAREBAZAAR_AUTH_KEY": "",
+            "ABUSECH_AUTH_KEY": "shared-key",
+        }, clear=False):
+            update_malwarebazaar_indicators()
+
+        kwargs = mock_fetch.call_args.kwargs
+        assert kwargs["auth_key"] == "shared-key"
+
 
 class TestAbuseChHelpers:
     def test_infer_ioc_type(self):
