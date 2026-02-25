@@ -69,10 +69,11 @@ def fake_redis():
 @pytest.fixture(scope="function")
 def app(test_db, fake_redis):
     """Create Flask app configured for testing."""
-    with patch("app.db.SessionLocal") as mock_session:
+    with patch("app.db.SessionLocal") as mock_session, patch("app.main.SessionLocal") as mock_main_session:
         with patch("app.cache.get_redis") as mock_redis, patch("app.main.get_redis") as mock_main_redis:
             # Mock database session
             mock_session.return_value = test_db
+            mock_main_session.return_value = test_db
 
             # Mock Redis
             mock_redis.return_value = fake_redis

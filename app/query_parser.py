@@ -89,6 +89,14 @@ def parse_kibana_query(query: str) -> List[Token]:
         val = raw[i+2]
         if not (isinstance(comp, str) and comp in {":",">","<",">=","<="}):
             raise ValueError("Expected comparison operator after field")
+        # Support Kibana-style numeric comparisons written as field:>70
+        # by normalizing ":" + ">" + "70" to ">" + "70".
+        if comp == ":" and isinstance(val, str) and val in {">","<",">=","<="}:
+            if i + 3 >= len(raw):
+                raise ValueError("Expected value after comparison operator")
+            comp = val
+            val = raw[i+3]
+            i += 1
         if not isinstance(val, str):
             raise ValueError("Expected value")
         parsed.append(Term(field=field, op=comp, value=val))
