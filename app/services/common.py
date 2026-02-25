@@ -19,8 +19,8 @@ def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay
             if attempt >= max_attempts:
                 raise
             sleep = min(max_delay, base_delay * (2 ** (attempt - 1)))
-            # jitter in range +/- jitter
+            # Additive jitter only extends wait time (never shortens below base backoff).
             delta = sleep * jitter
-            sleep = max(0.1, sleep + random.uniform(-delta, delta))
+            sleep = max(0.1, sleep + random.uniform(0, delta))
             logger.warning("retry_backoff", extra={"attempt": attempt, "sleep_s": round(sleep,3), "error": str(e)})
             time.sleep(sleep)

@@ -15,7 +15,7 @@ from .config import Config
 from .webui import webui_bp
 from .logging import setup_logging
 from .db import SessionLocal
-from .models import Indicator, FeedStats, AuditLog
+from .models import Indicator, FeedStats, AuditLog, tags_contains
 from .cache import get_redis
 from .security import validate_search_query, enforce_allowed_hosts, get_client_ip
 from .query_parser import parse_kibana_query, Term, Token
@@ -155,7 +155,7 @@ def create_app() -> Flask:
             # For simplicity we compare exact; upstream sources usually consistent.
             if op != ":":
                 raise ValueError("tags only supports ':' operator")
-            return col.any(value)
+            return tags_contains(col, value)
 
         # Text fields: tlp/type/source/value
         if op != ":":
@@ -205,7 +205,7 @@ def create_app() -> Flask:
             stmt = stmt.where(_rpn_to_filter(db, rpn))
         if type_filter and type_filter != "all":
             stmt = stmt.where(Indicator.type == type_filter)
-        if tlp and tlp != "all":
+        if tlp and tlp != "ALL":
             stmt = stmt.where(Indicator.tlp == tlp)
         if source and source != "all":
             stmt = stmt.where(Indicator.source == source)

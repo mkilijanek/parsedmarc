@@ -23,7 +23,7 @@ from fakeredis import FakeRedis
 # Set test environment variables before importing app modules
 os.environ.setdefault("SECRET_KEY", "test-secret-key-minimum-32-characters-long-for-security")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("REDIS_URL", "memory://")
 os.environ.setdefault("LOG_LEVEL", "ERROR")
 os.environ.setdefault("ALLOWED_HOSTS", "*")
 os.environ.setdefault("TRUSTED_PROXY_COUNT", "0")
@@ -69,13 +69,15 @@ def fake_redis():
 @pytest.fixture(scope="function")
 def app(test_db, fake_redis):
     """Create Flask app configured for testing."""
-    with patch("app.db.SessionLocal") as mock_session:
-        with patch("app.cache.get_redis") as mock_redis:
+    with patch("app.db.SessionLocal") as mock_session, patch("app.main.SessionLocal") as mock_main_session:
+        with patch("app.cache.get_redis") as mock_redis, patch("app.main.get_redis") as mock_main_redis:
             # Mock database session
             mock_session.return_value = test_db
+            mock_main_session.return_value = test_db
 
             # Mock Redis
             mock_redis.return_value = fake_redis
+            mock_main_redis.return_value = fake_redis
 
             # Create app
             app = create_app()

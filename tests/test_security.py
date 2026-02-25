@@ -442,7 +442,7 @@ class TestMISPSSLVerification:
 
     def test_misp_ssl_verify_default_true(self):
         """Test that MISP_VERIFY_SSL defaults to true."""
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"SECRET_KEY": "a" * 32}, clear=True):
             # Remove MISP_VERIFY_SSL from environment
             if "MISP_VERIFY_SSL" in os.environ:
                 del os.environ["MISP_VERIFY_SSL"]

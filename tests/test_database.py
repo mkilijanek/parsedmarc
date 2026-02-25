@@ -66,7 +66,7 @@ class TestIndicatorModel:
         assert indicator.tlp == "WHITE"
         assert indicator.is_active is True
         assert indicator.tags == []
-        assert indicator.metadata == {}
+        assert indicator.metadata_ == {}
         assert indicator.first_seen is not None
         assert indicator.last_seen is not None
         assert indicator.created_at is not None
@@ -213,9 +213,9 @@ class TestIndicatorModel:
 
         # Verify metadata
         retrieved = test_db.query(Indicator).filter_by(id=indicator.id).first()
-        assert retrieved.metadata["registrar"] == "evil-registrar"
-        assert retrieved.metadata["asn"] == 12345
-        assert retrieved.metadata["nested"]["key"] == "value"
+        assert retrieved.metadata_["registrar"] == "evil-registrar"
+        assert retrieved.metadata_["asn"] == 12345
+        assert retrieved.metadata_["nested"]["key"] == "value"
 
 
 # ============================================================================
@@ -326,7 +326,7 @@ class TestIndicatorQueries:
 
     def test_query_by_date_range(self, test_db, sample_indicators):
         """Test filtering by date range."""
-        cutoff = datetime(2025, 1, 10, tzinfo=timezone.utc)
+        cutoff = datetime(2025, 1, 10)
         recent = test_db.query(Indicator).filter(
             Indicator.last_seen > cutoff,
             Indicator.is_active == True
@@ -372,7 +372,7 @@ class TestFeedStatsModel:
         assert stats.active_indicators == 0
         assert stats.inactive_indicators == 0
         assert stats.last_update is not None
-        assert stats.metadata == {}
+        assert stats.metadata_ == {}
 
     def test_feed_stats_unique_constraint(self, test_db):
         """Test unique constraint on (source, source_id)."""
@@ -454,7 +454,7 @@ class TestAuditLogModel:
         test_db.commit()
 
         assert log.created_at is not None
-        assert log.metadata == {}
+        assert log.metadata_ == {}
 
     def test_audit_log_query_by_action(self, test_db):
         """Test querying audit logs by action."""
@@ -492,8 +492,8 @@ class TestAuditLogModel:
 
         # Retrieve and verify metadata
         retrieved = test_db.query(AuditLog).filter_by(id=log.id).first()
-        assert retrieved.metadata["format"] == "json"
-        assert retrieved.metadata["count"] == 100
+        assert retrieved.metadata_["format"] == "json"
+        assert retrieved.metadata_["count"] == 100
 
 
 # ============================================================================
