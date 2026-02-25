@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - kili
+      - kili-dev
+  pull_request:
+    branches:
+      - main
+      - kili
+      - kordek
+
+jobs:
+  test:
+    name: tests (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    env:
+      PYTHONPATH: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run test suite
+        run: pytest -q
+
+  release-gate:
+    name: m15 release gate
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      PYTHONPATH: .
+      SECRET_KEY: ci-secret-key-minimum-32-characters
+      DATABASE_URL: sqlite:////tmp/ioc-ci.db
+      REDIS_URL: memory://
+      LOG_LEVEL: ERROR
+      ALLOWED_HOSTS: "*"
+      TRUSTED_PROXY_COUNT: "0"
+      MISP_VERIFY_SSL: "true"
+      ENABLE_BACKGROUND_JOBS: "false"
+      RATE_LIMITS_ENABLED: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start app
+        run: |
+          gunicorn --bind 127.0.0.1:8080 --workers 2 --timeout 120 --worker-class sync 'app.main:create_app()' &
+          echo $! > /tmp/ioc-ci-app.pid
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/health && break
+            sleep 1
+          done
+
+      - name: Run M15 gate
+        run: |
+          RUNS=1 DURATION=8 CONCURRENCY=16 MIN_MIXED_RPS=200 MAX_MIXED_P95_MS=800 MAX_ERROR_RATE=0.02 \
+          bash scripts/m15_premerge_gate.sh
+
+      - name: Stop app
+        if: always()
+        run: |
+          kill "$(cat /tmp/ioc-ci-app.pid)" || true

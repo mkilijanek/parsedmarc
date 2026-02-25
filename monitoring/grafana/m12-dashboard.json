@@ -1,0 +1,76 @@
+{
+  "title": "IOC Service - M12 Performance",
+  "tags": ["ioc", "m12", "performance"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request Throughput (req/s)",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[1m]))",
+          "legendFormat": "total"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx Error Rate",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{http_status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 0.001)",
+          "legendFormat": "5xx rate"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50/p95/p99",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache Hit/Miss/Error Rate",
+      "targets": [
+        {
+          "expr": "sum(rate(cache_access_total{status=\"hit\"}[5m]))",
+          "legendFormat": "hit"
+        },
+        {
+          "expr": "sum(rate(cache_access_total{status=\"miss\"}[5m]))",
+          "legendFormat": "miss"
+        },
+        {
+          "expr": "sum(rate(cache_access_total{status=\"error\"}[5m]))",
+          "legendFormat": "error"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DB Query p95 by Endpoint",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (le, endpoint))",
+          "legendFormat": "{{endpoint}}"
+        }
+      ]
+    }
+  ]
+}

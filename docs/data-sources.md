@@ -109,14 +109,18 @@ Headers:
 ### 3. MalwareBazaar (abuse.ch)
 
 **Type:** Malware sample repository  
-**Integration:** REST API (CLI tool)  
-**Update Method:** Manual via CLI
+**Integration:** REST API  
+**Update Method:** Worker auto-update (tag-based) + manual CLI
 
 **Configuration:**
 ```bash
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
-MALWAREBAZAAR_AUTH_KEY=your-key  # Optional
+ABUSECH_AUTH_KEY=your-key
+# optional override:
+# MALWAREBAZAAR_AUTH_KEY=your-key
 MALWAREBAZAAR_SINCE_DATE=2025-01-01  # Optional
+MALWAREBAZAAR_TAGS=TrickBot,Emotet
+MALWAREBAZAAR_LIMIT=1000
 ```
 
 **CLI Usage:**
@@ -147,13 +151,15 @@ python -m app.cli fetch \
 ### 4. MWDB (CERT.pl Malware Database)
 
 **Type:** Malware repository  
-**Integration:** REST API (CLI tool)  
-**Update Method:** Manual via CLI
+**Integration:** REST API  
+**Update Method:** Worker auto-update (tag-based) + manual CLI
 
 **Configuration:**
 ```bash
 MWDB_URL=https://mwdb.cert.pl
 MWDB_AUTH_KEY=your-api-key
+MWDB_TAGS=malware,apt
+MWDB_LIMIT=1000
 ```
 
 **CLI Usage:**
@@ -178,14 +184,55 @@ python -m app.cli fetch \
 
 ---
 
+### 5. abuse.ch Extended Feeds
+
+**Type:** Mixed IOC feeds  
+**Integration:** REST API + text feeds  
+**Update Method:** Worker auto-update (opt-in)
+
+**Supported feeds:**
+- ThreatFox (`https://threatfox-api.abuse.ch/api/v1/`)
+- URLhaus (`https://urlhaus.abuse.ch/downloads/text_online/`)
+- YARAify (`https://yaraify-api.abuse.ch/api/v1/`)
+- FeodoTracker (`https://feodotracker.abuse.ch/downloads/ipblocklist.txt`)
+- Hunting API false-positive list (`https://hunting-api.abuse.ch/api/v1/`, query `get_fplist`)
+
+**Configuration:**
+```bash
+ABUSECH_AUTH_KEY=your-auth-key
+
+THREATFOX_ENABLED=true
+THREATFOX_DAYS=3
+
+URLHAUS_ENABLED=true
+FEODOTRACKER_ENABLED=true
+
+YARAIFY_ENABLED=true
+YARAIFY_IDENTIFIER=your-identifier
+YARAIFY_LOOKUP_HASHES=sha256_1,sha256_2
+
+HUNTING_FPLIST_ENABLED=true
+HUNTING_FPLIST_FORMAT=csv
+```
+
+**IOC types:**
+- ThreatFox: IP/domain/url/hash (normalized)
+- URLhaus: URL
+- YARAify: hash
+- FeodoTracker: IP
+- Hunting FP list: inferred from CSV/JSON fields (`ioc`, `value`, `ip`, `domain`, `url`, hash fields)
+
+---
+
 ## Source Comparison
 
 | Source | Auto Update | IOC Types | TLP Support | Confidence | API Auth |
 |--------|-------------|-----------|-------------|------------|----------|
 | MISP | ✅ Yes | All | ✅ Yes | Dynamic | API Key |
 | CrowdSec | ✅ Yes | IP only | ❌ AMBER only | Fixed (75) | API Key |
-| MalwareBazaar | ❌ CLI only | Hashes | ❌ No | Default (50) | Optional |
-| MWDB | ❌ CLI only | Hashes, IP, Domain, URL | ❌ No | Default (50) | API Key |
+| MalwareBazaar | ✅ Yes (tags) | Hashes | ❌ No | Default (60) | API Key |
+| MWDB | ✅ Yes (tags) | Hashes, object IDs | ❌ No | Default (60) | API Key |
+| abuse.ch Extended | ✅ Yes (opt-in) | IP, domain, URL, hash | ❌ No | Source defaults | Auth Key / public feed |
 
 ---
 
@@ -216,6 +263,14 @@ All sources are normalized to:
   "last_seen": "2025-01-15T12:30:00Z"
 }
 ```
+
+### Enrichment & Correlation (M10)
+
+- All canonicalized IOC rows are enriched with derived metadata (`metadata.enrichment`) such as:
+  - URL host/root domain
+  - IP properties (private/global/version)
+  - Hash family hint by length
+- Cross-source correlation is available via `GET /correlations`, grouping active indicators by `(value, type)` seen in multiple sources.
 
 ### Type Mapping
 

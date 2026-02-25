@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import String, Integer, Boolean, Text, DateTime, func, UniqueConstraint
+from sqlalchemy import String, Integer, Boolean, Text, DateTime, func, UniqueConstraint, Index
 from sqlalchemy import types
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY, INET
@@ -131,6 +131,11 @@ class Indicator(Base):
     updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
+        Index("idx_indicators_active_last_seen", "is_active", "last_seen"),
+        Index("idx_indicators_active_type_last_seen", "is_active", "type", "last_seen"),
+        Index("idx_indicators_active_source_last_seen", "is_active", "source", "last_seen"),
+        Index("idx_indicators_active_tlp_conf_last_seen", "is_active", "tlp", "confidence", "last_seen"),
+        Index("idx_indicators_value_type_active", "value", "type", "is_active"),
         UniqueConstraint("value", "source", "source_id", name="unique_indicator"),
     )
 

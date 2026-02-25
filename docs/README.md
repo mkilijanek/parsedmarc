@@ -9,6 +9,11 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - 📖 **[API Documentation](api.md)** - REST endpoints, formats, and integration examples
 - 🏗️ **[Architecture](architecture.md)** - System design and components
 - ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
+- ⚡ **[Performance](performance.md)** - SLOs, benchmarking, degradation and runbook
+- 🛠️ **[Runbook](runbook.md)** - Incident response and release gate procedures
+- 🧭 **[M16 Finalization](m16-finalization.md)** - Go/no-go and closure checklist
+- 📆 **[Maintenance Plan](maintenance-plan.md)** - 90-day operating cadence and KPI policy
+- ✅ **[Contributing](../CONTRIBUTING.md)** - Quality gate and CI merge policy
 - 🔌 **[Data Sources](data-sources.md)** - MISP, CrowdSec, MalwareBazaar, MWDB integration
 - 💾 **[Database](database.md)** - Schema, indexes, and queries
 - 💻 **[CLI Tool](cli.md)** - Manual ingestion commands
@@ -48,6 +53,10 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 | **[api.md](api.md)** | API endpoints, formats, examples | Users, Integrators |
 | **[architecture.md](architecture.md)** | System design, data flow, scalability | Developers, Architects |
 | **[configuration.md](configuration.md)** | Environment variables, examples | Ops, Admins |
+| **[performance.md](performance.md)** | SLOs, benchmark harness, runbook | Ops, SRE, Developers |
+| **[runbook.md](runbook.md)** | Incident response and rollback procedures | Ops, SRE |
+| **[m16-finalization.md](m16-finalization.md)** | Final release decision and residual risks | Tech Leads, Ops |
+| **[maintenance-plan.md](maintenance-plan.md)** | Post-release operating plan | Ops, SRE |
 
 ### Integration Documentation
 
@@ -76,6 +85,14 @@ Kibana-like query syntax with boolean operators:
 type:ip AND confidence:>70 AND (tags:apt OR tags:malware)
 ```
 
+### 🔗 IOC Correlation
+
+Cross-source correlation endpoint:
+
+```bash
+curl "https://localhost:7003/correlations?min_sources=2&type=domain"
+```
+
 ### 📤 17 Export Formats
 
 - **Basic:** TXT, CSV, JSON, XML
@@ -100,6 +117,9 @@ Background worker fetches from MISP and CrowdSec every 10 minutes (configurable)
 - Redis response caching (5 min TTL)
 - Database-native exports
 - GIN/B-tree indexes
+- `limit`/`offset` pagination on view and export endpoints
+- Optional NDJSON streaming for `elasticsearch` and `cribl` exports
+- Global hard cap: `REQUESTS_PER_SECOND_MAX` (default 1,000,000 req/s)
 
 ---
 

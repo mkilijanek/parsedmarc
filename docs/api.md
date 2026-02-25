@@ -65,6 +65,14 @@ Returns Prometheus-compatible metrics for monitoring.
 - `http_requests_total` - Total HTTP requests
 - `http_request_duration_seconds` - Request duration histogram
 - `active_indicators` - Number of active indicators in database
+- `quality_normalized_total` - IOC rows normalized by quality pipeline
+- `quality_dropped_invalid_total` - Dropped invalid IOC rows
+- `quality_dedup_merged_total` - IOC rows merged during dedup
+- `correlation_queries_total` - Correlation API query count
+- `correlation_query_duration_seconds` - Correlation query latency
+- `correlation_groups_returned_total` - Returned correlation group count
+- `cache_access_total` - Cache hit/miss counter by endpoint
+- `db_query_duration_seconds` - Database query latency by endpoint
 
 **Security Note:** Deploy this endpoint behind internal network/VPN in production.
 
@@ -103,6 +111,8 @@ Unified indicator search and viewing endpoint with HTML interface.
 | `source` | string | Filter by data source | `misp`, `crowdsec`, `malwarebazaar`, `mwdb` |
 | `min_conf` | integer | Minimum confidence (0-100) | `70` |
 | `max_conf` | integer | Maximum confidence (0-100) | `90` |
+| `limit` | integer | Max rows returned (capped by `QUERY_RESULT_LIMIT_MAX`) | `1000` |
+| `offset` | integer | Result offset for pagination | `0` |
 
 **Search Query Syntax (Kibana-like):**
 
@@ -152,6 +162,48 @@ curl "https://localhost:7003/indicators?type=ip&min_conf=70&tlp=AMBER"
 
 ---
 
+### IOC Correlation
+
+#### `GET /correlations`
+
+Returns IOC groups observed in at least `min_sources` distinct feeds.
+
+**Rate Limit:** 20 requests/minute
+
+**Query Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `min_sources` | integer | Minimum number of distinct sources per IOC group | `2` |
+| `limit` | integer | Maximum number of correlation groups (max 5000) | `1000` |
+| `type` | string | IOC type filter | `all` |
+
+**Response:**
+```json
+{
+  "count": 1,
+  "min_sources": 2,
+  "type": "domain",
+  "items": [
+    {
+      "value": "shared.example.org",
+      "type": "domain",
+      "source_count": 2,
+      "max_confidence": 80,
+      "last_seen": "2026-02-25T12:00:00+00:00",
+      "sources": [
+        {"source": "mwdb", "source_id": "x1", "confidence": 80},
+        {"source": "threatfox", "source_id": "x2", "confidence": 75}
+      ],
+      "tags": ["apt", "malware"],
+      "enrichment": {"domain_root": "example.org"}
+    }
+  ]
+}
+```
+
+---
+
 ### Indicator Export
 
 #### `GET /indicators/<format>`
@@ -160,7 +212,11 @@ Export indicators in various formats for SIEM/firewall integration.
 
 **Rate Limit:** 30 requests/minute
 
-**Query Parameters:** Same as `/indicators` endpoint
+**Query Parameters:** Same as `/indicators` endpoint, plus:
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `stream` | boolean | Stream NDJSON response for `elasticsearch` and `cribl` (`1/true/yes`) | `false` |
 
 **Supported Formats:**
 
@@ -220,9 +276,10 @@ curl "https://localhost:7003/indicators/splunk" | \
 **Caching:** Export responses are cached in Redis for 5 minutes
 
 **Performance Notes:**
-- Exports are limited to 100,000 indicators
+- Exports are capped by `EXPORT_RESULT_LIMIT_MAX` (default: 200,000)
 - Large exports may take several seconds
 - Database-native exports (txt, csv, json) use PostgreSQL functions for better performance
+- Streaming mode is available for large NDJSON exports (`elasticsearch`, `cribl`)
 
 ---
 
@@ -337,12 +394,15 @@ Rate limits are enforced per client IP address:
 |----------|-------|
 | `/indicators` | 20/minute |
 | `/indicators/<format>` | 30/minute |
+| `/correlations` | 20/minute |
 | `/health` | 60/minute |
 | `/metrics` | 30/minute |
 | `/misp/*` | 30/minute |
 | `/crowdsec/*` | 30/minute |
 | `/sources/*` | 30/minute |
 | Default | 60/minute |
+
+Additionally, the app enforces a global hard cap `REQUESTS_PER_SECOND_MAX` (default: `1,000,000` req/s).
 
 **Rate Limit Headers:**
 ```
@@ -380,6 +440,7 @@ Permissions-Policy: geolocation=(), microphone=(), camera=()
 - **Export responses:** Cached for 5 minutes (CACHE_TTL)
 - **Cache backend:** Redis
 - **Cache key format:** `prefix|param1=value1|param2=value2`
+- **Degradation mode:** If Redis is unavailable, endpoints continue from DB path and expose cache error metrics.
 
 To bypass cache (not recommended in production):
 - Wait for TTL expiration
@@ -451,10 +512,12 @@ curl -k "https://localhost:7003/indicators/json" \
 ## API Limitations
 
 - Maximum query length: 500 characters
-- Maximum export limit: 100,000 indicators per request
+- Maximum `/indicators` page size is capped by `QUERY_RESULT_LIMIT_MAX` (default: 10,000)
+- Maximum export limit is capped by `EXPORT_RESULT_LIMIT_MAX` (default: 200,000)
+- Maximum correlation limit is capped by `CORRELATION_LIMIT_MAX` (default: 5,000)
 - Results are ordered by last_seen DESC
-- Pagination is not currently implemented (use limit/offset via query)
-- No streaming support for large exports
+- Pagination is available via `limit` and `offset`
+- Streaming is available for `elasticsearch` and `cribl` exports (`stream=1`)
 
 ---
 

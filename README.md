@@ -44,6 +44,7 @@ curl -k https://localhost:7003/indicators/arcsight | head
 - `GET /` – status overview
 - `GET /indicators` – unified view (HTML)
 - `GET /indicators/<fmt>` – export (TXT/CSV/JSON/XML + vendor formats)
+- `GET /correlations` – cross-source IOC correlation view (JSON)
 - `GET /metrics` – Prometheus metrics (deploy behind internal network/VPN if needed)
 
 ### Export formats (17)
@@ -83,6 +84,7 @@ Kibana-like:
 - No hardcoded secrets; all secrets via environment variables.
 - DB queries compiled via SQLAlchemy expressions (parameterized).
 - Rate limiting: Nginx + Flask-Limiter (Redis backend).
+- App-level hard safety cap: `REQUESTS_PER_SECOND_MAX` (default `1_000_000` req/s).
 - Defense-in-depth validation of query strings (`max 500` chars, rejects obvious injection markers).
 - CrowdSec indicators are **always** enforced as `TLP:AMBER`.
 
@@ -95,10 +97,65 @@ pip install -r requirements.txt
 pytest -q
 ```
 
+Quality backfill (re-normalize existing indicators):
+```bash
+PYTHONPATH=. python scripts/backfill_quality_normalization.py
+```
+
+M12 performance benchmark (mixed traffic profile):
+```bash
+python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 --concurrency 64
+```
+
+M14 benchmark suite (3 runs, multiple traffic profiles, median summary):
+```bash
+python scripts/benchmark_suite_m14.py --base-url http://127.0.0.1:8080 --duration 20 --concurrency 64 --runs 3
+```
+
+M15 release gate (tests + perf thresholds):
+```bash
+bash scripts/m15_premerge_gate.sh
+```
+
+M15 chaos check (Redis outage fallback validation):
+```bash
+bash scripts/m15_chaos_check.sh
+```
+
+M16 readiness report:
+```bash
+bash scripts/m16_release_readiness.sh
+```
+
+Docker cluster benchmark (1 replica vs N replicas):
+```bash
+bash scripts/benchmark_cluster_m12.sh 4 20 64
+```
+
+One-shot benchmark via container entrypoint switch:
+```bash
+docker compose run --rm -e BENCHMARK_BASE_URL=http://app:8080 app --benchmark
+```
+
+Contribution and quality gate:
+- See `CONTRIBUTING.md` for merge policy and smoke-test checklist.
+- CI (`.github/workflows/ci.yml`) enforces tests on Python 3.11/3.12 for pushes and PRs.
+- Performance artifacts: `docs/performance.md`, `monitoring/alerts/m12-slo-alerts.yml`, `monitoring/grafana/m12-dashboard.json`.
+
 
 ## Configuration
 
 - `MALWAREBAZAAR_SINCE_DATE` (optional): ISO date `YYYY-MM-DD`. When set, MALWAREBAZAAR_SINCE_DATE: ISO date `YYYY-MM-DD` (UTC). MalwareBazaar ingestion pulls entries from this date (inclusive) onward.
+- query/response safety limits:
+  - `REQUESTS_PER_SECOND_MAX` (default: `1000000`)
+  - `QUERY_RESULT_LIMIT_MAX` (default: `10000`)
+  - `EXPORT_RESULT_LIMIT_MAX` (default: `200000`)
+  - `CORRELATION_LIMIT_MAX` (default: `5000`)
+- `MALWAREBAZAAR_TAGS` (optional): comma-separated tags for worker auto-ingestion.
+- `MALWAREBAZAAR_LIMIT` (optional): max rows per run (default: `1000`).
+- `MWDB_TAGS` (optional): comma-separated tags for worker auto-ingestion.
+- `MWDB_LIMIT` (optional): max rows per run (default: `1000`).
+- abuse.ch extended integrations (optional): `THREATFOX_*`, `URLHAUS_*`, `YARAIFY_*`, `FEODOTRACKER_*`, `HUNTING_FPLIST_*`, with shared `ABUSECH_AUTH_KEY`.
 
 
 ## CLI (IOC ingestion)
@@ -121,7 +178,8 @@ Supported keys:
 - `MALWAREBAZAAR_API_URL`
 - `MWDB_URL`
 - `MWDB_AUTH_KEY`
-- `MALWAREBAZAAR_AUTH_KEY`
+- `ABUSECH_AUTH_KEY` (preferred shared key for abuse.ch services)
+- `MALWAREBAZAAR_AUTH_KEY` (optional override)
 
 Precedence:
 - CLI flags override values from `--config-file`.
