@@ -122,10 +122,10 @@ DATABASE_URL=postgresql+psycopg2://threatfeed:PASSWORD@postgres:5432/threatfeed
 ```
 
 **Connection Pool:**
-- Pool size: 10 connections
-- Max overflow: 20 additional connections
+- Pool size: controlled by `DB_POOL_SIZE` (default: 6)
+- Max overflow: controlled by `DB_MAX_OVERFLOW` (default: 4)
 - Pool pre-ping: Enabled (detects stale connections)
-- Pool recycle: 1800 seconds (30 minutes)
+- Pool recycle: controlled by `DB_POOL_RECYCLE` (default: 1800s)
 
 ---
 
@@ -138,6 +138,46 @@ DATABASE_URL=postgresql+psycopg2://threatfeed:PASSWORD@postgres:5432/threatfeed
 
 ```bash
 REDIS_URL=redis://:PASSWORD@redis:6379/0
+```
+
+### DB_POOL_SIZE
+
+**Type:** Integer  
+**Default:** `6`  
+**Purpose:** Base SQLAlchemy connection pool size per process
+
+```bash
+DB_POOL_SIZE=6
+```
+
+### DB_MAX_OVERFLOW
+
+**Type:** Integer  
+**Default:** `4`  
+**Purpose:** Additional burst connections above pool size
+
+```bash
+DB_MAX_OVERFLOW=4
+```
+
+### DB_POOL_TIMEOUT
+
+**Type:** Integer (seconds)  
+**Default:** `30`  
+**Purpose:** Max wait time for a free DB connection from pool
+
+```bash
+DB_POOL_TIMEOUT=30
+```
+
+### DB_POOL_RECYCLE
+
+**Type:** Integer (seconds)  
+**Default:** `1800`  
+**Purpose:** Lifetime of pooled DB connections before recycle
+
+```bash
+DB_POOL_RECYCLE=1800
 ```
 
 ### CACHE_TTL

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Indicator
@@ -26,7 +26,7 @@ def query_correlations(
     min_sources = max(2, int(min_sources))
     limit = max(1, min(5000, int(limit)))
 
-    base = (
+    grouped = (
         select(
             Indicator.value,
             Indicator.type,
@@ -41,47 +41,54 @@ def query_correlations(
         .limit(limit)
     )
     if ioc_type and ioc_type != "all":
-        base = base.where(Indicator.type == ioc_type)
+        grouped = grouped.where(Indicator.type == ioc_type)
+    groups_cte = grouped.cte("corr_groups")
 
-    groups = db.execute(base).all()
-    if not groups:
-        return []
-
-    keys: List[Tuple[str, str]] = [(str(v), str(t)) for (v, t, _, _, _) in groups]
     rows = db.execute(
         select(
-            Indicator.value,
-            Indicator.type,
+            groups_cte.c.value,
+            groups_cte.c.type,
+            groups_cte.c.src_count,
+            groups_cte.c.max_last_seen,
+            groups_cte.c.max_conf,
             Indicator.source,
             Indicator.source_id,
             Indicator.confidence,
             Indicator.tags,
             Indicator.metadata_,
-            Indicator.last_seen,
-        ).where(
-            Indicator.is_active == True,  # noqa: E712
-            tuple_(Indicator.value, Indicator.type).in_(keys),  # type: ignore[name-defined]
         )
+        .join(
+            Indicator,
+            and_(
+                Indicator.value == groups_cte.c.value,
+                Indicator.type == groups_cte.c.type,
+                Indicator.is_active == True,  # noqa: E712
+            ),
+        )
+        .order_by(groups_cte.c.max_last_seen.desc())
     ).all()
+    if not rows:
+        return []
 
-    by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    for (value, typ, src_count, max_last_seen, max_conf) in groups:
+    by_key: Dict[tuple[str, str], Dict[str, Any]] = {}
+    for (value, typ, src_count, max_last_seen, max_conf, *_rest) in rows:
         key = (str(value), str(typ))
-        by_key[key] = {
-            "value": str(value),
-            "type": str(typ),
-            "source_count": int(src_count or 0),
-            "max_confidence": int(max_conf or 0),
-            "last_seen": _safe_dt_iso(max_last_seen),
-            "sources": [],
-            "tags": [],
-            "enrichment": {},
-        }
+        if key not in by_key:
+            by_key[key] = {
+                "value": str(value),
+                "type": str(typ),
+                "source_count": int(src_count or 0),
+                "max_confidence": int(max_conf or 0),
+                "last_seen": _safe_dt_iso(max_last_seen),
+                "sources": [],
+                "tags": [],
+                "enrichment": {},
+            }
 
-    tags_map: Dict[Tuple[str, str], List[str]] = defaultdict(list)
-    tags_seen: Dict[Tuple[str, str], set[str]] = defaultdict(set)
-    enrichment_map: Dict[Tuple[str, str], Dict[str, Any]] = defaultdict(dict)
-    for value, typ, source, source_id, confidence, tags, metadata, _last_seen in rows:
+    tags_map: Dict[tuple[str, str], List[str]] = defaultdict(list)
+    tags_seen: Dict[tuple[str, str], set[str]] = defaultdict(set)
+    enrichment_map: Dict[tuple[str, str], Dict[str, Any]] = defaultdict(dict)
+    for value, typ, _src_count, _max_last_seen, _max_conf, source, source_id, confidence, tags, metadata in rows:
         key = (str(value), str(typ))
         if key not in by_key:
             continue
