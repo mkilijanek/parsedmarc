@@ -50,6 +50,28 @@ The tool returns:
 - p50/p95/p99 latency
 - per-endpoint breakdown
 
+## Docker Cluster Benchmark
+
+To compare single-instance vs scaled app replicas in Docker:
+
+```bash
+bash scripts/benchmark_cluster_m12.sh 4 20 64
+```
+
+Parameters:
+- arg1: number of `app` replicas (default `4`)
+- arg2: benchmark duration seconds (default `20`)
+- arg3: concurrency (default `64`)
+
+Artifacts:
+- `/tmp/m12-baseline.json`
+- `/tmp/m12-cluster.json`
+- `/tmp/m12-cluster-summary.json`
+
+Implementation notes:
+- Uses `docker compose` for shared dependencies (`postgres`, `redis`) and starts app replicas as separate containers in the same Docker network.
+- Benchmark traffic is distributed across replica container IPs (client-side balancing).
+
 ## Degradation Behavior
 
 If Redis cache is unavailable:

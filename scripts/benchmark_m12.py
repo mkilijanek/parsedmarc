@@ -62,7 +62,8 @@ def parse_scenario(scenario: str) -> List[str]:
     return weighted
 
 
-def do_request(base_url: str, path: str, timeout: float) -> tuple[int, float]:
+def do_request(base_urls: List[str], path: str, timeout: float) -> tuple[int, float]:
+    base_url = random.choice(base_urls)
     url = base_url.rstrip("/") + path
     t0 = time.perf_counter()
     try:
@@ -77,7 +78,7 @@ def do_request(base_url: str, path: str, timeout: float) -> tuple[int, float]:
     return status, latency_ms
 
 
-def run_benchmark(base_url: str, duration_s: int, concurrency: int, timeout_s: float, weighted_paths: List[str]):
+def run_benchmark(base_urls: List[str], duration_s: int, concurrency: int, timeout_s: float, weighted_paths: List[str]):
     stop_at = time.perf_counter() + duration_s
     lock = threading.Lock()
     per_endpoint: Dict[str, EndpointStats] = defaultdict(EndpointStats)
@@ -86,7 +87,7 @@ def run_benchmark(base_url: str, duration_s: int, concurrency: int, timeout_s: f
     def worker():
         while time.perf_counter() < stop_at:
             path = random.choice(weighted_paths)
-            status, latency_ms = do_request(base_url, path, timeout_s)
+            status, latency_ms = do_request(base_urls, path, timeout_s)
             with lock:
                 total.observe(status, latency_ms)
                 per_endpoint[path].observe(status, latency_ms)
@@ -137,7 +138,11 @@ def summarize(total: EndpointStats, per_endpoint: Dict[str, EndpointStats], elap
 
 def main():
     parser = argparse.ArgumentParser(description="M12 benchmark harness for IOC service")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8080", help="Base URL, e.g. http://127.0.0.1:8080")
+    parser.add_argument(
+        "--base-url",
+        default="http://127.0.0.1:8080",
+        help="Single base URL or comma-separated URLs, e.g. http://127.0.0.1:8080,http://127.0.0.1:8081",
+    )
     parser.add_argument("--duration", type=int, default=30, help="Benchmark duration in seconds")
     parser.add_argument("--concurrency", type=int, default=64, help="Number of concurrent workers")
     parser.add_argument("--timeout", type=float, default=5.0, help="Per-request timeout in seconds")
@@ -148,8 +153,12 @@ def main():
     random.seed(42)
     weighted_paths = parse_scenario(args.scenario)
 
+    base_urls = [u.strip() for u in args.base_url.split(",") if u.strip()]
+    if not base_urls:
+        raise ValueError("at least one base URL is required")
+
     total, per_endpoint, elapsed = run_benchmark(
-        base_url=args.base_url,
+        base_urls=base_urls,
         duration_s=args.duration,
         concurrency=args.concurrency,
         timeout_s=args.timeout,

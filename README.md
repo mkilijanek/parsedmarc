@@ -107,6 +107,11 @@ M12 performance benchmark (mixed traffic profile):
 python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 --concurrency 64
 ```
 
+Docker cluster benchmark (1 replica vs N replicas):
+```bash
+bash scripts/benchmark_cluster_m12.sh 4 20 64
+```
+
 Contribution and quality gate:
 - See `CONTRIBUTING.md` for merge policy and smoke-test checklist.
 - CI (`.github/workflows/ci.yml`) enforces tests on Python 3.11/3.12 for pushes and PRs.
