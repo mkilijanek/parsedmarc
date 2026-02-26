@@ -94,6 +94,17 @@ def test_mwdb_configure_shows_extended_fields(client, sample_indicators):
     assert "No time limit" in html
 
 
+def test_abusech_configure_shows_service_selectors(client, sample_indicators):
+    response = client.get("/admin/feed/abusech/configure")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "ThreatFox" in html
+    assert "URLhaus" in html
+    assert "Bazaar" in html
+    assert "FeodoTracker" in html
+    assert "YARAify" in html
+
+
 def test_feed_test_connection_endpoint_redirects(client, sample_indicators):
     response = client.post("/admin/feed/abusech/test", data={"api_key": ""}, follow_redirects=False)
     assert response.status_code in {301, 302}

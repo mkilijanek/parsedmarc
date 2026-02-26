@@ -27,6 +27,9 @@ def _signal_handler(signum, frame):
 
 def _safe_job(name: str, fn):
     def _wrap():
+        if shutdown_requested:
+            logger.info("job_skipped_shutdown", extra={"job": name})
+            return
         try:
             logger.info("job_start", extra={"job": name})
             fn()
@@ -69,6 +72,8 @@ def main():
         schedule.run_pending()
         time.sleep(1)
 
+    schedule.clear()
+    logger.info("worker_draining")
     logger.info("worker_exiting")
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ from ..config import Config
 from ..db import SessionLocal
 from ..metrics import quality_normalized_total, quality_dropped_invalid_total, quality_dedup_merged_total
 from ..models import FeedStats, Indicator
-from .common import throttle_external_request
+from .common import throttle_external_request, retry_with_backoff
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -191,6 +191,8 @@ def fetch_mwdb_by_tags(
     organizations: Optional[List[str]] = None,
     limit: int = 1000,
     timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
     chunk_size: int = 200,
 ) -> Iterator[Dict[str, Any]]:
     """
@@ -224,10 +226,16 @@ def fetch_mwdb_by_tags(
         if older_than:
             params["older_than"] = older_than
 
-        throttle_external_request(source="mwdb")
-        r = session.get(f"{base_url}/api/object", params=params, timeout=timeout_s)
-        r.raise_for_status()
-        data = r.json()  # expected key: "objects"
+        def _do():
+            throttle_external_request(source="mwdb")
+            resp = session.get(f"{base_url}/api/object", params=params, timeout=timeout_s)
+            resp.raise_for_status()
+            return resp.json()
+        data = retry_with_backoff(
+            _do,
+            max_attempts=max(1, retry_attempts),
+            base_delay=max(0.1, retry_base_delay_s),
+        )
         objs = data.get("objects") or data.get("files") or []
         if not objs:
             return
@@ -324,6 +332,9 @@ def update_mwdb_indicators() -> Dict[str, int]:
             until=None,
             organizations=organizations,
             limit=max(1, int(cfg.MWDB_LIMIT)),
+            timeout_s=max(1, int(cfg.FEED_HTTP_TIMEOUT_S)),
+            retry_attempts=max(1, int(cfg.FEED_RETRY_ATTEMPTS)),
+            retry_base_delay_s=max(0.1, float(cfg.FEED_RETRY_BASE_DELAY_S)),
         )
     )
     canonical_rows: List[Dict[str, Any]] = []

@@ -312,6 +312,12 @@ def create_app() -> Flask:
                 "display_name": "abuse.ch",
                 "fields": [
                     {"key": "api_key", "label": "abuse.ch auth key", "secret": True, "required": False, "env": "ABUSECH_AUTH_KEY", "placeholder": "Leave blank to keep current"},
+                    {"key": "threatfox_enabled", "label": "ThreatFox", "secret": False, "required": False, "env": "THREATFOX_ENABLED", "type": "checkbox"},
+                    {"key": "urlhaus_enabled", "label": "URLhaus", "secret": False, "required": False, "env": "URLHAUS_ENABLED", "type": "checkbox"},
+                    {"key": "bazaar_enabled", "label": "Bazaar", "secret": False, "required": False, "env": "ABUSECH_BAZAAR_ENABLED", "type": "checkbox"},
+                    {"key": "bazaar_tags", "label": "Bazaar tags (comma-separated)", "secret": False, "required": False, "env": "MALWAREBAZAAR_TAGS", "placeholder": "exe, stealer"},
+                    {"key": "feodotracker_enabled", "label": "FeodoTracker", "secret": False, "required": False, "env": "FEODOTRACKER_ENABLED", "type": "checkbox"},
+                    {"key": "yaraify_enabled", "label": "YARAify", "secret": False, "required": False, "env": "YARAIFY_ENABLED", "type": "checkbox"},
                 ],
             },
         }
@@ -393,6 +399,74 @@ def create_app() -> Flask:
             "enabled": bool(feed.enabled),
             "fields": normalized_fields,
         }
+
+    def _is_valid_http_url(value: str) -> bool:
+        v = (value or "").strip().lower()
+        return v.startswith("http://") or v.startswith("https://")
+
+    def _validate_feed_form(feed: Feed, form_data: Any, state: Dict[str, Any], db: Session) -> List[str]:
+        errors: List[str] = []
+        schedule_cron = (form_data.get("schedule_cron") or "*/15 * * * *").strip()
+        if len(schedule_cron.split()) != 5:
+            errors.append("Invalid cron expression (expected 5 fields).")
+        if feed.source_type in {"misp", "mwdb"}:
+            base_url = (form_data.get("base_url") or "").strip()
+            if not base_url:
+                errors.append("Base URL is required.")
+            elif not _is_valid_http_url(base_url):
+                errors.append("Base URL must start with http:// or https://.")
+
+        for f in state["fields"]:
+            key = str(f["key"])
+            input_name = str(f["input_name"])
+            incoming = (form_data.get(input_name) or "").strip()
+            if str(f.get("type") or "") == "checkbox":
+                incoming = "1" if incoming.lower() in {"1", "true", "yes", "on"} else "0"
+            if key in {"base_url"}:
+                continue
+            if bool(f.get("required")) and not incoming:
+                current = _get_setting(
+                    db,
+                    _feed_secret_key(feed.source_id, key) if bool(f.get("secret")) else _feed_value_key(feed.source_id, key),
+                    "",
+                    secret=bool(f.get("secret")),
+                )
+                if not current:
+                    errors.append(f"Missing required field: {f['label']}")
+
+        if feed.source_type == "mwdb":
+            days_raw = (form_data.get(_field_input_name("days")) or "").strip()
+            no_limit = (form_data.get(_field_input_name("no_time_limit")) or "").strip().lower() in {"1", "true", "yes", "on"}
+            if days_raw:
+                try:
+                    days_val = int(days_raw)
+                    if days_val < 1 or days_val > 3650:
+                        errors.append("MWDB days must be between 1 and 3650.")
+                except ValueError:
+                    errors.append("MWDB days must be an integer.")
+            elif not no_limit:
+                errors.append("Set MWDB days or enable No time limit.")
+
+            tags_raw = (form_data.get(_field_input_name("tags")) or "").strip()
+            if not tags_raw:
+                errors.append("MWDB tags are required.")
+
+        if feed.source_type == "abusech":
+            toggles = {
+                "threatfox_enabled": (form_data.get(_field_input_name("threatfox_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
+                "urlhaus_enabled": (form_data.get(_field_input_name("urlhaus_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
+                "bazaar_enabled": (form_data.get(_field_input_name("bazaar_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
+                "feodotracker_enabled": (form_data.get(_field_input_name("feodotracker_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
+                "yaraify_enabled": (form_data.get(_field_input_name("yaraify_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
+            }
+            if not any(toggles.values()):
+                errors.append("Select at least one abuse.ch service.")
+            if toggles["bazaar_enabled"]:
+                bazaar_tags = (form_data.get(_field_input_name("bazaar_tags")) or "").strip()
+                if not bazaar_tags:
+                    errors.append("Bazaar tags are required when Bazaar is enabled.")
+
+        return errors
 
     def _fetch_mwdb_orgs(base_url: str, api_key: str) -> List[Dict[str, str]]:
         if not base_url or not api_key:
@@ -788,7 +862,11 @@ def create_app() -> Flask:
             return {"source": feed.source_id, "result": update_mwdb_indicators()}
         if source_type == "abusech":
             from .services.abusech import update_abusech_indicators
-            return {"source": feed.source_id, "result": update_abusech_indicators()}
+            result: Dict[str, Any] = {"abusech": update_abusech_indicators()}
+            if str(os.getenv("ABUSECH_BAZAAR_ENABLED", "0")).strip().lower() in {"1", "true", "yes", "on"}:
+                from .services.malwarebazaar import update_malwarebazaar_indicators
+                result["bazaar"] = update_malwarebazaar_indicators()
+            return {"source": feed.source_id, "result": result}
         raise ValueError(f"Unknown source_type: {source_type}")
 
     def _enqueue_sync_job(feed: Feed, *, trigger_type: str, db: Session | None = None) -> tuple[SyncJob, bool]:
@@ -1711,6 +1789,17 @@ def create_app() -> Flask:
     if (toast && !toast.textContent.trim()) {{
       toast.style.display = 'none';
     }}
+    document.querySelectorAll('form').forEach((form) => {{
+      form.addEventListener('submit', (evt) => {{
+        const submitter = evt.submitter;
+        const buttons = form.querySelectorAll('button[type="submit"]');
+        buttons.forEach((btn) => btn.disabled = true);
+        if (submitter) {{
+          submitter.dataset.originalText = submitter.textContent || '';
+          submitter.textContent = 'Processing...';
+        }}
+      }});
+    }});
   </script>
 </body>
 </html>
@@ -1845,16 +1934,34 @@ def create_app() -> Flask:
 <h1>Configure feed: {_esc(source_id)}</h1>
 <p>{_esc(msg)}</p>
 <p>Status: {'OK' if state['ready'] else 'Incomplete: ' + _esc(', '.join(state['missing']))}</p>
-<form method='post' action='/admin/feed/{_esc(source_id)}/configure'>
+<form method='post' action='/admin/feed/{_esc(source_id)}/configure' id='feedConfigForm'>
 <p><label>Display name <input type='text' name='display_name' value='{_esc(feed.display_name)}' required/></label></p>
 <p><label>Base URL <input type='text' name='base_url' value='{_esc(str(feed.base_url or ""))}'/></label></p>
 <p><label>Schedule cron <input type='text' name='schedule_cron' value='{_esc(feed.schedule_cron)}'/></label></p>
 {fields_html}
 {orgs_html}
-<button type='submit'>Save settings</button>
-<button type='submit' formaction='/admin/feed/{_esc(source_id)}/test' formmethod='post'>Test connection</button>
+<button type='submit' id='saveBtn'>Save settings</button>
+<button type='submit' formaction='/admin/feed/{_esc(source_id)}/test' formmethod='post' id='testBtn'>Test connection</button>
 <a href='/admin'>Back</a>
-</form></body></html>"""
+</form>
+<script>
+const form = document.getElementById('feedConfigForm');
+if (form) {{
+  form.addEventListener('submit', function (evt) {{
+    const submitter = evt.submitter;
+    const saveBtn = document.getElementById('saveBtn');
+    const testBtn = document.getElementById('testBtn');
+    if (saveBtn) saveBtn.disabled = true;
+    if (testBtn) testBtn.disabled = true;
+    if (submitter && submitter.id === 'testBtn') {{
+      submitter.textContent = 'Testing...';
+    }} else if (saveBtn) {{
+      saveBtn.textContent = 'Saving...';
+    }}
+  }});
+}}
+</script>
+</body></html>"""
 
     @app.post("/admin/feed/<source_id>/configure")
     @limiter.limit("20 per minute")
@@ -1870,7 +1977,7 @@ def create_app() -> Flask:
             feed.base_url = (request.form.get("base_url") or "").strip() or None
             feed.schedule_cron = (request.form.get("schedule_cron") or "*/15 * * * *").strip()
             state = _read_feed_config_state(db, feed)
-            missing: List[str] = []
+            errors = _validate_feed_form(feed, request.form, state, db)
             for f in state["fields"]:
                 input_name = str(f["input_name"])
                 incoming = (request.form.get(input_name) or "").strip()
@@ -1886,16 +1993,12 @@ def create_app() -> Flask:
                     if str(f.get("type") or "") == "checkbox":
                         normalized = "1" if incoming.lower() in {"1", "true", "yes", "on"} else "0"
                     _set_setting(db, _feed_value_key(feed.source_id, str(f["key"])), normalized, secret=False)
-                    if f.get("required") and not normalized:
-                        missing.append(str(f["label"]))
             if feed.source_type == "mwdb":
                 orgs = [x.strip() for x in request.form.getlist("mwdb_orgs") if x.strip()]
                 _set_setting(db, _feed_value_key(feed.source_id, "organizations"), ",".join(orgs), secret=False)
-            if feed.source_type in {"misp", "mwdb"} and not (feed.base_url or "").strip():
-                missing.append("Base URL")
-            if missing:
+            if errors:
                 db.rollback()
-                return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Missing required fields: {', '.join(missing)}"))
+                return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Validation failed: {' '.join(errors)}"))
             db.commit()
             return redirect(url_for("admin_panel", msg=f"Feed {source_id} configuration saved."))
         except Exception as e:

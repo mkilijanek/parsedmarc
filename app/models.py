@@ -265,4 +265,6 @@ class SyncJob(Base):
     __table_args__ = (
         Index("idx_sync_jobs_feed_status", "feed_source_id", "status"),
         Index("idx_sync_jobs_created", "created_at"),
+        Index("idx_sync_jobs_status_created", "status", "created_at"),
+        Index("idx_sync_jobs_trigger_status", "trigger_type", "status"),
     )

@@ -58,6 +58,9 @@ class Config:
     DATABASE_READ_URL: str = field(default_factory=lambda: _env_str("DATABASE_READ_URL", ""))
     REDIS_URL: str = field(default_factory=lambda: _env_str("REDIS_URL", "redis://:changeme@localhost:6379/0"))
     CACHE_TTL: int = field(default_factory=lambda: _env_int("CACHE_TTL", 300))
+    FEED_HTTP_TIMEOUT_S: int = field(default_factory=lambda: _env_int("FEED_HTTP_TIMEOUT_S", 30))
+    FEED_RETRY_ATTEMPTS: int = field(default_factory=lambda: _env_int("FEED_RETRY_ATTEMPTS", 4))
+    FEED_RETRY_BASE_DELAY_S: int = field(default_factory=lambda: _env_int("FEED_RETRY_BASE_DELAY_S", 1))
     EXPORT_JOB_DIR: str = field(default_factory=lambda: _env_str("EXPORT_JOB_DIR", "/tmp/ioc-export-jobs"))
     EXPORT_ASYNC_THRESHOLD: int = field(default_factory=lambda: _env_int("EXPORT_ASYNC_THRESHOLD", 5000))
 
