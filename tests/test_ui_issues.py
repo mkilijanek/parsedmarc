@@ -84,3 +84,43 @@ def test_admin_logs_tab_and_api(client, sample_indicators):
     assert api.status_code == 200
     data = api.get_json()
     assert "items" in data
+
+
+def test_api_sync_enqueue_returns_202_and_job_id(client, sample_indicators):
+    response = client.post("/api/sync", json={"source": "abusech"})
+    assert response.status_code == 202
+    data = response.get_json()
+    assert data["source"] == "abusech"
+    assert len(data["jobs"]) == 1
+    assert data["jobs"][0]["feed_source_id"] == "abusech"
+    assert isinstance(data["jobs"][0]["job_id"], str) and data["jobs"][0]["job_id"]
+    assert data["jobs"][0]["created"] is True
+
+
+def test_api_sync_idempotency_reuses_existing_job(client, sample_indicators):
+    first = client.post("/api/sync", json={"source": "abusech"})
+    second = client.post("/api/sync", json={"source": "abusech"})
+    assert first.status_code == 202
+    assert second.status_code == 202
+    first_data = first.get_json()
+    second_data = second.get_json()
+    assert first_data["jobs"][0]["job_id"] == second_data["jobs"][0]["job_id"]
+    assert second_data["jobs"][0]["created"] is False
+
+
+def test_api_logs_filter_by_job_id(client, sample_indicators):
+    sync_resp = client.post("/api/sync", json={"source": "abusech"})
+    job_id = sync_resp.get_json()["jobs"][0]["job_id"]
+    logs_resp = client.get(f"/api/logs?job_id={job_id}&limit=50")
+    assert logs_resp.status_code == 200
+    data = logs_resp.get_json()
+    assert data["count"] >= 1
+    assert all(item["run_id"] == job_id for item in data["items"])
+
+
+def test_api_500_returns_json_with_correlation_id(client, sample_indicators):
+    response = client.get("/api/logs?limit=not-a-number")
+    assert response.status_code == 500
+    data = response.get_json()
+    assert isinstance(data.get("error"), str) and data["error"]
+    assert isinstance(data.get("correlation_id"), str) and data["correlation_id"]

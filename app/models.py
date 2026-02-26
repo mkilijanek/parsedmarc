@@ -245,3 +245,24 @@ class AppLog(Base):
         Index("idx_app_logs_created", "created_at"),
         Index("idx_app_logs_feed_created", "feed_source_id", "created_at"),
     )
+
+
+class SyncJob(Base):
+    __tablename__ = "sync_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    feed_source_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual", server_default="manual")
+    idempotency_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", server_default="queued")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_json: Mapped[dict] = mapped_column(JSONCompat(), default=dict, nullable=False)
+    created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+    started_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_sync_jobs_feed_status", "feed_source_id", "status"),
+        Index("idx_sync_jobs_created", "created_at"),
+    )

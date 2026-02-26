@@ -32,6 +32,19 @@ services:
       retries: 10
     restart: unless-stopped
 
+  migrate:
+    build:
+      context: .
+    command: ["sh", "-c", "scripts/db-migrate.sh"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SECRET_KEY: ${SECRET_KEY:-}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   app:
     # image: ghcr.io/mkilijanek/ioc-service:${IMAGE_TAG:-latest}
     build:
@@ -80,6 +93,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 10s
@@ -117,6 +132,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   nginx:

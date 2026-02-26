@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import Flask, Response, jsonify, request, make_response, redirect, url_for, stream_with_context, send_file
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.exceptions import HTTPException
 from sqlalchemy import select, func, and_, or_, text
 from sqlalchemy.orm import Session
 
@@ -36,6 +37,7 @@ from .models import (
     Feed,
     FeedRun,
     AppLog,
+    SyncJob,
     tags_contains,
 )
 from .cache import get_redis
@@ -132,6 +134,30 @@ def create_app() -> Flask:
         request_duration.labels(endpoint=endpoint).observe(dur)
         request_count.labels(method=request.method, endpoint=endpoint, http_status=str(resp.status_code)).inc()
         return resp
+
+    @app.before_request
+    def _attach_correlation_id():
+        incoming = (request.headers.get("X-Correlation-ID") or "").strip()
+        request._correlation_id = incoming or uuid.uuid4().hex
+
+    @app.after_request
+    def _append_correlation_header(resp: Response):
+        corr = getattr(request, "_correlation_id", "")
+        if corr:
+            resp.headers["X-Correlation-ID"] = corr
+        return resp
+
+    @app.errorhandler(Exception)
+    def _json_internal_error(err: Exception):
+        corr = getattr(request, "_correlation_id", uuid.uuid4().hex)
+        if isinstance(err, HTTPException):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": err.description or err.name, "correlation_id": corr}), int(err.code or 500)
+            return err
+        logger.exception("unhandled_error correlation_id=%s", corr)
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Internal server error", "correlation_id": corr}), 500
+        return make_response(f"Internal server error (correlation_id={_esc(corr)})", 500)
 
     def _db(*, read_only: bool = False) -> Session:
         # In tests we keep a single mocked session to avoid split in-memory DB state.
@@ -580,7 +606,7 @@ def create_app() -> Flask:
         th.start()
 
     scheduler_lock = Lock()
-    scheduler_state: Dict[str, Any] = {"active_run_id": None, "last_minute": {}}
+    scheduler_state: Dict[str, Any] = {"active_run_id": None, "active_job_id": None, "last_minute": {}}
 
     def _app_log(
         level: str,
@@ -611,11 +637,20 @@ def create_app() -> Flask:
 
     def _read_feed_rows(db: Session) -> List[Feed]:
         _ensure_default_feeds(db)
-        return list(
-            db.scalars(
-                select(Feed).where(Feed.deleted == False).order_by(Feed.source_id.asc())  # noqa: E712
-            ).all()
-        )
+        return list(db.scalars(select(Feed).where(Feed.deleted == False).order_by(Feed.source_id.asc())).all())  # noqa: E712
+
+    def _db_try_advisory_lock(db: Session, lock_id: int) -> bool:
+        bind = db.get_bind()
+        if not bind or bind.dialect.name != "postgresql":
+            return True
+        ok = db.execute(text("SELECT pg_try_advisory_lock(:id)"), {"id": lock_id}).scalar()
+        return bool(ok)
+
+    def _db_advisory_unlock(db: Session, lock_id: int) -> None:
+        bind = db.get_bind()
+        if bind and bind.dialect.name == "postgresql":
+            db.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": lock_id})
+            db.commit()
 
     def _run_sync_worker_for_feed(feed: Feed) -> Dict[str, Any]:
         source_type = feed.source_type
@@ -636,29 +671,75 @@ def create_app() -> Flask:
             return {"source": feed.source_id, "result": update_abusech_indicators()}
         raise ValueError(f"Unknown source_type: {source_type}")
 
-    def _execute_feed_sync(feed: Feed, *, trigger_type: str) -> Dict[str, Any]:
-        run_id = uuid.uuid4().hex
-        scheduler_state["active_run_id"] = run_id
-        db = _db()
+    def _enqueue_sync_job(feed: Feed, *, trigger_type: str, db: Session | None = None) -> tuple[SyncJob, bool]:
+        own_session = db is None
+        db = db or _db()
         try:
+            existing = db.scalar(
+                select(SyncJob)
+                .where(SyncJob.feed_source_id == feed.source_id, SyncJob.status.in_(["queued", "running"]))
+                .order_by(SyncJob.created_at.desc())
+                .limit(1)
+            )
+            if existing:
+                return existing, False
+            job = SyncJob(
+                job_id=uuid.uuid4().hex,
+                feed_source_id=feed.source_id,
+                trigger_type=trigger_type,
+                idempotency_key=f"{feed.source_id}:{trigger_type}",
+                status="queued",
+                result_json={},
+            )
+            db.add(job)
             db.add(
-                FeedRun(
+                AppLog(
+                    level="INFO",
+                    component="scheduler",
+                    message="sync_job_enqueued",
                     feed_source_id=feed.source_id,
-                    run_id=run_id,
-                    trigger_type=trigger_type,
-                    status="running",
+                    run_id=job.job_id,
+                    metadata_={"trigger": trigger_type},
                 )
             )
             db.commit()
+            db.refresh(job)
+            return job, True
+        except Exception:
+            db.rollback()
+            raise
         finally:
-            db.close()
+            if own_session:
+                db.close()
 
-        _app_log("INFO", "scheduler", "feed_sync_started", feed_source_id=feed.source_id, run_id=run_id, metadata={"trigger": trigger_type})
-        started = time.time()
+    def _execute_sync_job(job: SyncJob) -> Dict[str, Any]:
+        run_id = job.job_id
+        scheduler_state["active_job_id"] = job.job_id
+        scheduler_state["active_run_id"] = run_id
         updates: Dict[str, str | None] = {}
         previous: Dict[str, str | None] = {}
         db = _db()
         try:
+            feed = db.scalar(select(Feed).where(Feed.source_id == job.feed_source_id, Feed.deleted == False))  # noqa: E712
+            if not feed:
+                raise RuntimeError(f"feed not found: {job.feed_source_id}")
+            run = db.scalar(select(FeedRun).where(FeedRun.run_id == run_id))
+            now = datetime.now(timezone.utc)
+            if run is None:
+                db.add(FeedRun(feed_source_id=feed.source_id, run_id=run_id, trigger_type=job.trigger_type, status="running", started_at=now))
+            else:
+                run.status = "running"
+                run.error = None
+                run.started_at = now
+            row = db.scalar(select(SyncJob).where(SyncJob.id == job.id))
+            if row:
+                row.status = "running"
+                row.error = None
+                row.started_at = now
+            db.commit()
+
+            _app_log("INFO", "scheduler", "feed_sync_started", feed_source_id=feed.source_id, run_id=run_id, metadata={"trigger": job.trigger_type})
+
             state = _read_feed_config_state(db, feed)
             if not state["ready"]:
                 raise RuntimeError(f"incomplete config: {', '.join(state['missing'])}")
@@ -682,30 +763,30 @@ def create_app() -> Flask:
                     os.environ[k] = str(v)
                 else:
                     os.environ.pop(k, None)
+
+            started = time.time()
             result = _run_sync_worker_for_feed(feed)
             fetched_count = 0
             result_data = result.get("result")
             if isinstance(result_data, dict):
-                for v in result_data.values():
-                    if isinstance(v, dict):
-                        fetched_count += int(v.get("fetched", 0) or 0)
+                for value in result_data.values():
+                    if isinstance(value, dict):
+                        fetched_count += int(value.get("fetched", 0) or 0)
             dur_ms = int((time.time() - started) * 1000)
-            db.add(
-                AppLog(
-                    level="INFO",
-                    component="scheduler",
-                    message="feed_sync_completed",
-                    feed_source_id=feed.source_id,
-                    run_id=run_id,
-                    metadata_={"duration_ms": dur_ms, "fetched_count": fetched_count},
-                )
-            )
+
             run = db.scalar(select(FeedRun).where(FeedRun.run_id == run_id))
             if run:
                 run.status = "success"
                 run.fetched_count = fetched_count
                 run.finished_at = datetime.now(timezone.utc)
+            row = db.scalar(select(SyncJob).where(SyncJob.id == job.id))
+            if row:
+                row.status = "success"
+                row.error = None
+                row.finished_at = datetime.now(timezone.utc)
+                row.result_json = {"fetched_count": fetched_count, "duration_ms": dur_ms}
             db.commit()
+            _app_log("INFO", "scheduler", "feed_sync_completed", feed_source_id=feed.source_id, run_id=run_id, metadata={"duration_ms": dur_ms, "fetched_count": fetched_count})
             return result
         except Exception as e:
             db.rollback()
@@ -714,9 +795,15 @@ def create_app() -> Flask:
                 run.status = "failed"
                 run.error = str(e)
                 run.finished_at = datetime.now(timezone.utc)
-                db.commit()
-            _app_log("ERROR", "scheduler", "feed_sync_failed", feed_source_id=feed.source_id, run_id=run_id, metadata={"error": str(e)})
-            return {"source": feed.source_id, "error": str(e)}
+            row = db.scalar(select(SyncJob).where(SyncJob.id == job.id))
+            if row:
+                row.status = "failed"
+                row.error = str(e)
+                row.finished_at = datetime.now(timezone.utc)
+                row.result_json = {}
+            db.commit()
+            _app_log("ERROR", "scheduler", "feed_sync_failed", feed_source_id=job.feed_source_id, run_id=run_id, metadata={"error": str(e)})
+            return {"source": job.feed_source_id, "error": str(e)}
         finally:
             for k, v in updates.items():
                 prev = previous.get(k)
@@ -725,7 +812,40 @@ def create_app() -> Flask:
                 else:
                     os.environ[k] = prev
             scheduler_state["active_run_id"] = None
+            scheduler_state["active_job_id"] = None
             db.close()
+
+    def _dequeue_next_sync_job() -> SyncJob | None:
+        db = _db()
+        try:
+            stmt = select(SyncJob).where(SyncJob.status == "queued").order_by(SyncJob.created_at.asc()).limit(1)
+            bind = db.get_bind()
+            if bind and bind.dialect.name == "postgresql":
+                stmt = stmt.with_for_update(skip_locked=True)
+            job = db.scalar(stmt)
+            if not job:
+                db.rollback()
+                return None
+            job.status = "running"
+            job.started_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(job)
+            return job
+        except Exception:
+            db.rollback()
+            return None
+        finally:
+            db.close()
+
+    def _run_sync_queue_once(*, max_jobs: int = 10) -> int:
+        processed = 0
+        while processed < max_jobs:
+            job = _dequeue_next_sync_job()
+            if not job:
+                break
+            _execute_sync_job(job)
+            processed += 1
+        return processed
 
     def _cron_field_match(value: int, expr: str, *, min_v: int, max_v: int) -> bool:
         expr = expr.strip()
@@ -763,32 +883,57 @@ def create_app() -> Flask:
             and _cron_field_match(py_dow, dow, min_v=0, max_v=6)
         )
 
+    def _enqueue_due_scheduled_jobs(now: datetime) -> int:
+        minute_marker = now.strftime("%Y-%m-%dT%H:%M")
+        enqueued = 0
+        db = _db()
+        try:
+            _set_setting(db, "scheduler.heartbeat", now.isoformat())
+            _set_setting(db, "scheduler.default_cron", _get_setting(db, "scheduler.default_cron", "*/15 * * * *"))
+            db.commit()
+            for feed in _read_feed_rows(db):
+                if not feed.enabled:
+                    continue
+                if scheduler_state["last_minute"].get(feed.source_id) == minute_marker:
+                    continue
+                cron_expr = str(feed.schedule_cron or "*/15 * * * *")
+                if not _cron_matches(cron_expr, now):
+                    continue
+                _, created = _enqueue_sync_job(feed, trigger_type="scheduled", db=db)
+                scheduler_state["last_minute"][feed.source_id] = minute_marker
+                if created:
+                    enqueued += 1
+            return enqueued
+        finally:
+            db.close()
+
     def _scheduler_loop() -> None:
+        lock_id = 993451
         while True:
             try:
                 if scheduler_lock.locked():
                     time.sleep(5)
                     continue
                 with scheduler_lock:
-                    now = datetime.now(timezone.utc)
-                    minute_marker = now.strftime("%Y-%m-%dT%H:%M")
-                    db = _db()
+                    lock_db = _db()
+                    have_lock = False
                     try:
-                        _set_setting(db, "scheduler.heartbeat", now.isoformat())
-                        _set_setting(db, "scheduler.default_cron", _get_setting(db, "scheduler.default_cron", "*/15 * * * *"))
-                        db.commit()
-                        for feed in _read_feed_rows(db):
-                            if not feed.enabled:
-                                continue
-                            marker_key = f"{feed.source_id}:{minute_marker}"
-                            if scheduler_state["last_minute"].get(feed.source_id) == minute_marker:
-                                continue
-                            cron_expr = str(feed.schedule_cron or "*/15 * * * *")
-                            if _cron_matches(cron_expr, now):
-                                _execute_feed_sync(feed, trigger_type="scheduled")
-                                scheduler_state["last_minute"][feed.source_id] = minute_marker
+                        have_lock = _db_try_advisory_lock(lock_db, lock_id)
                     finally:
-                        db.close()
+                        lock_db.close()
+                    if not have_lock:
+                        time.sleep(5)
+                        continue
+                    try:
+                        now = datetime.now(timezone.utc)
+                        _enqueue_due_scheduled_jobs(now)
+                        _run_sync_queue_once(max_jobs=10)
+                    finally:
+                        unlock_db = _db()
+                        try:
+                            _db_advisory_unlock(unlock_db, lock_id)
+                        finally:
+                            unlock_db.close()
                 time.sleep(20)
             except Exception as e:
                 _app_log("ERROR", "scheduler", "scheduler_loop_error", metadata={"error": str(e)})
@@ -1658,23 +1803,29 @@ def create_app() -> Flask:
                 targets = [feed_map[source_name]]
 
             blocked: List[str] = []
-            run_targets: List[Feed] = []
+            queued: List[str] = []
+            reused: List[str] = []
             for feed in targets:
                 state = _read_feed_config_state(db, feed)
                 if not state["ready"]:
                     blocked.append(f"{feed.source_id} (missing: {', '.join(state['missing'])})")
                     continue
-                run_targets.append(feed)
+                job, created = _enqueue_sync_job(feed, trigger_type="manual", db=db)
+                if created:
+                    queued.append(job.job_id)
+                else:
+                    reused.append(job.job_id)
 
-            if source_name != "all" and not run_targets:
+            if source_name != "all" and not queued and not reused:
                 return redirect(url_for("admin_panel", msg=f"Cannot sync {source_name}: configuration incomplete."))
 
-            results: List[Dict[str, Any]] = []
-            for feed in run_targets:
-                results.append(_execute_feed_sync(feed, trigger_type="manual"))
-            _audit("manual_sync", "feed", None, {"source": source_name, "results": results})
-            _app_log("INFO", "scheduler", "manual_sync_completed", metadata={"source": source_name, "results": results, "blocked": blocked})
-            msg = f"Sync completed for {source_name}."
+            _audit("manual_sync", "feed", None, {"source": source_name, "queued": queued, "reused": reused, "blocked": blocked})
+            _app_log("INFO", "scheduler", "manual_sync_queued", metadata={"source": source_name, "queued": queued, "reused": reused, "blocked": blocked})
+            msg = f"Sync queued for {source_name}."
+            if queued:
+                msg += f" New jobs: {', '.join(queued)}."
+            if reused:
+                msg += f" Already queued/running: {', '.join(reused)}."
             if blocked:
                 msg += f" Skipped incomplete feeds: {', '.join(blocked)}."
             return redirect(url_for("admin_panel", msg=msg))
@@ -1685,6 +1836,41 @@ def create_app() -> Flask:
         finally:
             db.close()
 
+    @app.post("/api/sync")
+    @limiter.limit("20 per minute")
+    def api_sync():
+        payload = request.get_json(silent=True) or {}
+        source_name = str(payload.get("source") or request.args.get("source") or "").strip().lower()
+        if not source_name:
+            return jsonify({"error": "Missing source"}), 400
+        db = _db()
+        try:
+            _ensure_default_feeds(db)
+            feed_rows = _read_feed_rows(db)
+            feed_map = {f.source_id: f for f in feed_rows}
+            if source_name == "all":
+                targets = [f for f in feed_rows if f.enabled]
+            elif source_name in feed_map:
+                targets = [feed_map[source_name]]
+            else:
+                return jsonify({"error": "Invalid source"}), 400
+
+            blocked: List[str] = []
+            queued: List[Dict[str, Any]] = []
+            for feed in targets:
+                state = _read_feed_config_state(db, feed)
+                if not state["ready"]:
+                    blocked.append(feed.source_id)
+                    continue
+                job, created = _enqueue_sync_job(feed, trigger_type="manual", db=db)
+                queued.append({"feed_source_id": feed.source_id, "job_id": job.job_id, "created": created})
+
+            if source_name != "all" and not queued:
+                return jsonify({"error": "Configuration incomplete", "source": source_name, "blocked": blocked}), 400
+            return jsonify({"source": source_name, "jobs": queued, "blocked": blocked}), 202
+        finally:
+            db.close()
+
     @app.get("/api/logs")
     @limiter.limit("60 per minute")
     def api_logs():
@@ -1692,12 +1878,15 @@ def create_app() -> Flask:
         try:
             stmt = select(AppLog).order_by(AppLog.created_at.desc())
             feed = (request.args.get("feed") or "").strip()
+            job_id = (request.args.get("job_id") or request.args.get("run_id") or "").strip()
             level = (request.args.get("level") or "").strip().upper()
             component = (request.args.get("component") or "").strip()
             since = (request.args.get("since") or "").strip()
             until = (request.args.get("until") or "").strip()
             if feed:
                 stmt = stmt.where(AppLog.feed_source_id == feed)
+            if job_id:
+                stmt = stmt.where(AppLog.run_id == job_id)
             if level:
                 stmt = stmt.where(AppLog.level == level)
             if component:
@@ -1741,11 +1930,24 @@ def create_app() -> Flask:
         try:
             running = list(db.scalars(select(FeedRun).where(FeedRun.status == "running").order_by(FeedRun.started_at.desc()).limit(20)).all())
             latest = list(db.scalars(select(FeedRun).order_by(FeedRun.started_at.desc()).limit(20)).all())
+            queued_jobs = list(db.scalars(select(SyncJob).where(SyncJob.status.in_(["queued", "running"])).order_by(SyncJob.created_at.asc()).limit(50)).all())
             heartbeat = _get_setting(db, "scheduler.heartbeat", "")
             return jsonify(
                 {
                     "scheduler_heartbeat": heartbeat,
                     "active_run_id": scheduler_state.get("active_run_id"),
+                    "active_job_id": scheduler_state.get("active_job_id"),
+                    "queued_jobs": [
+                        {
+                            "job_id": j.job_id,
+                            "feed_source_id": j.feed_source_id,
+                            "status": j.status,
+                            "trigger_type": j.trigger_type,
+                            "created_at": str(j.created_at),
+                            "started_at": str(j.started_at),
+                        }
+                        for j in queued_jobs
+                    ],
                     "running": [
                         {"feed_source_id": r.feed_source_id, "run_id": r.run_id, "status": r.status, "started_at": str(r.started_at)}
                         for r in running
@@ -1775,6 +1977,7 @@ def create_app() -> Flask:
 <h1>Logs</h1><p><a href="/admin">Back to admin</a></p>
 <form id="filters">
   <label>Feed <input name="feed" /></label>
+  <label>Job ID <input name="job_id" /></label>
   <label>Level <input name="level" placeholder="INFO|WARN|ERROR" /></label>
   <label>Component <input name="component" placeholder="scheduler|fetcher|parser|exporter" /></label>
   <label>Since <input name="since" placeholder="2026-02-26T00:00:00Z" /></label>
