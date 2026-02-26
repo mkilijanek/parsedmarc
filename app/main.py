@@ -1930,7 +1930,35 @@ def create_app() -> Flask:
                 orgs_html = f"<fieldset><legend>MWDB organizations</legend>{options}</fieldset>"
             else:
                 orgs_html = "<p>MWDB organizations list is unavailable. Use <strong>Test connection</strong> first.</p>"
-        return f"""<!doctype html><html lang='en'><head><meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/><title>Configure { _esc(source_id) }</title></head><body>
+        return f"""<!doctype html>
+<html lang='en'>
+<head>
+<meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/>
+<title>Configure { _esc(source_id) }</title>
+<style>
+  :root {{ color-scheme: light dark; }}
+  body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }}
+  body[data-theme="light"] {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
+  body[data-theme="dark"] {{ --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }}
+  body:not([data-theme]) {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
+  .topbar {{ display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }}
+  .topbar nav a {{ margin-right:.8rem; }}
+  .card {{ border:1px solid var(--line); border-radius:12px; padding:1rem; background:var(--card); }}
+  input, button {{ border:1px solid var(--line); border-radius:8px; padding:.4rem .5rem; background:var(--bg); color:var(--fg); }}
+  fieldset {{ border:1px solid var(--line); border-radius:10px; margin:.8rem 0; padding:.6rem; }}
+</style>
+</head>
+<body>
+<header class="topbar" id="globalTopbar">
+  <nav>
+    <a href="/">Overview</a>
+    <a href="/indicators">Indicators</a>
+    <a href="/admin">Admin</a>
+    <a href="/logs">Logs</a>
+  </nav>
+  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
+</header>
+<div class='card'>
 <h1>Configure feed: {_esc(source_id)}</h1>
 <p>{_esc(msg)}</p>
 <p>Status: {'OK' if state['ready'] else 'Incomplete: ' + _esc(', '.join(state['missing']))}</p>
@@ -1944,7 +1972,25 @@ def create_app() -> Flask:
 <button type='submit' formaction='/admin/feed/{_esc(source_id)}/test' formmethod='post' id='testBtn'>Test connection</button>
 <a href='/admin'>Back</a>
 </form>
+</div>
 <script>
+const themeKey = 'ioc-theme';
+const preferredTheme = localStorage.getItem(themeKey);
+if (preferredTheme === 'dark' || preferredTheme === 'light') {{
+  document.body.setAttribute('data-theme', preferredTheme);
+}} else {{
+  const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
+}}
+const themeToggle = document.getElementById('themeToggleGlobal');
+if (themeToggle) {{
+  themeToggle.addEventListener('click', () => {{
+    const curr = document.body.getAttribute('data-theme') || 'light';
+    const next = curr === 'dark' ? 'light' : 'dark';
+    document.body.setAttribute('data-theme', next);
+    localStorage.setItem(themeKey, next);
+  }});
+}}
 const form = document.getElementById('feedConfigForm');
 if (form) {{
   form.addEventListener('submit', function (evt) {{
@@ -2264,7 +2310,30 @@ if (form) {{
     @limiter.limit("30 per minute")
     def logs_page():
         return """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Logs</title></head><body>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Logs</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }
+  body[data-theme="light"] { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }
+  body[data-theme="dark"] { --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }
+  body:not([data-theme]) { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }
+  .topbar nav a { margin-right:.8rem; }
+  .card { border:1px solid var(--line); border-radius:12px; padding:1rem; background:var(--card); }
+  input, button { border:1px solid var(--line); border-radius:8px; padding:.4rem .5rem; background:var(--bg); color:var(--fg); }
+  label { display:inline-block; margin: .2rem .6rem .2rem 0; }
+  pre { white-space: pre-wrap; border:1px solid var(--line); padding:10px; min-height:300px; background:var(--card); }
+</style></head><body>
+<header class="topbar" id="globalTopbar">
+  <nav>
+    <a href="/">Overview</a>
+    <a href="/indicators">Indicators</a>
+    <a href="/admin">Admin</a>
+    <a href="/logs">Logs</a>
+  </nav>
+  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
+</header>
+<div class="card">
 <h1>Logs</h1><p><a href="/admin">Back to admin</a></p>
 <form id="filters">
   <label>Feed <input name="feed" /></label>
@@ -2277,8 +2346,26 @@ if (form) {{
   <button type="submit">Apply</button>
   <button type="button" id="copyBtn">Copy visible logs</button>
 </form>
-<pre id="out" style="white-space: pre-wrap; border:1px solid #ccc; padding:10px; min-height:300px;"></pre>
+<pre id="out"></pre>
+</div>
 <script>
+const themeKey = 'ioc-theme';
+const preferredTheme = localStorage.getItem(themeKey);
+if (preferredTheme === 'dark' || preferredTheme === 'light') {
+  document.body.setAttribute('data-theme', preferredTheme);
+} else {
+  const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
+}
+const themeToggle = document.getElementById('themeToggleGlobal');
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    const curr = document.body.getAttribute('data-theme') || 'light';
+    const next = curr === 'dark' ? 'light' : 'dark';
+    document.body.setAttribute('data-theme', next);
+    localStorage.setItem(themeKey, next);
+  });
+}
 function buildQuery(){const fd=new FormData(document.getElementById('filters'));const p=new URLSearchParams();for(const [k,v] of fd.entries()){if((v||'').trim())p.set(k,v);}p.set('limit','200');return p.toString();}
 async function refreshLogs(){const q=buildQuery();const r=await fetch('/api/logs?'+q);const d=await r.json();const lines=(d.items||[]).map(x=>`[${x.created_at}] ${x.level} ${x.component} ${x.feed_source_id||'-'} ${x.run_id||'-'} ${x.message} ${JSON.stringify(x.metadata||{})}`);document.getElementById('out').textContent=lines.length ? lines.join('\\n') : 'No logs found for current filters.';}
 document.getElementById('filters').addEventListener('submit',(e)=>{e.preventDefault();refreshLogs();});
@@ -2335,6 +2422,7 @@ def _render_index(total: int, active: int, feeds) -> str:
     <a href="/admin">Admin</a>
     <a href="/logs">Logs</a>
   </nav>
+  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
 </header>
 <main id="main-content" role="main">
   <div class="card" role="region" aria-label="System overview">
@@ -2364,6 +2452,25 @@ def _render_index(total: int, active: int, feeds) -> str:
     </table>
   </div>
 </main>
+<script>
+  const themeKey = 'ioc-theme';
+  const preferredTheme = localStorage.getItem(themeKey);
+  if (preferredTheme === 'dark' || preferredTheme === 'light') {{
+    document.body.setAttribute('data-theme', preferredTheme);
+  }} else {{
+    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
+  }}
+  const themeToggle = document.getElementById('themeToggleGlobal');
+  if (themeToggle) {{
+    themeToggle.addEventListener('click', () => {{
+      const curr = document.body.getAttribute('data-theme') || 'light';
+      const next = curr === 'dark' ? 'light' : 'dark';
+      document.body.setAttribute('data-theme', next);
+      localStorage.setItem(themeKey, next);
+    }});
+  }}
+</script>
 </body>
 </html>
 """

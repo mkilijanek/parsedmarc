@@ -43,6 +43,19 @@ def test_dark_mode_toggle_script_present(client, sample_indicators):
     assert "id=\"themeToggleGlobal\"" in html
 
 
+def test_dark_mode_toggle_present_on_overview_and_logs(client, sample_indicators):
+    overview = client.get("/")
+    logs = client.get("/logs")
+    assert overview.status_code == 200
+    assert logs.status_code == 200
+    overview_html = overview.get_data(as_text=True)
+    logs_html = logs.get_data(as_text=True)
+    assert "id=\"themeToggleGlobal\"" in overview_html
+    assert "localStorage.getItem(themeKey)" in overview_html
+    assert "id=\"themeToggleGlobal\"" in logs_html
+    assert "localStorage.getItem(themeKey)" in logs_html
+
+
 def test_global_topbar_present_on_indicators_and_admin(client, sample_indicators, sample_feed_stats):
     indicators = client.get("/indicators")
     admin = client.get("/admin")
