@@ -116,6 +116,7 @@ def test_abusech_configure_shows_service_selectors(client, sample_indicators):
     assert "Bazaar" in html
     assert "FeodoTracker" in html
     assert "YARAify" in html
+    assert "Custom filter" in html
 
 
 def test_feed_test_connection_endpoint_redirects(client, sample_indicators):

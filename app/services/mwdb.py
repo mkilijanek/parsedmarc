@@ -143,6 +143,14 @@ def _build_tag_query(tags: List[str]) -> str:
     return "(" + " OR ".join(terms) + ")"
 
 
+def _build_object_query(tags: List[str], custom_filter: str) -> str:
+    tag_query = _build_tag_query(tags)
+    extra = (custom_filter or "").strip()
+    if not extra:
+        return tag_query
+    return f"({tag_query}) AND ({extra})"
+
+
 def _parse_org_list(raw: str) -> List[str]:
     out: List[str] = []
     seen = set()
@@ -186,8 +194,9 @@ def fetch_mwdb_by_tags(
     base_url: str,
     auth_key: str,
     tags: List[str],
-    since: Optional[datetime],
-    until: Optional[datetime],
+    custom_filter: str = "",
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
     organizations: Optional[List[str]] = None,
     limit: int = 1000,
     timeout_s: int = 30,
@@ -217,7 +226,7 @@ def fetch_mwdb_by_tags(
     session.headers.update({"Authorization": f"Bearer {auth_key}"})
 
     # lucene tag query
-    q = _build_tag_query(tags)
+    q = _build_object_query(tags, custom_filter)
 
     older_than = None
     yielded = 0
@@ -328,6 +337,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
             base_url=cfg.MWDB_URL,
             auth_key=cfg.MWDB_AUTH_KEY,
             tags=tags,
+            custom_filter=cfg.MWDB_CUSTOM_FILTER,
             since=since,
             until=None,
             organizations=organizations,

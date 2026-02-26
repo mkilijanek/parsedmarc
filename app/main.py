@@ -284,18 +284,21 @@ def create_app() -> Flask:
                 "fields": [
                     {"key": "base_url", "label": "MISP URL", "secret": False, "required": True, "env": "MISP_URL", "placeholder": "https://misp.example.local"},
                     {"key": "api_key", "label": "MISP API key", "secret": True, "required": True, "env": "MISP_API_KEY", "placeholder": "Leave blank to keep current"},
+                    {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "MISP_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                 ],
             },
             "crowdsec": {
                 "display_name": "CrowdSec",
                 "fields": [
                     {"key": "api_key", "label": "CrowdSec API key", "secret": True, "required": True, "env": "CROWDSEC_API_KEY", "placeholder": "Leave blank to keep current"},
+                    {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "CROWDSEC_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                 ],
             },
             "malwarebazaar": {
                 "display_name": "MalwareBazaar",
                 "fields": [
                     {"key": "api_key", "label": "MalwareBazaar auth key", "secret": True, "required": True, "env": "MALWAREBAZAAR_AUTH_KEY", "placeholder": "Leave blank to keep current"},
+                    {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "MALWAREBAZAAR_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                 ],
             },
             "mwdb": {
@@ -303,6 +306,7 @@ def create_app() -> Flask:
                 "fields": [
                     {"key": "base_url", "label": "MWDB URL", "secret": False, "required": True, "env": "MWDB_URL", "placeholder": "https://mwdb.example.local"},
                     {"key": "api_key", "label": "MWDB auth key", "secret": True, "required": True, "env": "MWDB_AUTH_KEY", "placeholder": "Leave blank to keep current"},
+                    {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "MWDB_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                     {"key": "tags", "label": "MWDB tags (comma-separated)", "secret": False, "required": False, "env": "MWDB_TAGS", "placeholder": "apt, malware"},
                     {"key": "days", "label": "MWDB days", "secret": False, "required": False, "env": "MWDB_DAYS", "placeholder": "7"},
                     {"key": "no_time_limit", "label": "No time limit", "secret": False, "required": False, "env": "MWDB_NO_TIME_LIMIT", "type": "checkbox"},
@@ -312,6 +316,7 @@ def create_app() -> Flask:
                 "display_name": "abuse.ch",
                 "fields": [
                     {"key": "api_key", "label": "abuse.ch auth key", "secret": True, "required": False, "env": "ABUSECH_AUTH_KEY", "placeholder": "Leave blank to keep current"},
+                    {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "ABUSECH_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                     {"key": "threatfox_enabled", "label": "ThreatFox", "secret": False, "required": False, "env": "THREATFOX_ENABLED", "type": "checkbox"},
                     {"key": "urlhaus_enabled", "label": "URLhaus", "secret": False, "required": False, "env": "URLHAUS_ENABLED", "type": "checkbox"},
                     {"key": "bazaar_enabled", "label": "Bazaar", "secret": False, "required": False, "env": "ABUSECH_BAZAAR_ENABLED", "type": "checkbox"},

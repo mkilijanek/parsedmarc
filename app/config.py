@@ -81,6 +81,7 @@ class Config:
     MALWAREBAZAAR_LIMIT: int = field(default_factory=lambda: _env_int("MALWAREBAZAAR_LIMIT", 1000))
     MWDB_URL: str = field(default_factory=lambda: _env_str("MWDB_URL", ""))
     MWDB_AUTH_KEY: str = field(default_factory=lambda: _env_str("MWDB_AUTH_KEY", ""))
+    MWDB_CUSTOM_FILTER: str = field(default_factory=lambda: _env_str("MWDB_CUSTOM_FILTER", ""))
     MWDB_TAGS: str = field(default_factory=lambda: _env_str("MWDB_TAGS", ""))
     MWDB_DAYS: int = field(default_factory=lambda: _env_int("MWDB_DAYS", 7))
     MWDB_NO_TIME_LIMIT: bool = field(default_factory=lambda: _env_bool("MWDB_NO_TIME_LIMIT", False))
