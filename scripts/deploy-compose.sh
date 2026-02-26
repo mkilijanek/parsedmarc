@@ -25,8 +25,10 @@ PY
   } >> .env
 fi
 
-echo "[deploy] Building and starting postgres, redis, app..."
-docker compose up -d --build postgres redis app
+echo "[deploy] Building and starting postgres, redis, migrations, app, worker..."
+docker compose up -d --build postgres redis
+docker compose run --rm migrate
+docker compose up -d --build app worker
 
 published="$(docker compose port app 8080 | tail -n 1 || true)"
 if [[ -z "${published}" ]]; then

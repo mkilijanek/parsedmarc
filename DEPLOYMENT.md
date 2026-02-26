@@ -52,6 +52,7 @@ cp .env .env.backup
 ### Updates
 ```bash
 git pull
-docker-compose build
-docker-compose up -d
+docker compose build
+docker compose run --rm migrate
+docker compose up -d
 ```
