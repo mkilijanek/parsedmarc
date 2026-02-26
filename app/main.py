@@ -1645,6 +1645,7 @@ def create_app() -> Flask:
             return redirect(url_for("admin_panel", msg="Missing source for sync."))
         db = _db()
         try:
+            _app_log("INFO", "scheduler", "manual_sync_requested", metadata={"source": source_name})
             _ensure_default_feeds(db)
             feed_rows = _read_feed_rows(db)
             feed_map = {f.source_id: f for f in feed_rows}
@@ -1672,10 +1673,15 @@ def create_app() -> Flask:
             for feed in run_targets:
                 results.append(_execute_feed_sync(feed, trigger_type="manual"))
             _audit("manual_sync", "feed", None, {"source": source_name, "results": results})
+            _app_log("INFO", "scheduler", "manual_sync_completed", metadata={"source": source_name, "results": results, "blocked": blocked})
             msg = f"Sync completed for {source_name}."
             if blocked:
                 msg += f" Skipped incomplete feeds: {', '.join(blocked)}."
             return redirect(url_for("admin_panel", msg=msg))
+        except Exception as e:
+            logger.exception("admin_sync_failed")
+            _app_log("ERROR", "scheduler", "manual_sync_failed", metadata={"source": source_name, "error": str(e)})
+            return redirect(url_for("admin_panel", msg=f"Sync failed: {e}"))
         finally:
             db.close()
 
@@ -1780,7 +1786,7 @@ def create_app() -> Flask:
 <pre id="out" style="white-space: pre-wrap; border:1px solid #ccc; padding:10px; min-height:300px;"></pre>
 <script>
 function buildQuery(){const fd=new FormData(document.getElementById('filters'));const p=new URLSearchParams();for(const [k,v] of fd.entries()){if((v||'').trim())p.set(k,v);}p.set('limit','200');return p.toString();}
-async function refreshLogs(){const q=buildQuery();const r=await fetch('/api/logs?'+q);const d=await r.json();const lines=(d.items||[]).map(x=>`[${x.created_at}] ${x.level} ${x.component} ${x.feed_source_id||'-'} ${x.run_id||'-'} ${x.message} ${JSON.stringify(x.metadata||{})}`);document.getElementById('out').textContent=lines.join('\\n');}
+async function refreshLogs(){const q=buildQuery();const r=await fetch('/api/logs?'+q);const d=await r.json();const lines=(d.items||[]).map(x=>`[${x.created_at}] ${x.level} ${x.component} ${x.feed_source_id||'-'} ${x.run_id||'-'} ${x.message} ${JSON.stringify(x.metadata||{})}`);document.getElementById('out').textContent=lines.length ? lines.join('\\n') : 'No logs found for current filters.';}
 document.getElementById('filters').addEventListener('submit',(e)=>{e.preventDefault();refreshLogs();});
 document.getElementById('copyBtn').addEventListener('click',async()=>{await navigator.clipboard.writeText(document.getElementById('out').textContent||'');});
 setInterval(()=>{if(document.getElementById('autorefresh').checked)refreshLogs();},5000);refreshLogs();

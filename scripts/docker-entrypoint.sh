@@ -26,9 +26,19 @@ if [ "${AUTO_DB_INIT:-true}" = "true" ]; then
   python - <<'PY'
 from app.db import Base, engine
 from app import models  # noqa: F401 - register metadata
+from sqlalchemy import text
 
-Base.metadata.create_all(bind=engine)
-print("AUTO_DB_INIT: schema ensured")
+lock_id = 937451
+with engine.begin() as conn:
+    if engine.dialect.name == "postgresql":
+        # Prevent parallel schema creation across app/worker containers.
+        conn.execute(text("SELECT pg_advisory_lock(:id)"), {"id": lock_id})
+    try:
+        Base.metadata.create_all(bind=conn)
+        print("AUTO_DB_INIT: schema ensured")
+    finally:
+        if engine.dialect.name == "postgresql":
+            conn.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": lock_id})
 PY
 fi
 

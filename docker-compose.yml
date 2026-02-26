@@ -40,6 +40,7 @@ services:
       # Flask/Gunicorn
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SECRET_KEY: ${SECRET_KEY:-}
+      AUTO_DB_INIT: ${AUTO_DB_INIT:-true}
       CACHE_TTL: ${CACHE_TTL:-300}
       APP_PORT: ${APP_PORT:-8080}
       WORKERS: ${WORKERS:-3}
@@ -95,6 +96,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SECRET_KEY: ${SECRET_KEY:-}
+      AUTO_DB_INIT: ${WORKER_AUTO_DB_INIT:-false}
       CACHE_TTL: ${CACHE_TTL:-300}
       ENABLE_BACKGROUND_JOBS: ${ENABLE_BACKGROUND_JOBS:-true}
       UPDATE_INTERVAL: ${UPDATE_INTERVAL:-600}
