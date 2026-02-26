@@ -1,5 +1,7 @@
 # API Documentation
 
+Status: updated for `1.1.x` (2026-02-26).
+
 ## Overview
 
 The Threat Feed Aggregator provides a RESTful API for querying and exporting Indicators of Compromise (IOCs). All endpoints support various formats and filtering options.
@@ -23,6 +25,42 @@ The current implementation does not require authentication for API access. **For
 ---
 
 ## Endpoints
+
+### Synchronization Jobs
+
+#### `POST /api/sync`
+
+Enqueue sync job for single feed or all enabled feeds.
+
+Request example:
+```json
+{ "source": "abusech" }
+```
+
+Response:
+- `202 Accepted` with queued/reused job metadata (`job_id`, `feed_source_id`, `created`)
+- `400` for invalid source or incomplete config
+
+### Logs API
+
+#### `GET /api/logs`
+
+Supports filtering by:
+- `feed`
+- `job_id` (or `run_id`)
+- `level`
+- `component`
+- `since`, `until`, `limit`
+
+### Current Runs / Queue
+
+#### `GET /api/runs/current`
+
+Returns:
+- scheduler heartbeat
+- active run/job IDs
+- queued/running sync jobs
+- latest run history
 
 ### Health Check
 

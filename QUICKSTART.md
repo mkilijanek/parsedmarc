@@ -1,5 +1,7 @@
 # THREAT FEED AGGREGATOR - SZYBKI START
 
+Aktualizacja: `1.1.x` (2026-02-26)
+
 ## 📦 Zawartość Archiwum
 
 Otrzymałeś kompletny, production-ready system agregacji threat intelligence składający się z:
@@ -89,26 +91,27 @@ MISP_VERIFY_SSL=false
 
 ### 5. Uruchomienie
 ```bash
-# Opcja A: Używając Makefile
-make start
-
-# Opcja B: Bezpośrednio Docker Compose
-docker-compose up -d
+# Compose + migracje
+docker compose up -d postgres redis
+docker compose run --rm migrate
+docker compose up -d app worker
 
 # Sprawdź status
-docker-compose ps
+docker compose ps
 ```
 
 ### 6. Weryfikacja
 ```bash
 # Health check
-curl -k https://localhost:7003/health
+curl http://localhost:7003/health
 
-# Statystyki
-curl -k https://localhost:7003/api/stats
+# Sync API (kolejka jobs)
+curl -X POST http://localhost:7003/api/sync \
+  -H "Content-Type: application/json" \
+  -d '{"source":"abusech"}'
 
 # Web UI
-firefox https://localhost:7003/
+firefox http://localhost:7003/
 ```
 
 ## 🔧 Komendy Pomocnicze

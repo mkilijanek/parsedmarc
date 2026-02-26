@@ -1,5 +1,7 @@
 # Contributing
 
+Status: updated for 1.1.x (2026-02-26).
+
 This project uses a strict "green-only" merge policy.
 
 ## Local Setup

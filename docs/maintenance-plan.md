@@ -1,5 +1,7 @@
 # Maintenance Plan (Post-M16)
 
+Status: updated for 1.1.x (2026-02-26).
+
 ## Horizon
 
 Operational plan for the next 90 days after M16 completion.

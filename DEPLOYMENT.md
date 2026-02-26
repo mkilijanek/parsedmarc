@@ -1,5 +1,7 @@
 # Deployment Guide
 
+Updated for release line `1.1.x` (2026-02-26).
+
 ## Quick Start
 
 ```bash
@@ -13,7 +15,9 @@
 vim .env  # Add MISP and CrowdSec credentials
 
 # 4. Start services
-docker-compose up -d
+docker compose up -d postgres redis
+docker compose run --rm migrate
+docker compose up -d app worker
 
 # 5. Verify
 curl -k https://localhost:7003/health
@@ -37,13 +41,13 @@ curl -k https://localhost:7003/health
 
 ### Monitoring
 - Health: https://your-domain:7003/health
-- Logs: docker-compose logs -f
+- Logs: docker compose logs -f
 - Stats: https://your-domain:7003/api/stats
 
 ### Backup
 ```bash
 # Backup database
-docker-compose exec db pg_dump -U threatfeed threatfeed > backup.sql
+docker compose exec postgres pg_dump -U threatfeed threatfeed > backup.sql
 
 # Backup .env
 cp .env .env.backup

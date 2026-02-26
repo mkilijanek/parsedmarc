@@ -1,5 +1,7 @@
 # Threat Intelligence Feed Aggregator
 
+Updated for release line `1.1.x` (2026-02-26).
+
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
 - Stores IOCs in **PostgreSQL 16** (JSONB + pg_trgm) with audit trail and feed stats
@@ -8,6 +10,19 @@ Production-ready threat feed aggregation and export service:
 - Web UI: `/indicators` (Kibana-like search) with WCAG/ARIA attributes
 - Source shortcuts: `/sources/<src>` (e.g. `/sources/bazaar`, `/sources/mwdb`)
 - 17 export formats via `/indicators/<format>`
+- Queue-based sync jobs with per-feed idempotency (`sync_jobs`)
+- Admin feed configuration with `Test connection`, per-feed settings, and optional `custom filter`
+- Unified light/dark theme across overview, indicators, admin, logs, and feed forms
+
+## Release Highlights (1.1.x)
+
+- Runtime schema creation removed from app startup.
+- Alembic migrations introduced (`scripts/db-migrate.sh`, `migrate` compose service).
+- Scheduler/manual sync refactored to enqueue jobs (`/api/sync` -> `202` with job metadata).
+- Logs API supports `job_id` filtering.
+- Feed configuration extended:
+  - abuse.ch service selectors (`threatfox`, `urlhaus`, `bazaar`, `feodotracker`, `yaraify`)
+  - MWDB: organizations, tags, days/no-time-limit, optional custom filter.
 
 ## Quickstart (Docker Compose)
 
@@ -28,7 +43,9 @@ bash scripts/deploy-compose.sh
 
 Alternative:
 ```bash
-docker compose up -d --build
+docker compose up -d --build postgres redis
+docker compose run --rm migrate
+docker compose up -d --build app worker
 ```
 
 4) Validate:

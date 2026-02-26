@@ -1,5 +1,7 @@
 # M16 Finalization
 
+Status: updated for 1.1.x (2026-02-26).
+
 ## Scope Completed
 
 - M14 performance/capacity tuning and benchmark suite.

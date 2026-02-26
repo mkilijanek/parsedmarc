@@ -1,5 +1,7 @@
 # Performance & SLO (M12)
 
+Status: updated for 1.1.x (2026-02-26).
+
 ## Scope
 
 M12 introduces:
