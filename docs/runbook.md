@@ -92,7 +92,6 @@ Always run migrations before app/worker restart:
 
 ```bash
 docker compose -f docker-compose-release.yml pull
-docker compose -f docker-compose-release.yml run --rm migrate
 docker compose -f docker-compose-release.yml up -d app worker
 ```
 

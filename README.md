@@ -18,6 +18,7 @@ Production-ready threat feed aggregation and export service:
 
 - Runtime schema creation removed from app startup.
 - Alembic migrations introduced (`scripts/db-migrate.sh`, `migrate` compose service).
+- `app` and `worker` now auto-run `alembic upgrade head` on container start (`AUTO_MIGRATE_ON_START=true` by default).
 - Scheduler/manual sync refactored to enqueue jobs (`/api/sync` -> `202` with job metadata).
 - Logs API supports `job_id` filtering.
 - Feed configuration extended:
@@ -44,7 +45,6 @@ bash scripts/deploy-compose.sh
 Alternative:
 ```bash
 docker compose up -d --build postgres redis
-docker compose run --rm migrate
 docker compose up -d --build app worker
 ```
 
@@ -190,6 +190,7 @@ Contribution and quality gate:
 - `MWDB_LIMIT` (optional): max rows per run (default: `1000`).
 - outbound feed throttle (optional, enabled by default): `FEED_REQUESTS_PER_SECOND` (default: `10`), `FEED_REQUESTS_PER_MINUTE` (default: `55`), `FEED_RATE_LIMIT_ENABLED`.
 - abuse.ch extended integrations (optional): `THREATFOX_*`, `URLHAUS_*`, `YARAIFY_*`, `FEODOTRACKER_*`, `HUNTING_FPLIST_*`, with shared `ABUSECH_AUTH_KEY`.
+- startup migration control (optional): `AUTO_MIGRATE_ON_START` (default: `true`).
 
 
 ## CLI (IOC ingestion)

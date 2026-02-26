@@ -21,6 +21,24 @@ if [ -z "${REDIS_URL:-}" ]; then
   export REDIS_URL="redis://:redispass@redis:6379/0"
 fi
 
+AUTO_MIGRATE_ON_START="${AUTO_MIGRATE_ON_START:-true}"
+cmdline="$*"
+should_run_migrations="false"
+
+if [ "${AUTO_MIGRATE_ON_START}" = "true" ]; then
+  case "${cmdline}" in
+    *gunicorn*|*app.worker*)
+      should_run_migrations="true"
+      ;;
+  esac
+fi
+
+if [ "${1:-}" != "--benchmark" ] && [ "${should_run_migrations}" = "true" ]; then
+  echo "STARTUP: applying database migrations (alembic upgrade head)"
+  sh /app/scripts/db-migrate.sh
+  echo "STARTUP: database migrations completed"
+fi
+
 # Optional one-shot benchmark mode.
 # Usage:
 #   docker compose run --rm app --benchmark

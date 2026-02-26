@@ -16,7 +16,6 @@ vim .env  # Add MISP and CrowdSec credentials
 
 # 4. Start services
 docker compose up -d postgres redis
-docker compose run --rm migrate
 docker compose up -d app worker
 
 # 5. Verify
@@ -57,6 +56,7 @@ cp .env .env.backup
 ```bash
 git pull
 docker compose build
-docker compose run --rm migrate
 docker compose up -d
 ```
+
+`app` and `worker` execute database upgrade automatically on start (`AUTO_MIGRATE_ON_START=true` by default), so restarting with a newer image applies schema updates without manual migration commands.

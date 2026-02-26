@@ -2385,6 +2385,65 @@ setInterval(()=>{if(document.getElementById('autorefresh').checked)refreshLogs()
 
 # ---------- HTML rendering (no external templates, minimal dependencies) ----------
 
+STARTUP_LOADER_STYLE = """
+    .startup-loader { position: fixed; inset: 0; z-index: 9999; background: radial-gradient(circle at 20% 20%, #103040 0%, rgba(16,48,64,.55) 35%, transparent 70%), radial-gradient(circle at 80% 0%, #2a1f3f 0%, rgba(42,31,63,.45) 35%, transparent 70%), #05090f; display: flex; align-items: center; justify-content: center; padding: 20px; transition: opacity .35s ease, visibility .35s ease; }
+    .startup-loader.done { opacity: 0; visibility: hidden; }
+    .startup-loader-card { position: relative; overflow: hidden; width: min(560px, 94vw); border: 1px solid #224b63; background: linear-gradient(180deg, #071523 0%, #0a1520 100%); border-radius: 16px; padding: 22px 20px; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+    .startup-loader-card h2 { margin: 0 0 8px; color: #9cecff; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+    .startup-loader-card p { margin: 0 0 14px; color: #b5d7e8; font-size: 14px; }
+    .startup-loader-grid { position: absolute; inset: -200% -50% auto -50%; height: 220%; background: repeating-linear-gradient(90deg, rgba(40,176,255,.08) 0, rgba(40,176,255,.08) 1px, transparent 1px, transparent 22px), repeating-linear-gradient(0deg, rgba(40,176,255,.06) 0, rgba(40,176,255,.06) 1px, transparent 1px, transparent 22px); transform: perspective(380px) rotateX(68deg); opacity: .65; }
+    .startup-loader-scan { position: absolute; left: 0; right: 0; top: -40%; height: 38%; background: linear-gradient(180deg, rgba(76,208,255,0), rgba(76,208,255,.22), rgba(76,208,255,0)); animation: loader-scan 2.1s linear infinite; }
+    .startup-loader-progress { position: relative; height: 8px; border: 1px solid #2d6486; background: #05131d; border-radius: 999px; overflow: hidden; }
+    .startup-loader-progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #37dcff, #7effc8); box-shadow: 0 0 16px rgba(55,220,255,.8); transition: width .16s ease; }
+    @keyframes loader-scan { 0% { transform: translateY(0); } 100% { transform: translateY(300%); } }
+"""
+
+STARTUP_LOADER_MARKUP = """
+<div id="startupLoader" class="startup-loader" aria-live="polite" aria-label="Application startup in progress">
+  <div class="startup-loader-card">
+    <div class="startup-loader-grid" aria-hidden="true"></div>
+    <div class="startup-loader-scan" aria-hidden="true"></div>
+    <h2>IOC Service</h2>
+    <p>Booting modules, validating feeds, preparing data plane...</p>
+    <div class="startup-loader-progress"><span id="startupLoaderBar"></span></div>
+  </div>
+</div>
+"""
+
+STARTUP_LOADER_SCRIPT = """
+(function () {
+  const loader = document.getElementById('startupLoader');
+  const bar = document.getElementById('startupLoaderBar');
+  if (!loader || !bar) { return; }
+  const startedAt = Date.now();
+  let done = false;
+  let width = 10;
+  const tick = window.setInterval(function () {
+    if (done) { return; }
+    width = Math.min(92, width + Math.random() * 7);
+    bar.style.width = width.toFixed(1) + '%';
+  }, 120);
+  function finish() {
+    if (done) { return; }
+    done = true;
+    const minVisibleMs = 900;
+    const remaining = Math.max(0, minVisibleMs - (Date.now() - startedAt));
+    window.setTimeout(function () {
+      bar.style.width = '100%';
+      loader.classList.add('done');
+      window.setTimeout(function () { loader.remove(); }, 450);
+      window.clearInterval(tick);
+    }, remaining);
+  }
+  const timeout = window.setTimeout(finish, 3500);
+  fetch('/health', { cache: 'no-store' })
+    .then(function () { finish(); })
+    .catch(function () { finish(); })
+    .finally(function () { window.clearTimeout(timeout); });
+  window.addEventListener('load', finish, { once: true });
+})();
+"""
+
 def _esc(s: str) -> str:
     return (s or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
 
@@ -2416,9 +2475,11 @@ def _render_index(total: int, active: int, feeds) -> str:
     th, td {{ border-bottom: 1px solid var(--line); padding: 0.5rem; text-align: left; }}
     .skip-link {{ position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }}
     .skip-link:focus {{ left: 1rem; top: 1rem; width: auto; height: auto; background: #fff; padding: .5rem; border: 1px solid #000; }}
+{STARTUP_LOADER_STYLE}
   </style>
 </head>
 <body>
+{STARTUP_LOADER_MARKUP}
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <header class="topbar" id="globalTopbar">
   <nav>
@@ -2475,6 +2536,7 @@ def _render_index(total: int, active: int, feeds) -> str:
       localStorage.setItem(themeKey, next);
     }});
   }}
+  {STARTUP_LOADER_SCRIPT}
 </script>
 </body>
 </html>
@@ -2632,9 +2694,11 @@ def _render_indicators(
       th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8) {{ display: none; }}
       .card {{ padding: .65rem; }}
     }}
+{STARTUP_LOADER_STYLE}
   </style>
 </head>
 <body>
+{STARTUP_LOADER_MARKUP}
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <header class="topbar" id="globalTopbar">
   <nav>
@@ -2767,6 +2831,7 @@ def _render_indicators(
       }}
     }}
   }});
+  {STARTUP_LOADER_SCRIPT}
 </script>
 </body>
 </html>

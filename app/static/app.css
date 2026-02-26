@@ -26,6 +26,16 @@ th,td{border-bottom:1px solid var(--line);padding:8px;vertical-align:top;font-si
 th{position:sticky;top:0;background:var(--panel);z-index:1;text-align:left}
 .hint{color:var(--muted);font-size:12px}
 a:focus,button:focus,input:focus{outline:2px solid var(--link);outline-offset:2px}
+.startup-loader{position:fixed;inset:0;z-index:9999;background:radial-gradient(circle at 20% 20%,#103040 0%,rgba(16,48,64,.55) 35%,transparent 70%),radial-gradient(circle at 80% 0%,#2a1f3f 0%,rgba(42,31,63,.45) 35%,transparent 70%),#05090f;display:flex;align-items:center;justify-content:center;padding:20px;transition:opacity .35s ease,visibility .35s ease}
+.startup-loader.done{opacity:0;visibility:hidden}
+.startup-loader-card{position:relative;overflow:hidden;width:min(560px,94vw);border:1px solid #224b63;background:linear-gradient(180deg,#071523 0%,#0a1520 100%);border-radius:16px;padding:22px 20px;box-shadow:0 20px 50px rgba(0,0,0,.45)}
+.startup-loader-card h2{margin:0 0 8px;color:#9cecff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.08em;text-transform:uppercase}
+.startup-loader-card p{margin:0 0 14px;color:#b5d7e8;font-size:14px}
+.startup-loader-grid{position:absolute;inset:-200% -50% auto -50%;height:220%;background:repeating-linear-gradient(90deg,rgba(40,176,255,.08) 0,rgba(40,176,255,.08) 1px,transparent 1px,transparent 22px),repeating-linear-gradient(0deg,rgba(40,176,255,.06) 0,rgba(40,176,255,.06) 1px,transparent 1px,transparent 22px);transform:perspective(380px) rotateX(68deg);opacity:.65}
+.startup-loader-scan{position:absolute;left:0;right:0;top:-40%;height:38%;background:linear-gradient(180deg,rgba(76,208,255,0),rgba(76,208,255,.22),rgba(76,208,255,0));animation:loader-scan 2.1s linear infinite}
+.startup-loader-progress{position:relative;height:8px;border:1px solid #2d6486;background:#05131d;border-radius:999px;overflow:hidden}
+.startup-loader-progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#37dcff,#7effc8);box-shadow:0 0 16px rgba(55,220,255,.8);transition:width .16s ease}
+@keyframes loader-scan{0%{transform:translateY(0)}100%{transform:translateY(300%)}}
 @media (max-width: 760px){
   .nav a{margin-left:8px;font-size:12px}
   .theme-btn{padding:5px 8px}

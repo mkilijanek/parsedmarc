@@ -93,7 +93,6 @@ MISP_VERIFY_SSL=false
 ```bash
 # Compose + migracje
 docker compose up -d postgres redis
-docker compose run --rm migrate
 docker compose up -d app worker
 
 # Sprawdź status

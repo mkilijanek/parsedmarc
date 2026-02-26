@@ -7,6 +7,15 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
+  <div id="startupLoader" class="startup-loader" aria-live="polite" aria-label="Application startup in progress">
+    <div class="startup-loader-card">
+      <div class="startup-loader-grid" aria-hidden="true"></div>
+      <div class="startup-loader-scan" aria-hidden="true"></div>
+      <h2>IOC Service</h2>
+      <p>Booting modules, validating feeds, preparing data plane...</p>
+      <div class="startup-loader-progress"><span id="startupLoaderBar"></span></div>
+    </div>
+  </div>
   <header class="topbar">
     <div class="brand"><a href="{{ url_for('webui.index') }}">IOC Viewer</a></div>
     <nav class="nav">
@@ -45,6 +54,40 @@
           localStorage.setItem(themeKey, next);
         });
       }
+    })();
+
+    (function () {
+      const loader = document.getElementById("startupLoader");
+      const bar = document.getElementById("startupLoaderBar");
+      if (!loader || !bar) return;
+      const startedAt = Date.now();
+      let done = false;
+      let width = 10;
+      const tick = window.setInterval(function () {
+        if (done) return;
+        width = Math.min(92, width + Math.random() * 7);
+        bar.style.width = width.toFixed(1) + "%";
+      }, 120);
+      function finish() {
+        if (done) return;
+        done = true;
+        const minVisibleMs = 900;
+        const remaining = Math.max(0, minVisibleMs - (Date.now() - startedAt));
+        window.setTimeout(function () {
+          bar.style.width = "100%";
+          loader.classList.add("done");
+          window.setTimeout(function () {
+            loader.remove();
+          }, 450);
+          window.clearInterval(tick);
+        }, remaining);
+      }
+      const timeout = window.setTimeout(finish, 3500);
+      fetch("/health", { cache: "no-store" })
+        .then(function () { finish(); })
+        .catch(function () { finish(); })
+        .finally(function () { window.clearTimeout(timeout); });
+      window.addEventListener("load", finish, { once: true });
     })();
   </script>
 </body>
