@@ -27,7 +27,17 @@ from .config import Config
 from .webui import webui_bp
 from .logging import setup_logging
 from .db import SessionLocal, get_session
-from .models import Indicator, FeedStats, AuditLog, AppSetting, ExportJob, tags_contains
+from .models import (
+    Indicator,
+    FeedStats,
+    AuditLog,
+    AppSetting,
+    ExportJob,
+    Feed,
+    FeedRun,
+    AppLog,
+    tags_contains,
+)
 from .cache import get_redis
 from .security import validate_search_query, enforce_allowed_hosts, get_client_ip
 from .query_parser import parse_kibana_query, Term, Token
@@ -240,92 +250,38 @@ def create_app() -> Flask:
         else:
             os.environ.pop("NO_PROXY", None)
 
-    def _feed_definitions() -> Dict[str, Dict[str, Any]]:
+    def _source_templates() -> Dict[str, Dict[str, Any]]:
         return {
             "misp": {
-                "source_id": "misp",
                 "display_name": "MISP",
                 "fields": [
-                    {
-                        "key": "config.misp_url",
-                        "label": "MISP URL",
-                        "secret": False,
-                        "required": True,
-                        "placeholder": "https://misp.example.local",
-                        "default": cfg.MISP_URL,
-                    },
-                    {
-                        "key": "config.misp_api_key",
-                        "label": "MISP API key",
-                        "secret": True,
-                        "required": True,
-                        "placeholder": "Leave blank to keep current",
-                        "default": cfg.MISP_API_KEY,
-                    },
+                    {"key": "base_url", "label": "MISP URL", "secret": False, "required": True, "env": "MISP_URL", "placeholder": "https://misp.example.local"},
+                    {"key": "api_key", "label": "MISP API key", "secret": True, "required": True, "env": "MISP_API_KEY", "placeholder": "Leave blank to keep current"},
                 ],
             },
             "crowdsec": {
-                "source_id": "crowdsec",
                 "display_name": "CrowdSec",
                 "fields": [
-                    {
-                        "key": "config.crowdsec_api_key",
-                        "label": "CrowdSec API key",
-                        "secret": True,
-                        "required": True,
-                        "placeholder": "Leave blank to keep current",
-                        "default": cfg.CROWDSEC_API_KEY,
-                    }
+                    {"key": "api_key", "label": "CrowdSec API key", "secret": True, "required": True, "env": "CROWDSEC_API_KEY", "placeholder": "Leave blank to keep current"},
                 ],
             },
             "malwarebazaar": {
-                "source_id": "malwarebazaar",
                 "display_name": "MalwareBazaar",
                 "fields": [
-                    {
-                        "key": "config.malwarebazaar_auth_key",
-                        "label": "MalwareBazaar auth key",
-                        "secret": True,
-                        "required": True,
-                        "placeholder": "Leave blank to keep current",
-                        "default": cfg.MALWAREBAZAAR_AUTH_KEY,
-                    }
+                    {"key": "api_key", "label": "MalwareBazaar auth key", "secret": True, "required": True, "env": "MALWAREBAZAAR_AUTH_KEY", "placeholder": "Leave blank to keep current"},
                 ],
             },
             "mwdb": {
-                "source_id": "mwdb",
                 "display_name": "MWDB",
                 "fields": [
-                    {
-                        "key": "config.mwdb_url",
-                        "label": "MWDB URL",
-                        "secret": False,
-                        "required": True,
-                        "placeholder": "https://mwdb.example.local",
-                        "default": cfg.MWDB_URL,
-                    },
-                    {
-                        "key": "config.mwdb_auth_key",
-                        "label": "MWDB auth key",
-                        "secret": True,
-                        "required": True,
-                        "placeholder": "Leave blank to keep current",
-                        "default": cfg.MWDB_AUTH_KEY,
-                    },
+                    {"key": "base_url", "label": "MWDB URL", "secret": False, "required": True, "env": "MWDB_URL", "placeholder": "https://mwdb.example.local"},
+                    {"key": "api_key", "label": "MWDB auth key", "secret": True, "required": True, "env": "MWDB_AUTH_KEY", "placeholder": "Leave blank to keep current"},
                 ],
             },
             "abusech": {
-                "source_id": "abusech",
                 "display_name": "abuse.ch",
                 "fields": [
-                    {
-                        "key": "config.abusech_auth_key",
-                        "label": "abuse.ch auth key",
-                        "secret": True,
-                        "required": False,
-                        "placeholder": "Leave blank to keep current",
-                        "default": cfg.ABUSECH_AUTH_KEY,
-                    }
+                    {"key": "api_key", "label": "abuse.ch auth key", "secret": True, "required": False, "env": "ABUSECH_AUTH_KEY", "placeholder": "Leave blank to keep current"},
                 ],
             },
         }
@@ -333,20 +289,53 @@ def create_app() -> Flask:
     def _field_input_name(setting_key: str) -> str:
         return setting_key.replace(".", "__")
 
-    def _read_feed_config_state(db: Session, source_id: str) -> Dict[str, Any]:
-        defs = _feed_definitions().get(source_id)
+    def _feed_value_key(source_id: str, key: str) -> str:
+        return f"feedcfg.{source_id}.{key}"
+
+    def _feed_secret_key(source_id: str, key: str) -> str:
+        return f"feedsecret.{source_id}.{key}"
+
+    def _ensure_default_feeds(db: Session) -> None:
+        existing = db.scalars(select(Feed).where(Feed.deleted == False)).all()  # noqa: E712
+        if existing:
+            return
+        defaults = [
+            ("misp", "misp", "MISP"),
+            ("crowdsec", "crowdsec", "CrowdSec"),
+            ("malwarebazaar", "malwarebazaar", "MalwareBazaar"),
+            ("mwdb", "mwdb", "MWDB"),
+            ("abusech", "abusech", "abuse.ch"),
+        ]
+        for source_id, source_type, display_name in defaults:
+            db.add(
+                Feed(
+                    source_id=source_id,
+                    source_type=source_type,
+                    display_name=display_name,
+                    schedule_cron="*/15 * * * *",
+                    enabled=True,
+                    deleted=False,
+                )
+            )
+        db.commit()
+
+    def _read_feed_config_state(db: Session, feed: Feed) -> Dict[str, Any]:
+        defs = _source_templates().get(feed.source_type)
         if not defs:
-            return {"source_id": source_id, "ready": False, "missing": ["unknown source"], "enabled": False}
+            return {"source_id": feed.source_id, "ready": False, "missing": ["unknown source type"], "enabled": feed.enabled}
         missing: List[str] = []
         normalized_fields: List[Dict[str, Any]] = []
-        for field_def in defs.get("fields", []):
-            key = str(field_def.get("key") or "")
+        for field_def in defs["fields"]:
+            key = str(field_def["key"])
             if not key:
                 continue
             required = bool(field_def.get("required", False))
             secret = bool(field_def.get("secret", False))
-            fallback = str(field_def.get("default") or "")
-            val = _get_setting(db, key, fallback, secret=secret)
+            if key == "base_url":
+                val = str(feed.base_url or "")
+            else:
+                setting_key = _feed_secret_key(feed.source_id, key) if secret else _feed_value_key(feed.source_id, key)
+                val = _get_setting(db, setting_key, "", secret=secret)
             if required and not str(val).strip():
                 missing.append(str(field_def.get("label") or key))
             normalized_fields.append(
@@ -359,15 +348,16 @@ def create_app() -> Flask:
                     "value": "" if secret else str(val),
                     "current_masked": _mask_secret(str(val)) if secret else "",
                     "input_name": _field_input_name(key),
+                    "env": str(field_def.get("env") or ""),
                 }
             )
-        enabled = _read_feed_enabled(db, source_id)
         return {
-            "source_id": source_id,
-            "display_name": defs.get("display_name", source_id),
+            "source_id": feed.source_id,
+            "source_type": feed.source_type,
+            "display_name": feed.display_name,
             "ready": len(missing) == 0,
             "missing": missing,
-            "enabled": enabled,
+            "enabled": bool(feed.enabled),
             "fields": normalized_fields,
         }
 
@@ -588,6 +578,221 @@ def create_app() -> Flask:
             return
         th = Thread(target=_run_export_job, args=(job_id,), daemon=True)
         th.start()
+
+    scheduler_lock = Lock()
+    scheduler_state: Dict[str, Any] = {"active_run_id": None, "last_minute": {}}
+
+    def _app_log(
+        level: str,
+        component: str,
+        message: str,
+        *,
+        feed_source_id: str | None = None,
+        run_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        db = _db()
+        try:
+            db.add(
+                AppLog(
+                    level=level.upper(),
+                    component=component,
+                    message=message,
+                    feed_source_id=feed_source_id,
+                    run_id=run_id,
+                    metadata_=metadata or {},
+                )
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
+
+    def _read_feed_rows(db: Session) -> List[Feed]:
+        _ensure_default_feeds(db)
+        return list(
+            db.scalars(
+                select(Feed).where(Feed.deleted == False).order_by(Feed.source_id.asc())  # noqa: E712
+            ).all()
+        )
+
+    def _run_sync_worker_for_feed(feed: Feed) -> Dict[str, Any]:
+        source_type = feed.source_type
+        if source_type == "misp":
+            from .services.misp import update_misp_indicators
+            return {"source": feed.source_id, "result": update_misp_indicators()}
+        if source_type == "crowdsec":
+            from .services.crowdsec import update_crowdsec_indicators
+            return {"source": feed.source_id, "result": update_crowdsec_indicators()}
+        if source_type == "malwarebazaar":
+            from .services.malwarebazaar import update_malwarebazaar_indicators
+            return {"source": feed.source_id, "result": update_malwarebazaar_indicators()}
+        if source_type == "mwdb":
+            from .services.mwdb import update_mwdb_indicators
+            return {"source": feed.source_id, "result": update_mwdb_indicators()}
+        if source_type == "abusech":
+            from .services.abusech import update_abusech_indicators
+            return {"source": feed.source_id, "result": update_abusech_indicators()}
+        raise ValueError(f"Unknown source_type: {source_type}")
+
+    def _execute_feed_sync(feed: Feed, *, trigger_type: str) -> Dict[str, Any]:
+        run_id = uuid.uuid4().hex
+        scheduler_state["active_run_id"] = run_id
+        db = _db()
+        try:
+            db.add(
+                FeedRun(
+                    feed_source_id=feed.source_id,
+                    run_id=run_id,
+                    trigger_type=trigger_type,
+                    status="running",
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        _app_log("INFO", "scheduler", "feed_sync_started", feed_source_id=feed.source_id, run_id=run_id, metadata={"trigger": trigger_type})
+        started = time.time()
+        updates: Dict[str, str | None] = {}
+        previous: Dict[str, str | None] = {}
+        db = _db()
+        try:
+            state = _read_feed_config_state(db, feed)
+            if not state["ready"]:
+                raise RuntimeError(f"incomplete config: {', '.join(state['missing'])}")
+            if feed.base_url:
+                updates["BASE_URL"] = feed.base_url
+            for f in state["fields"]:
+                env_key = str(f.get("env") or "")
+                if not env_key:
+                    continue
+                if f["key"] == "base_url":
+                    if feed.base_url:
+                        updates[env_key] = feed.base_url
+                elif f.get("secret"):
+                    updates[env_key] = _get_setting(db, _feed_secret_key(feed.source_id, str(f["key"])), "", secret=True)
+                else:
+                    updates[env_key] = _get_setting(db, _feed_value_key(feed.source_id, str(f["key"])), "", secret=False)
+
+            previous = {k: os.environ.get(k) for k in updates.keys()}
+            for k, v in updates.items():
+                if v:
+                    os.environ[k] = str(v)
+                else:
+                    os.environ.pop(k, None)
+            result = _run_sync_worker_for_feed(feed)
+            fetched_count = 0
+            result_data = result.get("result")
+            if isinstance(result_data, dict):
+                for v in result_data.values():
+                    if isinstance(v, dict):
+                        fetched_count += int(v.get("fetched", 0) or 0)
+            dur_ms = int((time.time() - started) * 1000)
+            db.add(
+                AppLog(
+                    level="INFO",
+                    component="scheduler",
+                    message="feed_sync_completed",
+                    feed_source_id=feed.source_id,
+                    run_id=run_id,
+                    metadata_={"duration_ms": dur_ms, "fetched_count": fetched_count},
+                )
+            )
+            run = db.scalar(select(FeedRun).where(FeedRun.run_id == run_id))
+            if run:
+                run.status = "success"
+                run.fetched_count = fetched_count
+                run.finished_at = datetime.now(timezone.utc)
+            db.commit()
+            return result
+        except Exception as e:
+            db.rollback()
+            run = db.scalar(select(FeedRun).where(FeedRun.run_id == run_id))
+            if run:
+                run.status = "failed"
+                run.error = str(e)
+                run.finished_at = datetime.now(timezone.utc)
+                db.commit()
+            _app_log("ERROR", "scheduler", "feed_sync_failed", feed_source_id=feed.source_id, run_id=run_id, metadata={"error": str(e)})
+            return {"source": feed.source_id, "error": str(e)}
+        finally:
+            for k, v in updates.items():
+                prev = previous.get(k)
+                if prev is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = prev
+            scheduler_state["active_run_id"] = None
+            db.close()
+
+    def _cron_field_match(value: int, expr: str, *, min_v: int, max_v: int) -> bool:
+        expr = expr.strip()
+        if expr == "*":
+            return True
+        if expr.startswith("*/"):
+            try:
+                step = int(expr[2:])
+            except ValueError:
+                return False
+            return step > 0 and (value - min_v) % step == 0
+        for part in expr.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                n = int(part)
+            except ValueError:
+                return False
+            if n == value:
+                return True
+        return False
+
+    def _cron_matches(expr: str, dt: datetime) -> bool:
+        parts = (expr or "").split()
+        if len(parts) != 5:
+            return False
+        minute, hour, day, month, dow = parts
+        py_dow = (dt.weekday() + 1) % 7
+        return (
+            _cron_field_match(dt.minute, minute, min_v=0, max_v=59)
+            and _cron_field_match(dt.hour, hour, min_v=0, max_v=23)
+            and _cron_field_match(dt.day, day, min_v=1, max_v=31)
+            and _cron_field_match(dt.month, month, min_v=1, max_v=12)
+            and _cron_field_match(py_dow, dow, min_v=0, max_v=6)
+        )
+
+    def _scheduler_loop() -> None:
+        while True:
+            try:
+                if scheduler_lock.locked():
+                    time.sleep(5)
+                    continue
+                with scheduler_lock:
+                    now = datetime.now(timezone.utc)
+                    minute_marker = now.strftime("%Y-%m-%dT%H:%M")
+                    db = _db()
+                    try:
+                        _set_setting(db, "scheduler.heartbeat", now.isoformat())
+                        _set_setting(db, "scheduler.default_cron", _get_setting(db, "scheduler.default_cron", "*/15 * * * *"))
+                        db.commit()
+                        for feed in _read_feed_rows(db):
+                            if not feed.enabled:
+                                continue
+                            marker_key = f"{feed.source_id}:{minute_marker}"
+                            if scheduler_state["last_minute"].get(feed.source_id) == minute_marker:
+                                continue
+                            cron_expr = str(feed.schedule_cron or "*/15 * * * *")
+                            if _cron_matches(cron_expr, now):
+                                _execute_feed_sync(feed, trigger_type="scheduled")
+                                scheduler_state["last_minute"][feed.source_id] = minute_marker
+                    finally:
+                        db.close()
+                time.sleep(20)
+            except Exception as e:
+                _app_log("ERROR", "scheduler", "scheduler_loop_error", metadata={"error": str(e)})
+                time.sleep(20)
 
     @app.get("/metrics")
     @limiter.limit("30 per minute")
@@ -1063,47 +1268,33 @@ def create_app() -> Flask:
         # Clickable link target is shown in UI; redirect for convenience
         return ("", 302, {"Location": f"{cfg.MISP_URL.rstrip('/')}/events/view/{event_id}"})
 
-    def _run_manual_sync(source_name: str) -> Dict[str, Any]:
-        source_name = source_name.strip().lower()
-        if source_name == "misp":
-            from .services.misp import update_misp_indicators
-            return {"source": source_name, "result": update_misp_indicators()}
-        if source_name == "crowdsec":
-            from .services.crowdsec import update_crowdsec_indicators
-            return {"source": source_name, "result": update_crowdsec_indicators()}
-        if source_name == "malwarebazaar":
-            from .services.malwarebazaar import update_malwarebazaar_indicators
-            return {"source": source_name, "result": update_malwarebazaar_indicators()}
-        if source_name == "mwdb":
-            from .services.mwdb import update_mwdb_indicators
-            return {"source": source_name, "result": update_mwdb_indicators()}
-        if source_name == "abusech":
-            from .services.abusech import update_abusech_indicators
-            return {"source": source_name, "result": update_abusech_indicators()}
-        raise ValueError("Unknown source")
-
     @app.get("/admin")
     @limiter.limit("30 per minute")
     def admin_panel():
         db = _db()
         try:
+            _ensure_default_feeds(db)
+            feeds = _read_feed_rows(db)
             feed_rows = db.scalars(select(FeedStats).order_by(FeedStats.source.asc(), FeedStats.source_id.asc())).all()
-            settings_rows = db.scalars(select(AppSetting).order_by(AppSetting.key.asc())).all()
-            setting_keys = {s.key for s in settings_rows}
-            defs = _feed_definitions()
-            managed_sources = list(defs.keys())
+            settings_count = int(db.scalar(select(func.count()).select_from(AppSetting)) or 0)
             proxy_conf = {
                 "proxy_http_url": _get_setting(db, "proxy.http_url", os.getenv("HTTP_PROXY", "")),
                 "proxy_https_url": _get_setting(db, "proxy.https_url", os.getenv("HTTPS_PROXY", "")),
                 "proxy_no_proxy": _get_setting(db, "proxy.no_proxy", os.getenv("NO_PROXY", "")),
                 "trusted_proxy_count": _get_setting(db, "proxy.trusted_proxy_count", os.getenv("TRUSTED_PROXY_COUNT", "0")),
             }
-            feed_states = {src: _read_feed_config_state(db, src) for src in managed_sources}
+            feed_states = {f.source_id: _read_feed_config_state(db, f) for f in feeds}
+            latest_runs = {
+                f.source_id: db.scalar(
+                    select(FeedRun).where(FeedRun.feed_source_id == f.source_id).order_by(FeedRun.started_at.desc()).limit(1)
+                )
+                for f in feeds
+            }
+            scheduler_heartbeat = _get_setting(db, "scheduler.heartbeat", "")
         finally:
             db.close()
 
         status_msg = request.args.get("msg", "")
-        settings_count = len(setting_keys)
         feed_rows_html = "".join(
             [
                 (
@@ -1121,59 +1312,32 @@ def create_app() -> Flask:
         if not feed_rows_html:
             feed_rows_html = "<tr><td colspan='5'>No feed statistics yet.</td></tr>"
 
-        config_blocks_html = "".join(
-            [
-                (
-                    f"<fieldset id='cfg-{_esc(src)}'><legend><strong>{_esc(feed_states[src]['display_name'])}</strong> "
-                    f"(<code>{_esc(src)}</code>)</legend>"
-                    f"<p>Status: <strong>{'OK' if feed_states[src]['ready'] else 'Missing required fields'}</strong>"
-                    + (f" ({_esc(', '.join(feed_states[src]['missing']))})" if feed_states[src]["missing"] else "")
-                    + "</p>"
-                    + "".join(
-                        [
-                            (
-                                f"<p><label>{_esc(str(f['label']))} "
-                                f"<input type='{'password' if f.get('secret') else 'text'}' "
-                                f"name='{_esc(str(f.get('input_name') or ''))}' "
-                                f"value='{_esc(str(f.get('value') or ''))}' "
-                                f"{'required' if f.get('required') else ''} "
-                                f"placeholder='{_esc(str(f.get('placeholder') or ''))}'/></label>"
-                                + (
-                                    f" Current: {_esc(str(f.get('current_masked') or ''))}"
-                                    if f.get("secret")
-                                    else ""
-                                )
-                                + "</p>"
-                            )
-                            for f in feed_states[src]["fields"]
-                        ]
-                    )
-                    + "</fieldset>"
-                )
-                for src in managed_sources
-            ]
-        )
-
         source_ctrl_html = "".join(
             [
                 (
                     "<tr>"
-                    f"<td><code>{_esc(src)}</code><br/>{_esc(feed_states[src]['display_name'])}</td>"
-                    f"<td>{'enabled' if feed_states[src]['enabled'] else 'disabled'}</td>"
-                    f"<td>{'OK' if feed_states[src]['ready'] else 'Incomplete: ' + _esc(', '.join(feed_states[src]['missing']))}</td>"
+                    f"<td><code>{_esc(f.source_id)}</code><br/>{_esc(f.display_name)}<br/><small>{_esc(f.source_type)}</small></td>"
+                    f"<td>{'enabled' if feed_states[f.source_id]['enabled'] else 'disabled'}</td>"
+                    f"<td>{_esc(f.schedule_cron)}</td>"
+                    f"<td>{'OK' if feed_states[f.source_id]['ready'] else 'Incomplete: ' + _esc(', '.join(feed_states[f.source_id]['missing']))}</td>"
+                    f"<td>{_esc(str(getattr(latest_runs.get(f.source_id), 'status', 'never')))}</td>"
+                    f"<td>{_esc(str(getattr(latest_runs.get(f.source_id), 'started_at', 'n/a')))}</td>"
                     f"<td><form method='post' action='/admin/feed-toggle' style='display:inline'>"
-                    f"<input type='hidden' name='source' value='{_esc(src)}'/>"
-                    f"<input type='hidden' name='enabled' value='{'0' if feed_states[src]['enabled'] else '1'}'/>"
-                    f"<button type='submit'>{'Disable' if feed_states[src]['enabled'] else 'Enable'}</button>"
+                    f"<input type='hidden' name='source' value='{_esc(f.source_id)}'/>"
+                    f"<input type='hidden' name='enabled' value='{'0' if feed_states[f.source_id]['enabled'] else '1'}'/>"
+                    f"<button type='submit'>{'Disable' if feed_states[f.source_id]['enabled'] else 'Enable'}</button>"
                     "</form> "
-                    f"<a href='#cfg-{_esc(src)}'>Configure</a> "
+                    f"<a href='/admin/feed/{_esc(f.source_id)}/configure'>Configure</a> "
                     f"<form method='post' action='/admin/sync' style='display:inline'>"
-                    f"<input type='hidden' name='source' value='{_esc(src)}'/>"
-                    f"<button type='submit' {'disabled' if not feed_states[src]['ready'] else ''}>Sync now</button>"
+                    f"<input type='hidden' name='source' value='{_esc(f.source_id)}'/>"
+                    f"<button type='submit' {'disabled' if not feed_states[f.source_id]['ready'] else ''}>Sync now</button>"
+                    "</form> "
+                    f"<form method='post' action='/admin/feed/{_esc(f.source_id)}/delete' style='display:inline' onsubmit='return confirm(\"Delete feed {_esc(f.source_id)}?\")'>"
+                    "<button type='submit'>Delete</button>"
                     "</form></td>"
                     "</tr>"
                 )
-                for src in managed_sources
+                for f in feeds
             ]
         )
 
@@ -1206,17 +1370,18 @@ def create_app() -> Flask:
       <a href="/">Overview</a>
       <a href="/indicators">Indicators</a>
       <a href="/admin">Admin</a>
+      <a href="/logs">Logs</a>
     </nav>
     <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
   </header>
   <h1>Admin Controls</h1>
   <p><strong>Stored settings:</strong> {settings_count}</p>
+  <p><strong>Scheduler heartbeat:</strong> {_esc(scheduler_heartbeat or 'n/a')}</p>
   <div id="statusToast" class="toast" role="status" aria-live="polite">{_esc(status_msg)}</div>
 
   <div class="card">
-    <h2>Configuration Panel</h2>
-    <form method="post" action="/admin/config">
-      {config_blocks_html}
+    <h2>Configuration Panel (Global)</h2>
+    <form method="post" action="/admin/global-config">
       <h3>Proxy Configuration</h3>
       <p><label>HTTP proxy <input type="text" name="proxy_http_url" value="{_esc(proxy_conf['proxy_http_url'])}" placeholder="http://proxy:8080"/></label></p>
       <p><label>HTTPS proxy <input type="text" name="proxy_https_url" value="{_esc(proxy_conf['proxy_https_url'])}" placeholder="http://proxy:8080"/></label></p>
@@ -1228,12 +1393,23 @@ def create_app() -> Flask:
 
   <div class="card">
     <h2>Manual Synchronization and Feed Management</h2>
+    <h3>Add New Feed</h3>
+    <form method="post" action="/admin/feed/new">
+      <p><label>source_id <input type="text" name="source_id" placeholder="custom-feed-1" required></label></p>
+      <p><label>display_name <input type="text" name="display_name" placeholder="Custom Feed" required></label></p>
+      <p><label>source_type <input type="text" name="source_type" placeholder="misp|crowdsec|malwarebazaar|mwdb|abusech" required></label></p>
+      <p><label>base_url <input type="text" name="base_url" placeholder="https://source.example.local"></label></p>
+      <p><label>auth_type <input type="text" name="auth_type" placeholder="api_key"></label></p>
+      <p><label>schedule_cron <input type="text" name="schedule_cron" value="*/15 * * * *"></label></p>
+      <p><label><input type="checkbox" name="enabled" value="1" checked> enabled</label></p>
+      <button type="submit">Add feed</button>
+    </form>
     <form method="post" action="/admin/sync">
       <input type="hidden" name="source" value="all"/>
       <button type="submit">Sync all enabled sources</button>
     </form>
     <table>
-      <thead><tr><th>Source</th><th>Enabled</th><th>Config Readiness</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Source</th><th>Enabled</th><th>Schedule</th><th>Config Readiness</th><th>Last Run Status</th><th>Last Run At</th><th>Actions</th></tr></thead>
       <tbody>{source_ctrl_html}</tbody>
     </table>
   </div>
@@ -1244,6 +1420,10 @@ def create_app() -> Flask:
       <thead><tr><th>Source</th><th>Source ID</th><th>Last Status</th><th>Last Update</th><th>Last Error</th></tr></thead>
       <tbody>{feed_rows_html}</tbody>
     </table>
+  </div>
+  <div class="card">
+    <h2>Logs</h2>
+    <p><a href="/logs">Open logs tab</a></p>
   </div>
   <script>
     const themeKey = 'ioc-theme';
@@ -1269,26 +1449,11 @@ def create_app() -> Flask:
 </html>
 """
 
-    @app.post("/admin/config")
+    @app.post("/admin/global-config")
     @limiter.limit("20 per minute")
-    def admin_save_config():
+    def admin_save_global_config():
         db = _db()
         try:
-            defs = _feed_definitions()
-            for source_id in defs.keys():
-                state = _read_feed_config_state(db, source_id)
-                for field_def in state.get("fields", []):
-                    key = str(field_def.get("key") or "")
-                    if not key:
-                        continue
-                    input_name = str(field_def.get("input_name") or "")
-                    incoming = (request.form.get(input_name) or "").strip()
-                    if field_def.get("secret"):
-                        if incoming:
-                            _set_setting(db, key, incoming, secret=True)
-                        continue
-                    _set_setting(db, key, incoming)
-
             _set_setting(db, "proxy.http_url", (request.form.get("proxy_http_url") or "").strip())
             _set_setting(db, "proxy.https_url", (request.form.get("proxy_https_url") or "").strip())
             _set_setting(db, "proxy.no_proxy", (request.form.get("proxy_no_proxy") or "").strip())
@@ -1297,10 +1462,137 @@ def create_app() -> Flask:
             db.commit()
             _write_proxy_env(db)
             _audit("admin_config_update", "app_settings", None, {"updated": True})
-            return redirect(url_for("admin_panel", msg="Configuration saved."))
+            return redirect(url_for("admin_panel", msg="Global configuration saved."))
         except Exception as e:
             db.rollback()
             return redirect(url_for("admin_panel", msg=f"Configuration save failed: {e}"))
+        finally:
+            db.close()
+
+    @app.post("/admin/feed/new")
+    @limiter.limit("20 per minute")
+    def admin_add_feed():
+        source_id = (request.form.get("source_id") or "").strip().lower()
+        display_name = (request.form.get("display_name") or "").strip()
+        source_type = (request.form.get("source_type") or "").strip().lower()
+        base_url = (request.form.get("base_url") or "").strip() or None
+        auth_type = (request.form.get("auth_type") or "").strip() or None
+        schedule_cron = (request.form.get("schedule_cron") or "*/15 * * * *").strip()
+        enabled = (request.form.get("enabled") or "").strip().lower() in {"1", "true", "yes", "on"}
+        if not source_id or not display_name or source_type not in set(_source_templates().keys()):
+            return redirect(url_for("admin_panel", msg="Invalid feed definition."))
+        db = _db()
+        try:
+            _ensure_default_feeds(db)
+            existing = db.scalar(select(Feed).where(Feed.source_id == source_id))
+            if existing and not existing.deleted:
+                return redirect(url_for("admin_panel", msg=f"Feed {source_id} already exists."))
+            if existing and existing.deleted:
+                existing.deleted = False
+                existing.display_name = display_name
+                existing.source_type = source_type
+                existing.base_url = base_url
+                existing.auth_type = auth_type
+                existing.schedule_cron = schedule_cron
+                existing.enabled = enabled
+            else:
+                db.add(
+                    Feed(
+                        source_id=source_id,
+                        source_type=source_type,
+                        display_name=display_name,
+                        base_url=base_url,
+                        auth_type=auth_type,
+                        schedule_cron=schedule_cron,
+                        enabled=enabled,
+                        deleted=False,
+                    )
+                )
+            db.commit()
+            return redirect(url_for("admin_panel", msg=f"Feed {source_id} added."))
+        except Exception as e:
+            db.rollback()
+            return redirect(url_for("admin_panel", msg=f"Add feed failed: {e}"))
+        finally:
+            db.close()
+
+    @app.get("/admin/feed/<source_id>/configure")
+    @limiter.limit("30 per minute")
+    def admin_feed_configure(source_id: str):
+        source_id = (source_id or "").strip().lower()
+        db = _db()
+        try:
+            _ensure_default_feeds(db)
+            feed = db.scalar(select(Feed).where(Feed.source_id == source_id, Feed.deleted == False))  # noqa: E712
+            if not feed:
+                return redirect(url_for("admin_panel", msg="Feed not found."))
+            state = _read_feed_config_state(db, feed)
+        finally:
+            db.close()
+        fields_html = "".join(
+            [
+                (
+                    f"<p><label>{_esc(str(f['label']))} "
+                    f"<input type='{'password' if f.get('secret') else 'text'}' "
+                    f"name='{_esc(str(f.get('input_name') or ''))}' "
+                    f"value='{_esc(str(f.get('value') or ''))}' "
+                    f"placeholder='{_esc(str(f.get('placeholder') or ''))}'/></label>"
+                    + (f" Current: {_esc(str(f.get('current_masked') or ''))}" if f.get("secret") else "")
+                    + "</p>"
+                )
+                for f in state["fields"]
+            ]
+        )
+        return f"""<!doctype html><html lang='en'><head><meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/><title>Configure { _esc(source_id) }</title></head><body>
+<h1>Configure feed: {_esc(source_id)}</h1>
+<p>Status: {'OK' if state['ready'] else 'Incomplete: ' + _esc(', '.join(state['missing']))}</p>
+<form method='post' action='/admin/feed/{_esc(source_id)}/configure'>
+<p><label>Display name <input type='text' name='display_name' value='{_esc(feed.display_name)}' required/></label></p>
+<p><label>Base URL <input type='text' name='base_url' value='{_esc(str(feed.base_url or ""))}'/></label></p>
+<p><label>Schedule cron <input type='text' name='schedule_cron' value='{_esc(feed.schedule_cron)}'/></label></p>
+{fields_html}
+<button type='submit'>Save feed configuration</button> <a href='/admin'>Back</a>
+</form></body></html>"""
+
+    @app.post("/admin/feed/<source_id>/configure")
+    @limiter.limit("20 per minute")
+    def admin_feed_configure_save(source_id: str):
+        source_id = (source_id or "").strip().lower()
+        db = _db()
+        try:
+            _ensure_default_feeds(db)
+            feed = db.scalar(select(Feed).where(Feed.source_id == source_id, Feed.deleted == False))  # noqa: E712
+            if not feed:
+                return redirect(url_for("admin_panel", msg="Feed not found."))
+            feed.display_name = (request.form.get("display_name") or feed.display_name).strip() or feed.display_name
+            feed.base_url = (request.form.get("base_url") or "").strip() or None
+            feed.schedule_cron = (request.form.get("schedule_cron") or "*/15 * * * *").strip()
+            state = _read_feed_config_state(db, feed)
+            missing: List[str] = []
+            for f in state["fields"]:
+                input_name = str(f["input_name"])
+                incoming = (request.form.get(input_name) or "").strip()
+                if f["key"] == "base_url":
+                    continue
+                if f.get("secret"):
+                    if incoming:
+                        _set_setting(db, _feed_secret_key(feed.source_id, str(f["key"])), incoming, secret=True)
+                    elif f.get("required") and not _get_setting(db, _feed_secret_key(feed.source_id, str(f["key"])), "", secret=True):
+                        missing.append(str(f["label"]))
+                else:
+                    _set_setting(db, _feed_value_key(feed.source_id, str(f["key"])), incoming, secret=False)
+                    if f.get("required") and not incoming:
+                        missing.append(str(f["label"]))
+            if feed.source_type in {"misp", "mwdb"} and not (feed.base_url or "").strip():
+                missing.append("Base URL")
+            if missing:
+                db.rollback()
+                return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Missing required fields: {', '.join(missing)}"))
+            db.commit()
+            return redirect(url_for("admin_panel", msg=f"Feed {source_id} configuration saved."))
+        except Exception as e:
+            db.rollback()
+            return redirect(url_for("admin_panel", msg=f"Configure feed failed: {e}"))
         finally:
             db.close()
 
@@ -1309,17 +1601,39 @@ def create_app() -> Flask:
     def admin_feed_toggle():
         source_name = (request.form.get("source") or "").strip().lower()
         enabled = (request.form.get("enabled") or "").strip().lower() in {"1", "true", "yes", "on"}
-        if source_name not in set(_feed_definitions().keys()):
-            return redirect(url_for("admin_panel", msg="Invalid source for feed toggle."))
         db = _db()
         try:
-            _set_setting(db, f"feed.{source_name}.enabled", "1" if enabled else "0")
+            _ensure_default_feeds(db)
+            feed = db.scalar(select(Feed).where(Feed.source_id == source_name, Feed.deleted == False))  # noqa: E712
+            if not feed:
+                return redirect(url_for("admin_panel", msg="Invalid source for feed toggle."))
+            feed.enabled = enabled
             db.commit()
             _audit("admin_feed_toggle", "feed", None, {"source": source_name, "enabled": enabled})
             return redirect(url_for("admin_panel", msg=f"Feed {source_name} {'enabled' if enabled else 'disabled'}"))
         except Exception as e:
             db.rollback()
             return redirect(url_for("admin_panel", msg=f"Feed toggle failed: {e}"))
+        finally:
+            db.close()
+
+    @app.post("/admin/feed/<source_id>/delete")
+    @limiter.limit("20 per minute")
+    def admin_feed_delete(source_id: str):
+        source_id = (source_id or "").strip().lower()
+        db = _db()
+        try:
+            _ensure_default_feeds(db)
+            feed = db.scalar(select(Feed).where(Feed.source_id == source_id, Feed.deleted == False))  # noqa: E712
+            if not feed:
+                return redirect(url_for("admin_panel", msg="Feed not found."))
+            feed.deleted = True
+            feed.enabled = False
+            db.commit()
+            return redirect(url_for("admin_panel", msg=f"Feed {source_id} deleted (soft)."))
+        except Exception as e:
+            db.rollback()
+            return redirect(url_for("admin_panel", msg=f"Delete feed failed: {e}"))
         finally:
             db.close()
 
@@ -1331,32 +1645,32 @@ def create_app() -> Flask:
             return redirect(url_for("admin_panel", msg="Missing source for sync."))
         db = _db()
         try:
-            targets = [source_name]
+            _ensure_default_feeds(db)
+            feed_rows = _read_feed_rows(db)
+            feed_map = {f.source_id: f for f in feed_rows}
+            targets: List[Feed] = []
             if source_name == "all":
-                targets = list(_feed_definitions().keys())
-            elif source_name not in set(_feed_definitions().keys()):
+                targets = [f for f in feed_rows if f.enabled]
+            elif source_name not in feed_map:
                 return redirect(url_for("admin_panel", msg="Invalid source for sync."))
+            else:
+                targets = [feed_map[source_name]]
 
             blocked: List[str] = []
-            run_targets: List[str] = []
-            for src in targets:
-                state = _read_feed_config_state(db, src)
-                if source_name == "all" and not state["enabled"]:
-                    continue
+            run_targets: List[Feed] = []
+            for feed in targets:
+                state = _read_feed_config_state(db, feed)
                 if not state["ready"]:
-                    blocked.append(f"{src} (missing: {', '.join(state['missing'])})")
+                    blocked.append(f"{feed.source_id} (missing: {', '.join(state['missing'])})")
                     continue
-                run_targets.append(src)
+                run_targets.append(feed)
 
             if source_name != "all" and not run_targets:
                 return redirect(url_for("admin_panel", msg=f"Cannot sync {source_name}: configuration incomplete."))
 
             results: List[Dict[str, Any]] = []
-            for src in run_targets:
-                try:
-                    results.append(_run_manual_sync(src))
-                except Exception as e:
-                    results.append({"source": src, "error": str(e)})
+            for feed in run_targets:
+                results.append(_execute_feed_sync(feed, trigger_type="manual"))
             _audit("manual_sync", "feed", None, {"source": source_name, "results": results})
             msg = f"Sync completed for {source_name}."
             if blocked:
@@ -1364,6 +1678,116 @@ def create_app() -> Flask:
             return redirect(url_for("admin_panel", msg=msg))
         finally:
             db.close()
+
+    @app.get("/api/logs")
+    @limiter.limit("60 per minute")
+    def api_logs():
+        db = _db(read_only=True)
+        try:
+            stmt = select(AppLog).order_by(AppLog.created_at.desc())
+            feed = (request.args.get("feed") or "").strip()
+            level = (request.args.get("level") or "").strip().upper()
+            component = (request.args.get("component") or "").strip()
+            since = (request.args.get("since") or "").strip()
+            until = (request.args.get("until") or "").strip()
+            if feed:
+                stmt = stmt.where(AppLog.feed_source_id == feed)
+            if level:
+                stmt = stmt.where(AppLog.level == level)
+            if component:
+                stmt = stmt.where(AppLog.component == component)
+            if since:
+                try:
+                    stmt = stmt.where(AppLog.created_at >= datetime.fromisoformat(since.replace("Z", "+00:00")))
+                except ValueError:
+                    pass
+            if until:
+                try:
+                    stmt = stmt.where(AppLog.created_at <= datetime.fromisoformat(until.replace("Z", "+00:00")))
+                except ValueError:
+                    pass
+            limit = min(500, max(1, int(request.args.get("limit", "200"))))
+            rows = list(db.scalars(stmt.limit(limit)).all())
+            return jsonify(
+                {
+                    "count": len(rows),
+                    "items": [
+                        {
+                            "created_at": str(r.created_at),
+                            "level": r.level,
+                            "component": r.component,
+                            "message": r.message,
+                            "feed_source_id": r.feed_source_id,
+                            "run_id": r.run_id,
+                            "metadata": r.metadata_,
+                        }
+                        for r in rows
+                    ],
+                }
+            )
+        finally:
+            db.close()
+
+    @app.get("/api/runs/current")
+    @limiter.limit("60 per minute")
+    def api_runs_current():
+        db = _db(read_only=True)
+        try:
+            running = list(db.scalars(select(FeedRun).where(FeedRun.status == "running").order_by(FeedRun.started_at.desc()).limit(20)).all())
+            latest = list(db.scalars(select(FeedRun).order_by(FeedRun.started_at.desc()).limit(20)).all())
+            heartbeat = _get_setting(db, "scheduler.heartbeat", "")
+            return jsonify(
+                {
+                    "scheduler_heartbeat": heartbeat,
+                    "active_run_id": scheduler_state.get("active_run_id"),
+                    "running": [
+                        {"feed_source_id": r.feed_source_id, "run_id": r.run_id, "status": r.status, "started_at": str(r.started_at)}
+                        for r in running
+                    ],
+                    "latest": [
+                        {
+                            "feed_source_id": r.feed_source_id,
+                            "run_id": r.run_id,
+                            "status": r.status,
+                            "started_at": str(r.started_at),
+                            "finished_at": str(r.finished_at),
+                            "error": r.error,
+                            "fetched_count": r.fetched_count,
+                        }
+                        for r in latest
+                    ],
+                }
+            )
+        finally:
+            db.close()
+
+    @app.get("/logs")
+    @limiter.limit("30 per minute")
+    def logs_page():
+        return """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Logs</title></head><body>
+<h1>Logs</h1><p><a href="/admin">Back to admin</a></p>
+<form id="filters">
+  <label>Feed <input name="feed" /></label>
+  <label>Level <input name="level" placeholder="INFO|WARN|ERROR" /></label>
+  <label>Component <input name="component" placeholder="scheduler|fetcher|parser|exporter" /></label>
+  <label>Since <input name="since" placeholder="2026-02-26T00:00:00Z" /></label>
+  <label>Until <input name="until" placeholder="2026-02-26T23:59:59Z" /></label>
+  <label><input type="checkbox" id="autorefresh" checked/> auto-refresh</label>
+  <button type="submit">Apply</button>
+  <button type="button" id="copyBtn">Copy visible logs</button>
+</form>
+<pre id="out" style="white-space: pre-wrap; border:1px solid #ccc; padding:10px; min-height:300px;"></pre>
+<script>
+function buildQuery(){const fd=new FormData(document.getElementById('filters'));const p=new URLSearchParams();for(const [k,v] of fd.entries()){if((v||'').trim())p.set(k,v);}p.set('limit','200');return p.toString();}
+async function refreshLogs(){const q=buildQuery();const r=await fetch('/api/logs?'+q);const d=await r.json();const lines=(d.items||[]).map(x=>`[${x.created_at}] ${x.level} ${x.component} ${x.feed_source_id||'-'} ${x.run_id||'-'} ${x.message} ${JSON.stringify(x.metadata||{})}`);document.getElementById('out').textContent=lines.join('\\n');}
+document.getElementById('filters').addEventListener('submit',(e)=>{e.preventDefault();refreshLogs();});
+document.getElementById('copyBtn').addEventListener('click',async()=>{await navigator.clipboard.writeText(document.getElementById('out').textContent||'');});
+setInterval(()=>{if(document.getElementById('autorefresh').checked)refreshLogs();},5000);refreshLogs();
+</script></body></html>"""
+
+    if cfg.ENABLE_BACKGROUND_JOBS and not app.config.get("TESTING"):
+        Thread(target=_scheduler_loop, daemon=True).start()
 
     return app
 
@@ -1409,6 +1833,7 @@ def _render_index(total: int, active: int, feeds) -> str:
     <a href="/">Overview</a>
     <a href="/indicators">Indicators</a>
     <a href="/admin">Admin</a>
+    <a href="/logs">Logs</a>
   </nav>
 </header>
 <main id="main-content" role="main">
@@ -1604,6 +2029,7 @@ def _render_indicators(
     <a href="/">Overview</a>
     <a href="/indicators">Indicators</a>
     <a href="/admin">Admin</a>
+    <a href="/logs">Logs</a>
   </nav>
   <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
 </header>
