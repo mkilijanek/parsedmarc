@@ -9,6 +9,7 @@ import hmac
 import secrets
 import time
 import uuid
+import requests
 from collections import deque
 from datetime import datetime, timezone
 from threading import Lock
@@ -302,6 +303,9 @@ def create_app() -> Flask:
                 "fields": [
                     {"key": "base_url", "label": "MWDB URL", "secret": False, "required": True, "env": "MWDB_URL", "placeholder": "https://mwdb.example.local"},
                     {"key": "api_key", "label": "MWDB auth key", "secret": True, "required": True, "env": "MWDB_AUTH_KEY", "placeholder": "Leave blank to keep current"},
+                    {"key": "tags", "label": "MWDB tags (comma-separated)", "secret": False, "required": False, "env": "MWDB_TAGS", "placeholder": "apt, malware"},
+                    {"key": "days", "label": "MWDB days", "secret": False, "required": False, "env": "MWDB_DAYS", "placeholder": "7"},
+                    {"key": "no_time_limit", "label": "No time limit", "secret": False, "required": False, "env": "MWDB_NO_TIME_LIMIT", "type": "checkbox"},
                 ],
             },
             "abusech": {
@@ -357,6 +361,7 @@ def create_app() -> Flask:
                 continue
             required = bool(field_def.get("required", False))
             secret = bool(field_def.get("secret", False))
+            input_type = str(field_def.get("type") or ("password" if secret else "text"))
             if key == "base_url":
                 val = str(feed.base_url or "")
             else:
@@ -370,8 +375,10 @@ def create_app() -> Flask:
                     "label": str(field_def.get("label") or key),
                     "secret": secret,
                     "required": required,
+                    "type": input_type,
                     "placeholder": str(field_def.get("placeholder") or ""),
                     "value": "" if secret else str(val),
+                    "checked": (str(val).strip().lower() in {"1", "true", "yes", "on"}) if input_type == "checkbox" else False,
                     "current_masked": _mask_secret(str(val)) if secret else "",
                     "input_name": _field_input_name(key),
                     "env": str(field_def.get("env") or ""),
@@ -386,6 +393,116 @@ def create_app() -> Flask:
             "enabled": bool(feed.enabled),
             "fields": normalized_fields,
         }
+
+    def _fetch_mwdb_orgs(base_url: str, api_key: str) -> List[Dict[str, str]]:
+        if not base_url or not api_key:
+            return []
+        from .services.mwdb import fetch_mwdb_organizations
+        try:
+            return fetch_mwdb_organizations(base_url=base_url, auth_key=api_key, timeout_s=10)
+        except Exception:
+            return []
+
+    def _get_feed_field_value(
+        db: Session,
+        feed: Feed,
+        field: Dict[str, Any],
+        form_data: Any | None = None,
+    ) -> str:
+        key = str(field.get("key") or "")
+        input_name = str(field.get("input_name") or "")
+        input_type = str(field.get("type") or "text")
+        secret = bool(field.get("secret"))
+        if key == "base_url":
+            incoming = (form_data.get("base_url") if form_data is not None else None) or ""
+            val = str(incoming).strip() or str(feed.base_url or "")
+            return val
+        stored = _get_setting(
+            db,
+            _feed_secret_key(feed.source_id, key) if secret else _feed_value_key(feed.source_id, key),
+            "",
+            secret=secret,
+        )
+        if form_data is None:
+            return str(stored or "")
+        if input_type == "checkbox":
+            return "1" if str(form_data.get(input_name) or "").strip().lower() in {"1", "true", "yes", "on"} else "0"
+        incoming = str(form_data.get(input_name) or "").strip()
+        if secret and not incoming:
+            return str(stored or "")
+        return incoming
+
+    def _test_feed_connection(feed: Feed, field_values: Dict[str, str]) -> tuple[bool, str]:
+        source_type = (feed.source_type or "").strip().lower()
+        timeout_s = 10
+        if source_type == "mwdb":
+            from .services.mwdb import test_mwdb_connection
+            data = test_mwdb_connection(
+                base_url=field_values.get("base_url", ""),
+                auth_key=field_values.get("api_key", ""),
+                timeout_s=timeout_s,
+            )
+            return True, f"MWDB connection OK. Organizations visible: {len(data.get('organizations', []))}."
+        if source_type == "abusech":
+            api_key = field_values.get("api_key", "")
+            if not api_key:
+                return False, "abuse.ch API key is required for connection test."
+            resp = requests.post(
+                cfg.THREATFOX_API_URL,
+                headers={"Auth-Key": api_key, "User-Agent": "ioc-threat-platform/1.0"},
+                json={"query": "get_iocs", "days": 1},
+                timeout=timeout_s,
+            )
+            resp.raise_for_status()
+            data = resp.json() if resp.content else {}
+            status = str(data.get("query_status") or "ok")
+            if status.lower() not in {"ok", "no_result"}:
+                return False, f"abuse.ch test failed (query_status={status})."
+            return True, f"abuse.ch connection OK (query_status={status})."
+        if source_type == "misp":
+            base_url = field_values.get("base_url", "").rstrip("/")
+            api_key = field_values.get("api_key", "")
+            if not base_url or not api_key:
+                return False, "MISP URL and API key are required."
+            resp = requests.get(
+                f"{base_url}/users/view/me",
+                headers={"Authorization": api_key, "Accept": "application/json"},
+                timeout=timeout_s,
+                verify=cfg.MISP_VERIFY_SSL,
+            )
+            resp.raise_for_status()
+            return True, "MISP connection OK."
+        if source_type == "malwarebazaar":
+            api_key = field_values.get("api_key", "")
+            if not api_key:
+                return False, "MalwareBazaar API key is required."
+            resp = requests.post(
+                cfg.MALWAREBAZAAR_API_URL,
+                headers={"Auth-Key": api_key, "User-Agent": "ioc-threat-platform/1.0"},
+                data={"query": "get_taginfo", "tag": "exe", "limit": "1"},
+                timeout=timeout_s,
+            )
+            resp.raise_for_status()
+            data = resp.json() if resp.content else {}
+            status = str(data.get("query_status") or "ok")
+            if status.lower() not in {"ok", "no_result"}:
+                return False, f"MalwareBazaar test failed (query_status={status})."
+            return True, f"MalwareBazaar connection OK (query_status={status})."
+        if source_type == "crowdsec":
+            api_key = field_values.get("api_key", "")
+            if not api_key:
+                return False, "CrowdSec API key is required."
+            list_ids = [x.strip() for x in (cfg.CROWDSEC_LISTS or "").split(",") if x.strip()]
+            if not list_ids:
+                return False, "Set CROWDSEC_LISTS to test CrowdSec connectivity."
+            resp = requests.get(
+                f"https://api.crowdsec.net/v2/blocklists/{list_ids[0]}",
+                headers={"X-Api-Key": api_key},
+                timeout=timeout_s,
+            )
+            resp.raise_for_status()
+            return True, "CrowdSec connection OK."
+        return False, f"No connection test handler for source_type={source_type}."
 
     def _parse_limit_offset(*, default_limit: int, max_limit: int) -> tuple[int, int] | tuple[None, None]:
         try:
@@ -759,6 +876,8 @@ def create_app() -> Flask:
                     updates[env_key] = _get_setting(db, _feed_secret_key(feed.source_id, str(f["key"])), "", secret=True)
                 else:
                     updates[env_key] = _get_setting(db, _feed_value_key(feed.source_id, str(f["key"])), "", secret=False)
+            if feed.source_type == "mwdb":
+                updates["MWDB_ORGANIZATIONS"] = _get_setting(db, _feed_value_key(feed.source_id, "organizations"), "", secret=False)
 
             previous = {k: os.environ.get(k) for k in updates.keys()}
             for k, v in updates.items():
@@ -1668,6 +1787,7 @@ def create_app() -> Flask:
     @limiter.limit("30 per minute")
     def admin_feed_configure(source_id: str):
         source_id = (source_id or "").strip().lower()
+        msg = (request.args.get("msg") or "").strip()
         db = _db()
         try:
             _ensure_default_feeds(db)
@@ -1675,31 +1795,65 @@ def create_app() -> Flask:
             if not feed:
                 return redirect(url_for("admin_panel", msg="Feed not found."))
             state = _read_feed_config_state(db, feed)
+            mwdb_orgs: List[Dict[str, str]] = []
+            mwdb_selected_orgs: List[str] = []
+            if feed.source_type == "mwdb":
+                mwdb_selected_orgs = [x.strip() for x in _get_setting(db, _feed_value_key(feed.source_id, "organizations"), "").split(",") if x.strip()]
+                values = {str(f["key"]): _get_feed_field_value(db, feed, f) for f in state["fields"]}
+                mwdb_orgs = _fetch_mwdb_orgs(values.get("base_url", ""), values.get("api_key", ""))
         finally:
             db.close()
         fields_html = "".join(
             [
                 (
                     f"<p><label>{_esc(str(f['label']))} "
-                    f"<input type='{'password' if f.get('secret') else 'text'}' "
-                    f"name='{_esc(str(f.get('input_name') or ''))}' "
-                    f"value='{_esc(str(f.get('value') or ''))}' "
-                    f"placeholder='{_esc(str(f.get('placeholder') or ''))}'/></label>"
+                    + (
+                        f"<input type='checkbox' name='{_esc(str(f.get('input_name') or ''))}' value='1' {'checked' if f.get('checked') else ''}/>"
+                        if str(f.get("type") or "") == "checkbox"
+                        else (
+                            f"<input type='{'password' if f.get('secret') else 'text'}' "
+                            f"name='{_esc(str(f.get('input_name') or ''))}' "
+                            f"value='{_esc(str(f.get('value') or ''))}' "
+                            f"placeholder='{_esc(str(f.get('placeholder') or ''))}'/>"
+                        )
+                    )
+                    + "</label>"
                     + (f" Current: {_esc(str(f.get('current_masked') or ''))}" if f.get("secret") else "")
                     + "</p>"
                 )
                 for f in state["fields"]
             ]
         )
+        orgs_html = ""
+        if state.get("source_type") == "mwdb":
+            if mwdb_orgs:
+                options = "".join(
+                    [
+                        (
+                            f"<label style='display:block'>"
+                            f"<input type='checkbox' name='mwdb_orgs' value='{_esc(str(o.get('id') or o.get('name') or ''))}' "
+                            f"{'checked' if str(o.get('id') or o.get('name') or '') in mwdb_selected_orgs else ''}/> "
+                            f"{_esc(str(o.get('name') or o.get('id') or ''))}</label>"
+                        )
+                        for o in mwdb_orgs
+                    ]
+                )
+                orgs_html = f"<fieldset><legend>MWDB organizations</legend>{options}</fieldset>"
+            else:
+                orgs_html = "<p>MWDB organizations list is unavailable. Use <strong>Test connection</strong> first.</p>"
         return f"""<!doctype html><html lang='en'><head><meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/><title>Configure { _esc(source_id) }</title></head><body>
 <h1>Configure feed: {_esc(source_id)}</h1>
+<p>{_esc(msg)}</p>
 <p>Status: {'OK' if state['ready'] else 'Incomplete: ' + _esc(', '.join(state['missing']))}</p>
 <form method='post' action='/admin/feed/{_esc(source_id)}/configure'>
 <p><label>Display name <input type='text' name='display_name' value='{_esc(feed.display_name)}' required/></label></p>
 <p><label>Base URL <input type='text' name='base_url' value='{_esc(str(feed.base_url or ""))}'/></label></p>
 <p><label>Schedule cron <input type='text' name='schedule_cron' value='{_esc(feed.schedule_cron)}'/></label></p>
 {fields_html}
-<button type='submit'>Save feed configuration</button> <a href='/admin'>Back</a>
+{orgs_html}
+<button type='submit'>Save settings</button>
+<button type='submit' formaction='/admin/feed/{_esc(source_id)}/test' formmethod='post'>Test connection</button>
+<a href='/admin'>Back</a>
 </form></body></html>"""
 
     @app.post("/admin/feed/<source_id>/configure")
@@ -1728,9 +1882,15 @@ def create_app() -> Flask:
                     elif f.get("required") and not _get_setting(db, _feed_secret_key(feed.source_id, str(f["key"])), "", secret=True):
                         missing.append(str(f["label"]))
                 else:
-                    _set_setting(db, _feed_value_key(feed.source_id, str(f["key"])), incoming, secret=False)
-                    if f.get("required") and not incoming:
+                    normalized = incoming
+                    if str(f.get("type") or "") == "checkbox":
+                        normalized = "1" if incoming.lower() in {"1", "true", "yes", "on"} else "0"
+                    _set_setting(db, _feed_value_key(feed.source_id, str(f["key"])), normalized, secret=False)
+                    if f.get("required") and not normalized:
                         missing.append(str(f["label"]))
+            if feed.source_type == "mwdb":
+                orgs = [x.strip() for x in request.form.getlist("mwdb_orgs") if x.strip()]
+                _set_setting(db, _feed_value_key(feed.source_id, "organizations"), ",".join(orgs), secret=False)
             if feed.source_type in {"misp", "mwdb"} and not (feed.base_url or "").strip():
                 missing.append("Base URL")
             if missing:
@@ -1741,6 +1901,31 @@ def create_app() -> Flask:
         except Exception as e:
             db.rollback()
             return redirect(url_for("admin_panel", msg=f"Configure feed failed: {e}"))
+        finally:
+            db.close()
+
+    @app.post("/admin/feed/<source_id>/test")
+    @limiter.limit("20 per minute")
+    def admin_feed_test_connection(source_id: str):
+        source_id = (source_id or "").strip().lower()
+        db = _db()
+        try:
+            _ensure_default_feeds(db)
+            feed = db.scalar(select(Feed).where(Feed.source_id == source_id, Feed.deleted == False))  # noqa: E712
+            if not feed:
+                return redirect(url_for("admin_panel", msg="Feed not found."))
+            state = _read_feed_config_state(db, feed)
+            field_values: Dict[str, str] = {}
+            for f in state["fields"]:
+                field_values[str(f["key"])] = _get_feed_field_value(db, feed, f, request.form)
+            if feed.source_type == "mwdb":
+                selected_orgs = [x.strip() for x in request.form.getlist("mwdb_orgs") if x.strip()]
+                field_values["organizations"] = ",".join(selected_orgs)
+            ok, msg = _test_feed_connection(feed, field_values)
+            status = "OK" if ok else "FAILED"
+            return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Connection test {status}: {msg}"))
+        except Exception as e:
+            return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Connection test failed: {e}"))
         finally:
             db.close()
 

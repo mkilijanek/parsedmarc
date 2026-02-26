@@ -47,6 +47,7 @@ architectural changes or major stack evolution
 
 -   [ ] HTTP timeout + retry/backoff per feed
 -   [ ] Improve feed config validation
+-   [ ] Add abuse.ch service selectors in feed config (checkboxes: yaraify, urlhaus, bazaar, feodotracker, threatfox) with persisted per-feed settings
 -   [ ] Add DB indexes for sync_jobs
 -   [ ] Improve UI loading/disabled states
 -   [ ] Graceful worker shutdown handling

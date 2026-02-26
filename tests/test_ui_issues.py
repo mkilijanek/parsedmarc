@@ -77,6 +77,28 @@ def test_feed_configure_is_scoped_to_single_feed(client, sample_indicators):
     assert response.status_code in {301, 302}
 
 
+def test_feed_configure_has_test_connection_button(client, sample_indicators):
+    response = client.get("/admin/feed/abusech/configure")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Test connection" in html
+    assert "Save settings" in html
+
+
+def test_mwdb_configure_shows_extended_fields(client, sample_indicators):
+    response = client.get("/admin/feed/mwdb/configure")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "MWDB tags (comma-separated)" in html
+    assert "MWDB days" in html
+    assert "No time limit" in html
+
+
+def test_feed_test_connection_endpoint_redirects(client, sample_indicators):
+    response = client.post("/admin/feed/abusech/test", data={"api_key": ""}, follow_redirects=False)
+    assert response.status_code in {301, 302}
+
+
 def test_admin_logs_tab_and_api(client, sample_indicators):
     page = client.get("/logs")
     assert page.status_code == 200
