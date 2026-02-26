@@ -616,8 +616,10 @@ def create_app() -> Flask:
         feed_source_id: str | None = None,
         run_id: str | None = None,
         metadata: dict | None = None,
+        db: Session | None = None,
     ) -> None:
-        db = _db()
+        own_session = db is None
+        db = db or _db()
         try:
             db.add(
                 AppLog(
@@ -633,7 +635,8 @@ def create_app() -> Flask:
         except Exception:
             db.rollback()
         finally:
-            db.close()
+            if own_session:
+                db.close()
 
     def _read_feed_rows(db: Session) -> List[Feed]:
         _ensure_default_feeds(db)
@@ -738,7 +741,7 @@ def create_app() -> Flask:
                 row.started_at = now
             db.commit()
 
-            _app_log("INFO", "scheduler", "feed_sync_started", feed_source_id=feed.source_id, run_id=run_id, metadata={"trigger": job.trigger_type})
+            _app_log("INFO", "scheduler", "feed_sync_started", feed_source_id=feed.source_id, run_id=run_id, metadata={"trigger": job.trigger_type}, db=db)
 
             state = _read_feed_config_state(db, feed)
             if not state["ready"]:
@@ -786,7 +789,7 @@ def create_app() -> Flask:
                 row.finished_at = datetime.now(timezone.utc)
                 row.result_json = {"fetched_count": fetched_count, "duration_ms": dur_ms}
             db.commit()
-            _app_log("INFO", "scheduler", "feed_sync_completed", feed_source_id=feed.source_id, run_id=run_id, metadata={"duration_ms": dur_ms, "fetched_count": fetched_count})
+            _app_log("INFO", "scheduler", "feed_sync_completed", feed_source_id=feed.source_id, run_id=run_id, metadata={"duration_ms": dur_ms, "fetched_count": fetched_count}, db=db)
             return result
         except Exception as e:
             db.rollback()
@@ -802,7 +805,7 @@ def create_app() -> Flask:
                 row.finished_at = datetime.now(timezone.utc)
                 row.result_json = {}
             db.commit()
-            _app_log("ERROR", "scheduler", "feed_sync_failed", feed_source_id=job.feed_source_id, run_id=run_id, metadata={"error": str(e)})
+            _app_log("ERROR", "scheduler", "feed_sync_failed", feed_source_id=job.feed_source_id, run_id=run_id, metadata={"error": str(e)}, db=db)
             return {"source": job.feed_source_id, "error": str(e)}
         finally:
             for k, v in updates.items():
@@ -1790,7 +1793,7 @@ def create_app() -> Flask:
             return redirect(url_for("admin_panel", msg="Missing source for sync."))
         db = _db()
         try:
-            _app_log("INFO", "scheduler", "manual_sync_requested", metadata={"source": source_name})
+            _app_log("INFO", "scheduler", "manual_sync_requested", metadata={"source": source_name}, db=db)
             _ensure_default_feeds(db)
             feed_rows = _read_feed_rows(db)
             feed_map = {f.source_id: f for f in feed_rows}
@@ -1820,7 +1823,7 @@ def create_app() -> Flask:
                 return redirect(url_for("admin_panel", msg=f"Cannot sync {source_name}: configuration incomplete."))
 
             _audit("manual_sync", "feed", None, {"source": source_name, "queued": queued, "reused": reused, "blocked": blocked})
-            _app_log("INFO", "scheduler", "manual_sync_queued", metadata={"source": source_name, "queued": queued, "reused": reused, "blocked": blocked})
+            _app_log("INFO", "scheduler", "manual_sync_queued", metadata={"source": source_name, "queued": queued, "reused": reused, "blocked": blocked}, db=db)
             msg = f"Sync queued for {source_name}."
             if queued:
                 msg += f" New jobs: {', '.join(queued)}."
@@ -1831,7 +1834,7 @@ def create_app() -> Flask:
             return redirect(url_for("admin_panel", msg=msg))
         except Exception as e:
             logger.exception("admin_sync_failed")
-            _app_log("ERROR", "scheduler", "manual_sync_failed", metadata={"source": source_name, "error": str(e)})
+            _app_log("ERROR", "scheduler", "manual_sync_failed", metadata={"source": source_name, "error": str(e)}, db=db)
             return redirect(url_for("admin_panel", msg=f"Sync failed: {e}"))
         finally:
             db.close()
