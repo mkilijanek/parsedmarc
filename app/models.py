@@ -169,3 +169,13 @@ class AuditLog(Base):
     ip_address: Mapped[str | None] = mapped_column(InetCompat())
     metadata_: Mapped[dict] = mapped_column("metadata", JSONCompat(), default=dict, nullable=False)
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    is_secret: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import logging
 import json
+import os
+import base64
+import hashlib
+import hmac
+import secrets
 import time
 from collections import deque
 from datetime import datetime, timezone
 from threading import Lock
+from urllib.parse import urlencode
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Flask, Response, jsonify, request, make_response, redirect, url_for, stream_with_context
@@ -18,7 +24,7 @@ from .config import Config
 from .webui import webui_bp
 from .logging import setup_logging
 from .db import SessionLocal
-from .models import Indicator, FeedStats, AuditLog, tags_contains
+from .models import Indicator, FeedStats, AuditLog, AppSetting, tags_contains
 from .cache import get_redis
 from .security import validate_search_query, enforce_allowed_hosts, get_client_ip
 from .query_parser import parse_kibana_query, Term, Token
@@ -140,6 +146,91 @@ def create_app() -> Flask:
         # stable ordering
         segs = [prefix] + [f"{k}={parts[k]}" for k in sorted(parts.keys())]
         return "|".join(segs)
+
+    def _secret_enc_key() -> bytes:
+        return hashlib.sha256(cfg.SECRET_KEY.encode("utf-8")).digest()
+
+    def _secret_encrypt(value: str) -> str:
+        raw = (value or "").encode("utf-8")
+        nonce = secrets.token_bytes(16)
+        key = _secret_enc_key()
+        stream = bytearray()
+        counter = 0
+        while len(stream) < len(raw):
+            block = hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest()
+            stream.extend(block)
+            counter += 1
+        cipher = bytes(a ^ b for a, b in zip(raw, stream))
+        mac = hmac.new(key, nonce + cipher, hashlib.sha256).digest()
+        return "v1:" + base64.urlsafe_b64encode(nonce + mac + cipher).decode("ascii")
+
+    def _secret_decrypt(value: str) -> str:
+        if not value:
+            return ""
+        if not value.startswith("v1:"):
+            return value
+        blob = base64.urlsafe_b64decode(value[3:].encode("ascii"))
+        if len(blob) < 48:
+            return ""
+        nonce = blob[:16]
+        mac = blob[16:48]
+        cipher = blob[48:]
+        key = _secret_enc_key()
+        expected = hmac.new(key, nonce + cipher, hashlib.sha256).digest()
+        if not hmac.compare_digest(mac, expected):
+            return ""
+        stream = bytearray()
+        counter = 0
+        while len(stream) < len(cipher):
+            block = hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest()
+            stream.extend(block)
+            counter += 1
+        plain = bytes(a ^ b for a, b in zip(cipher, stream))
+        return plain.decode("utf-8")
+
+    def _get_setting(db: Session, key: str, default: str = "", *, secret: bool = False) -> str:
+        row = db.scalar(select(AppSetting).where(AppSetting.key == key))
+        if not row:
+            return default
+        if secret:
+            return _secret_decrypt(row.value)
+        return row.value
+
+    def _set_setting(db: Session, key: str, value: str, *, secret: bool = False) -> None:
+        row = db.scalar(select(AppSetting).where(AppSetting.key == key))
+        stored = _secret_encrypt(value) if secret else value
+        if row is None:
+            db.add(AppSetting(key=key, value=stored, is_secret=secret))
+            return
+        row.value = stored
+        row.is_secret = secret
+
+    def _mask_secret(value: str) -> str:
+        if not value:
+            return ""
+        tail = value[-4:] if len(value) >= 4 else value
+        return "*" * max(4, len(value) - len(tail)) + tail
+
+    def _read_feed_enabled(db: Session, source_name: str) -> bool:
+        raw = _get_setting(db, f"feed.{source_name}.enabled", "1")
+        return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _write_proxy_env(db: Session) -> None:
+        proxy_http = _get_setting(db, "proxy.http_url", "")
+        proxy_https = _get_setting(db, "proxy.https_url", "")
+        proxy_no = _get_setting(db, "proxy.no_proxy", "")
+        if proxy_http:
+            os.environ["HTTP_PROXY"] = proxy_http
+        else:
+            os.environ.pop("HTTP_PROXY", None)
+        if proxy_https:
+            os.environ["HTTPS_PROXY"] = proxy_https
+        else:
+            os.environ.pop("HTTPS_PROXY", None)
+        if proxy_no:
+            os.environ["NO_PROXY"] = proxy_no
+        else:
+            os.environ.pop("NO_PROXY", None)
 
     def _parse_limit_offset(*, default_limit: int, max_limit: int) -> tuple[int, int] | tuple[None, None]:
         try:
@@ -388,10 +479,15 @@ def create_app() -> Flask:
             return resp
         cache_access_total.labels(endpoint="indicators_html", status="miss").inc()
 
+        source_options: List[str] = ["all"]
         db = _db()
         try:
             with db_query_duration_seconds.labels(endpoint="indicators_view").time():
                 rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=limit, offset=offset)
+            available_sources = db.scalars(select(Indicator.source).distinct().order_by(Indicator.source.asc())).all()
+            source_options.extend([str(s) for s in available_sources if s and str(s) != "all"])
+            if source not in source_options:
+                source_options.append(source)
         except Exception as e:
             db.close()
             return jsonify({"error": str(e)}), 400
@@ -411,6 +507,9 @@ def create_app() -> Flask:
             source=source,
             min_conf=min_conf,
             max_conf=max_conf,
+            limit=limit,
+            offset=offset,
+            source_options=source_options,
         )
         if r is not None:
             try:
@@ -660,6 +759,223 @@ def create_app() -> Flask:
         # Clickable link target is shown in UI; redirect for convenience
         return ("", 302, {"Location": f"{cfg.MISP_URL.rstrip('/')}/events/view/{event_id}"})
 
+    def _run_manual_sync(source_name: str) -> Dict[str, Any]:
+        source_name = source_name.strip().lower()
+        if source_name == "misp":
+            from .services.misp import update_misp_indicators
+            return {"source": source_name, "result": update_misp_indicators()}
+        if source_name == "crowdsec":
+            from .services.crowdsec import update_crowdsec_indicators
+            return {"source": source_name, "result": update_crowdsec_indicators()}
+        if source_name == "malwarebazaar":
+            from .services.malwarebazaar import update_malwarebazaar_indicators
+            return {"source": source_name, "result": update_malwarebazaar_indicators()}
+        if source_name == "mwdb":
+            from .services.mwdb import update_mwdb_indicators
+            return {"source": source_name, "result": update_mwdb_indicators()}
+        if source_name == "abusech":
+            from .services.abusech import update_abusech_indicators
+            return {"source": source_name, "result": update_abusech_indicators()}
+        raise ValueError("Unknown source")
+
+    @app.get("/admin")
+    @limiter.limit("30 per minute")
+    def admin_panel():
+        db = _db()
+        try:
+            feed_rows = db.scalars(select(FeedStats).order_by(FeedStats.source.asc(), FeedStats.source_id.asc())).all()
+            settings_rows = db.scalars(select(AppSetting).order_by(AppSetting.key.asc())).all()
+            setting_keys = {s.key for s in settings_rows}
+            conf = {
+                "misp_url": _get_setting(db, "config.misp_url", cfg.MISP_URL),
+                "misp_api_key_masked": _mask_secret(_get_setting(db, "config.misp_api_key", "", secret=True)),
+                "crowdsec_api_key_masked": _mask_secret(_get_setting(db, "config.crowdsec_api_key", "", secret=True)),
+                "mwdb_url": _get_setting(db, "config.mwdb_url", cfg.MWDB_URL),
+                "mwdb_auth_key_masked": _mask_secret(_get_setting(db, "config.mwdb_auth_key", "", secret=True)),
+                "malwarebazaar_auth_key_masked": _mask_secret(_get_setting(db, "config.malwarebazaar_auth_key", "", secret=True)),
+                "proxy_http_url": _get_setting(db, "proxy.http_url", os.getenv("HTTP_PROXY", "")),
+                "proxy_https_url": _get_setting(db, "proxy.https_url", os.getenv("HTTPS_PROXY", "")),
+                "proxy_no_proxy": _get_setting(db, "proxy.no_proxy", os.getenv("NO_PROXY", "")),
+                "trusted_proxy_count": _get_setting(db, "proxy.trusted_proxy_count", os.getenv("TRUSTED_PROXY_COUNT", "0")),
+            }
+            managed_sources = ["misp", "crowdsec", "malwarebazaar", "mwdb", "abusech"]
+            enabled_map = {name: _read_feed_enabled(db, name) for name in managed_sources}
+        finally:
+            db.close()
+
+        status_msg = request.args.get("msg", "")
+        settings_count = len(setting_keys)
+        feed_rows_html = "".join(
+            [
+                (
+                    "<tr>"
+                    f"<td>{_esc(str(row.source))}</td>"
+                    f"<td>{_esc(str(row.source_id or ''))}</td>"
+                    f"<td>{_esc(str(row.last_fetch_status or ''))}</td>"
+                    f"<td>{_esc(str(row.last_update or ''))}</td>"
+                    f"<td>{_esc(str(row.last_fetch_error or ''))}</td>"
+                    "</tr>"
+                )
+                for row in feed_rows
+            ]
+        )
+        if not feed_rows_html:
+            feed_rows_html = "<tr><td colspan='5'>No feed statistics yet.</td></tr>"
+
+        source_ctrl_html = "".join(
+            [
+                (
+                    "<tr>"
+                    f"<td>{_esc(src)}</td>"
+                    f"<td>{'enabled' if enabled_map.get(src, True) else 'disabled'}</td>"
+                    f"<td><form method='post' action='/admin/feed-toggle' style='display:inline'>"
+                    f"<input type='hidden' name='source' value='{_esc(src)}'/>"
+                    f"<input type='hidden' name='enabled' value='{'0' if enabled_map.get(src, True) else '1'}'/>"
+                    f"<button type='submit'>{'Disable' if enabled_map.get(src, True) else 'Enable'}</button>"
+                    "</form> "
+                    f"<form method='post' action='/admin/sync' style='display:inline'>"
+                    f"<input type='hidden' name='source' value='{_esc(src)}'/>"
+                    "<button type='submit'>Sync now</button>"
+                    "</form></td>"
+                    "</tr>"
+                )
+                for src in managed_sources
+            ]
+        )
+
+        return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Admin Controls</title>
+  <style>
+    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 1.5rem; }}
+    .card {{ border: 1px solid #ddd; border-radius: 16px; padding: 1rem; margin-bottom: 1rem; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    th, td {{ border-bottom: 1px solid #eee; padding: .5rem; text-align: left; vertical-align: top; }}
+    input[type=text], input[type=password] {{ width: 100%; padding: .45rem; border-radius: 8px; border: 1px solid #ccc; }}
+    button {{ padding: .5rem .8rem; border-radius: 8px; border: 1px solid #333; background: #fff; }}
+  </style>
+</head>
+<body>
+  <h1>Admin Controls</h1>
+  <p><a href="/indicators">Back to indicators</a></p>
+  <p><strong>Stored settings:</strong> {settings_count}</p>
+  <p>{_esc(status_msg)}</p>
+
+  <div class="card">
+    <h2>Configuration Panel</h2>
+    <form method="post" action="/admin/config">
+      <p><label>MISP URL <input type="text" name="misp_url" value="{_esc(conf['misp_url'])}" placeholder="https://misp.example.local"/></label></p>
+      <p><label>MISP API key (stored encrypted) <input type="password" name="misp_api_key" value="" placeholder="Leave blank to keep current"/></label> Current: {_esc(conf['misp_api_key_masked'])}</p>
+      <p><label>CrowdSec API key (stored encrypted) <input type="password" name="crowdsec_api_key" value="" placeholder="Leave blank to keep current"/></label> Current: {_esc(conf['crowdsec_api_key_masked'])}</p>
+      <p><label>MWDB URL <input type="text" name="mwdb_url" value="{_esc(conf['mwdb_url'])}" placeholder="https://mwdb.example.local"/></label></p>
+      <p><label>MWDB auth key (stored encrypted) <input type="password" name="mwdb_auth_key" value="" placeholder="Leave blank to keep current"/></label> Current: {_esc(conf['mwdb_auth_key_masked'])}</p>
+      <p><label>MalwareBazaar auth key (stored encrypted) <input type="password" name="malwarebazaar_auth_key" value="" placeholder="Leave blank to keep current"/></label> Current: {_esc(conf['malwarebazaar_auth_key_masked'])}</p>
+      <h3>Proxy Configuration</h3>
+      <p><label>HTTP proxy <input type="text" name="proxy_http_url" value="{_esc(conf['proxy_http_url'])}" placeholder="http://proxy:8080"/></label></p>
+      <p><label>HTTPS proxy <input type="text" name="proxy_https_url" value="{_esc(conf['proxy_https_url'])}" placeholder="http://proxy:8080"/></label></p>
+      <p><label>No proxy list <input type="text" name="proxy_no_proxy" value="{_esc(conf['proxy_no_proxy'])}" placeholder="localhost,127.0.0.1,.internal"/></label></p>
+      <p><label>Trusted proxy count <input type="text" name="trusted_proxy_count" value="{_esc(conf['trusted_proxy_count'])}" placeholder="0"/></label></p>
+      <button type="submit">Save configuration</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Manual Synchronization and Feed Management</h2>
+    <form method="post" action="/admin/sync">
+      <input type="hidden" name="source" value="all"/>
+      <button type="submit">Sync all enabled sources</button>
+    </form>
+    <table>
+      <thead><tr><th>Source</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>{source_ctrl_html}</tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Feed Statistics</h2>
+    <table>
+      <thead><tr><th>Source</th><th>Source ID</th><th>Last Status</th><th>Last Update</th><th>Last Error</th></tr></thead>
+      <tbody>{feed_rows_html}</tbody>
+    </table>
+  </div>
+</body>
+</html>
+"""
+
+    @app.post("/admin/config")
+    @limiter.limit("20 per minute")
+    def admin_save_config():
+        db = _db()
+        try:
+            _set_setting(db, "config.misp_url", (request.form.get("misp_url") or "").strip())
+            _set_setting(db, "config.mwdb_url", (request.form.get("mwdb_url") or "").strip())
+            _set_setting(db, "proxy.http_url", (request.form.get("proxy_http_url") or "").strip())
+            _set_setting(db, "proxy.https_url", (request.form.get("proxy_https_url") or "").strip())
+            _set_setting(db, "proxy.no_proxy", (request.form.get("proxy_no_proxy") or "").strip())
+            _set_setting(db, "proxy.trusted_proxy_count", (request.form.get("trusted_proxy_count") or "0").strip())
+
+            for key in ("misp_api_key", "crowdsec_api_key", "mwdb_auth_key", "malwarebazaar_auth_key"):
+                val = (request.form.get(key) or "").strip()
+                if val:
+                    _set_setting(db, f"config.{key}", val, secret=True)
+
+            db.commit()
+            _write_proxy_env(db)
+            _audit("admin_config_update", "app_settings", None, {"updated": True})
+            return redirect(url_for("admin_panel", msg="Configuration saved."))
+        except Exception as e:
+            db.rollback()
+            return redirect(url_for("admin_panel", msg=f"Configuration save failed: {e}"))
+        finally:
+            db.close()
+
+    @app.post("/admin/feed-toggle")
+    @limiter.limit("20 per minute")
+    def admin_feed_toggle():
+        source_name = (request.form.get("source") or "").strip().lower()
+        enabled = (request.form.get("enabled") or "").strip().lower() in {"1", "true", "yes", "on"}
+        if source_name not in {"misp", "crowdsec", "malwarebazaar", "mwdb", "abusech"}:
+            return redirect(url_for("admin_panel", msg="Invalid source for feed toggle."))
+        db = _db()
+        try:
+            _set_setting(db, f"feed.{source_name}.enabled", "1" if enabled else "0")
+            db.commit()
+            _audit("admin_feed_toggle", "feed", None, {"source": source_name, "enabled": enabled})
+            return redirect(url_for("admin_panel", msg=f"Feed {source_name} {'enabled' if enabled else 'disabled'}"))
+        except Exception as e:
+            db.rollback()
+            return redirect(url_for("admin_panel", msg=f"Feed toggle failed: {e}"))
+        finally:
+            db.close()
+
+    @app.post("/admin/sync")
+    @limiter.limit("10 per minute")
+    def admin_sync():
+        source_name = (request.form.get("source") or "").strip().lower()
+        if not source_name:
+            return redirect(url_for("admin_panel", msg="Missing source for sync."))
+        db = _db()
+        try:
+            targets = [source_name]
+            if source_name == "all":
+                targets = ["misp", "crowdsec", "malwarebazaar", "mwdb", "abusech"]
+            run_targets = [s for s in targets if s == "all" or _read_feed_enabled(db, s)]
+            if source_name != "all":
+                run_targets = targets
+            results: List[Dict[str, Any]] = []
+            for src in run_targets:
+                try:
+                    results.append(_run_manual_sync(src))
+                except Exception as e:
+                    results.append({"source": src, "error": str(e)})
+            _audit("manual_sync", "feed", None, {"source": source_name, "results": results})
+            return redirect(url_for("admin_panel", msg=f"Sync completed for {source_name}."))
+        finally:
+            db.close()
+
     return app
 
 # ---------- HTML rendering (no external templates, minimal dependencies) ----------
@@ -725,7 +1041,22 @@ def _render_index(total: int, active: int, feeds) -> str:
 </html>
 """
 
-def _render_indicators(rows: List[Indicator], *, q: str | None, type_filter: str, tlp: str, source: str, min_conf: int | None, max_conf: int | None) -> str:
+def _render_indicators(
+    rows: List[Indicator],
+    *,
+    q: str | None,
+    type_filter: str,
+    tlp: str,
+    source: str,
+    min_conf: int | None,
+    max_conf: int | None,
+    limit: int,
+    offset: int,
+    source_options: List[str],
+) -> str:
+    def _query_escape(value: str) -> str:
+        return (value or "").replace("\\", "\\\\").replace('"', '\\"')
+
     def type_badge(t: str) -> str:
         cls = {"ip":"b-ip","domain":"b-domain","url":"b-url","hash":"b-hash","email":"b-email"}.get(t,"b-other")
         return _badge(t, cls, f"Type {t}")
@@ -749,10 +1080,9 @@ def _render_indicators(rows: List[Indicator], *, q: str | None, type_filter: str
                 for fmt in ("csv","txt","json","fortigate")
             ])
         else:
-            q_parts = [f"value:{ind.value}", f"source:{ind.source}"]
-            q_row = " AND ".join(q_parts)
+            q_row = f'value:"{_query_escape(ind.value)}" AND source:"{_query_escape(ind.source)}"'
             exports = " ".join([
-                f"<a href='/indicators/{fmt}?q={_esc(q_row)}' aria-label='Export indicator in {fmt} format'>{fmt.upper()}</a>"
+                f"<a href='/indicators/{fmt}?{_esc(urlencode({'q': q_row}))}' aria-label='Export indicator in {fmt} format'>{fmt.upper()}</a>"
                 for fmt in ("txt","csv","json","fortigate")
             ])
 
@@ -785,6 +1115,25 @@ def _render_indicators(rows: List[Indicator], *, q: str | None, type_filter: str
   <p><strong>Operators:</strong> AND, OR, NOT, :, &gt;, &lt;, &gt;=, &lt;=, *, ?</p>
 </div>"""
 
+    active_query: Dict[str, str] = {}
+    if q:
+        active_query["q"] = q
+    if type_filter and type_filter != "all":
+        active_query["type"] = type_filter
+    if tlp and tlp != "ALL" and tlp != "all":
+        active_query["tlp"] = tlp
+    if source and source != "all":
+        active_query["source"] = source
+    if min_conf is not None:
+        active_query["min_conf"] = str(min_conf)
+    if max_conf is not None:
+        active_query["max_conf"] = str(max_conf)
+    active_query["limit"] = str(limit)
+    active_query["offset"] = str(offset)
+    filter_qs = urlencode(active_query)
+    filter_suffix = f"?{filter_qs}" if filter_qs else ""
+    has_filters = any(k in active_query for k in ("q", "type", "tlp", "source", "min_conf", "max_conf"))
+
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -792,26 +1141,31 @@ def _render_indicators(rows: List[Indicator], *, q: str | None, type_filter: str
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Indicators</title>
   <style>
-    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 1.5rem; }}
+    :root {{ color-scheme: light dark; }}
+    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 1.5rem; background: var(--bg); color: var(--fg); }}
+    body[data-theme="light"] {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --muted: #64748b; --line: #dbe1ea; }}
+    body[data-theme="dark"] {{ --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --muted: #94a3b8; --line: #334155; }}
+    body:not([data-theme]) {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --muted: #64748b; --line: #dbe1ea; }}
     .toolbar {{ display: grid; grid-template-columns: 1fr; gap: .75rem; margin-bottom: 1rem; }}
     .row {{ display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }}
-    input[type=text] {{ width: 100%; padding: .6rem; border-radius: 12px; border: 1px solid #ccc; }}
-    select {{ padding: .5rem; border-radius: 12px; border: 1px solid #ccc; }}
-    button {{ padding: .55rem .8rem; border-radius: 12px; border: 1px solid #333; background: #fff; cursor: pointer; }}
+    input[type=text] {{ width: 100%; padding: .6rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }}
+    select {{ padding: .5rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }}
+    button {{ padding: .55rem .8rem; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }}
     button:focus, a:focus, input:focus, select:focus {{ outline: 3px solid #000; outline-offset: 2px; }}
-    .card {{ border: 1px solid #ddd; border-radius: 16px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; }}
+    .card {{ border: 1px solid var(--line); border-radius: 16px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; background: var(--card); }}
     table {{ width: 100%; border-collapse: collapse; }}
-    th, td {{ border-bottom: 1px solid #eee; padding: 0.5rem; text-align: left; vertical-align: top; }}
+    th, td {{ border-bottom: 1px solid var(--line); padding: 0.5rem; text-align: left; vertical-align: top; }}
     code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }}
-    .badge {{ display: inline-block; padding: .15rem .5rem; border-radius: 999px; border: 1px solid #333; font-size: .85rem; }}
-    .tag {{ display: inline-block; padding: .1rem .45rem; border-radius: 999px; border: 1px solid #999; font-size: .8rem; margin-right: .25rem; margin-bottom: .15rem; }}
-    .confbar {{ width: 140px; height: 12px; border: 1px solid #333; border-radius: 999px; overflow: hidden; }}
-    .confbar-in {{ height: 100%; background: #333; }}
+    .badge {{ display: inline-block; padding: .15rem .5rem; border-radius: 999px; border: 1px solid var(--line); font-size: .85rem; }}
+    .tag {{ display: inline-block; padding: .1rem .45rem; border-radius: 999px; border: 1px solid var(--line); font-size: .8rem; margin-right: .25rem; margin-bottom: .15rem; }}
+    .confbar {{ width: 140px; height: 12px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }}
+    .confbar-in {{ height: 100%; background: var(--muted); }}
     .b-ip{{}} .b-domain{{}} .b-url{{}} .b-hash{{}} .b-email{{}} .b-other{{}}
     .b-white{{}} .b-green{{}} .b-amber{{}} .b-red{{}}
     .help {{ font-size: .95rem; }}
+    .subtle {{ color: var(--muted); font-size: .9rem; }}
     .skip-link {{ position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }}
-    .skip-link:focus {{ left: 1rem; top: 1rem; width: auto; height: auto; background: #fff; padding: .5rem; border: 1px solid #000; }}
+    .skip-link:focus {{ left: 1rem; top: 1rem; width: auto; height: auto; background: var(--card); padding: .5rem; border: 1px solid var(--line); }}
     @media (prefers-reduced-motion: reduce) {{
       * {{ scroll-behavior: auto !important; transition: none !important; animation: none !important; }}
     }}
@@ -822,6 +1176,12 @@ def _render_indicators(rows: List[Indicator], *, q: str | None, type_filter: str
 <main id="main-content" role="main">
   <div class="card">
     <h1>Unified Indicators</h1>
+    <p class="subtle">
+      <a href="/admin">Admin controls</a> ·
+      <a href="/indicators" aria-label="Reset filters and show unfiltered results">Reset filters</a> ·
+      <button type="button" id="themeToggle">Toggle dark mode</button>
+    </p>
+    {"<p><strong>Active filters:</strong> yes</p>" if has_filters else "<p class='subtle'>Active filters: none</p>"}
     <form method="get" action="/indicators" class="toolbar" aria-label="Indicator search and filters">
       <label for="searchBox"><strong>Search</strong></label>
       <input type="text" id="searchBox" name="q" value="{_esc(q or '')}"
@@ -841,7 +1201,7 @@ def _render_indicators(rows: List[Indicator], *, q: str | None, type_filter: str
 
         <label for="srcSel">Source</label>
         <select id="srcSel" name="source" aria-label="Filter by source">
-          {"".join([f"<option value='{s}' {'selected' if source==s else ''}>{s}</option>" for s in ["all","crowdsec","misp"]])}
+          {"".join([f"<option value='{_esc(s)}' {'selected' if source==s else ''}>{_esc(s)}</option>" for s in source_options])}
         </select>
 
         <label for="minConf">Min conf</label>
@@ -856,16 +1216,17 @@ def _render_indicators(rows: List[Indicator], *, q: str | None, type_filter: str
 
         <button type="submit" aria-label="Apply search and filters">Apply</button>
         <a href="/indicators" aria-label="Clear search and filters">Clear</a>
+        <a href="/indicators" aria-label="Return to unfiltered indicators view">Back to all indicators</a>
       </div>
     </form>
 
     {search_help}
 
     <p>Quick exports:
-      <a href="/indicators/txt?q={_esc(q or '')}" aria-label="Export current results as TXT">TXT</a> ·
-      <a href="/indicators/csv?q={_esc(q or '')}" aria-label="Export current results as CSV">CSV</a> ·
-      <a href="/indicators/json?q={_esc(q or '')}" aria-label="Export current results as JSON">JSON</a> ·
-      <a href="/indicators/fortigate?q={_esc(q or '')}" aria-label="Export current results as FortiGate list">FortiGate</a>
+      <a href="/indicators/txt{_esc(filter_suffix)}" aria-label="Export current filtered results as TXT">TXT</a> ·
+      <a href="/indicators/csv{_esc(filter_suffix)}" aria-label="Export current filtered results as CSV">CSV</a> ·
+      <a href="/indicators/json{_esc(filter_suffix)}" aria-label="Export current filtered results as JSON">JSON</a> ·
+      <a href="/indicators/fortigate{_esc(filter_suffix)}" aria-label="Export current filtered results as FortiGate list">FortiGate</a>
     </p>
   </div>
 
@@ -891,6 +1252,25 @@ def _render_indicators(rows: List[Indicator], *, q: str | None, type_filter: str
 </main>
 
 <script>
+  const themeKey = 'ioc-theme';
+  const preferredTheme = localStorage.getItem(themeKey);
+  if (preferredTheme === 'dark' || preferredTheme === 'light') {{
+    document.body.setAttribute('data-theme', preferredTheme);
+  }} else {{
+    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
+  }}
+
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {{
+    themeToggle.addEventListener('click', () => {{
+      const curr = document.body.getAttribute('data-theme') || 'light';
+      const next = curr === 'dark' ? 'light' : 'dark';
+      document.body.setAttribute('data-theme', next);
+      localStorage.setItem(themeKey, next);
+    }});
+  }}
+
   const searchBox = document.getElementById('searchBox');
   document.addEventListener('keydown', (e) => {{
     if (e.key === '/') {{

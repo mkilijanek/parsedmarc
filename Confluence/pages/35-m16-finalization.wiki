@@ -44,3 +44,4 @@ h2. Backlog v2 (Priority Order)
 # Add authenticated access tier for {{/metrics}} and privileged exports.
 # Expand chaos matrix (DB restart, packet loss, slow Redis).
 # Add automatic weekly benchmark trend report persisted to artifacts.
+# Add dark mode switch with preference persisted in browser local storage/cache.

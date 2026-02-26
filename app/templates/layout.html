@@ -14,6 +14,7 @@
       <a href="{{ url_for('webui.mobile') }}">Mobile</a>
       <a href="{{ url_for('webui.stats') }}">Stats</a>
       <a href="{{ url_for('indicators_view') }}">Legacy /indicators</a>
+      <button type="button" class="theme-btn" id="themeToggle">Theme</button>
     </nav>
   </header>
 
@@ -24,5 +25,26 @@
   <footer class="footer">
     <small>DB-backed IOC presentation layer</small>
   </footer>
+  <script>
+    (function () {
+      const themeKey = "ioc-theme";
+      const saved = localStorage.getItem(themeKey);
+      if (saved === "light" || saved === "dark") {
+        document.body.setAttribute("data-theme", saved);
+      } else {
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.body.setAttribute("data-theme", prefersDark ? "dark" : "light");
+      }
+      const toggle = document.getElementById("themeToggle");
+      if (toggle) {
+        toggle.addEventListener("click", function () {
+          const current = document.body.getAttribute("data-theme") || "light";
+          const next = current === "dark" ? "light" : "dark";
+          document.body.setAttribute("data-theme", next);
+          localStorage.setItem(themeKey, next);
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

@@ -36,3 +36,4 @@ Conditions:
 3. Add authenticated access tier for `/metrics` and privileged exports.
 4. Expand chaos matrix (DB restart, packet loss, slow Redis).
 5. Add automatic weekly benchmark trend report persisted to artifacts.
+6. Add dark mode switch with preference persisted in browser local storage/cache.
