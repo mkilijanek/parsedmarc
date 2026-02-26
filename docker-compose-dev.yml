@@ -1,0 +1,157 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-threatfeed}
+      POSTGRES_USER: ${POSTGRES_USER:-threatfeed}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-threatfeed}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-redispass}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "PING"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    # image: ghcr.io/mkilijanek/ioc-service:${IMAGE_TAG:-latest}
+    build:
+      context: .
+    environment:
+      # Flask/Gunicorn
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SECRET_KEY: ${SECRET_KEY:-}
+      CACHE_TTL: ${CACHE_TTL:-300}
+      APP_PORT: ${APP_PORT:-8080}
+      WORKERS: ${WORKERS:-3}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
+      RATE_LIMITS_ENABLED: ${RATE_LIMITS_ENABLED:-true}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-6}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-4}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+      CORRELATION_SNAPSHOT_ENABLED: ${CORRELATION_SNAPSHOT_ENABLED:-true}
+      CORRELATION_SNAPSHOT_INTERVAL: ${CORRELATION_SNAPSHOT_INTERVAL:-60}
+      CORRELATION_SNAPSHOT_MIN_SOURCES: ${CORRELATION_SNAPSHOT_MIN_SOURCES:-2}
+      CORRELATION_SNAPSHOT_LIMIT: ${CORRELATION_SNAPSHOT_LIMIT:-1000}
+      CORRELATION_SNAPSHOT_TYPES: ${CORRELATION_SNAPSHOT_TYPES:-all,domain,ip,url,hash,email}
+
+      # DB
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
+
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispass}@redis:6379/0
+
+      # Integrations
+      CROWDSEC_API_KEY: ${CROWDSEC_API_KEY:-}
+      CROWDSEC_LISTS: ${CROWDSEC_LISTS:-}
+      MISP_URL: ${MISP_URL:-}
+      MISP_API_KEY: ${MISP_API_KEY:-}
+      MISP_VERIFY_SSL: ${MISP_VERIFY_SSL:-false}
+      MISP_DAYS: ${MISP_DAYS:-7}
+      MALWAREBAZAAR_SINCE_DATE: ${MALWAREBAZAAR_SINCE_DATE:-}
+
+      # Security
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    ports:
+      - "${HOST_PORT:-7003}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  worker:
+    # image: ghcr.io/mkilijanek/ioc-service:${IMAGE_TAG:-latest}
+    build:
+      context: .
+    command: ["python", "-m", "app.worker"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SECRET_KEY: ${SECRET_KEY:-}
+      CACHE_TTL: ${CACHE_TTL:-300}
+      ENABLE_BACKGROUND_JOBS: ${ENABLE_BACKGROUND_JOBS:-true}
+      UPDATE_INTERVAL: ${UPDATE_INTERVAL:-600}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-6}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-4}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispass}@redis:6379/0
+
+      CROWDSEC_API_KEY: ${CROWDSEC_API_KEY:-}
+      CROWDSEC_LISTS: ${CROWDSEC_LISTS:-}
+      MISP_URL: ${MISP_URL:-}
+      MISP_API_KEY: ${MISP_API_KEY:-}
+      MISP_VERIFY_SSL: ${MISP_VERIFY_SSL:-false}
+      MISP_DAYS: ${MISP_DAYS:-7}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    profiles: ["edge"]
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-7003}:7003"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    profiles: ["dev"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@localhost}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:

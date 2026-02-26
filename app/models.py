@@ -179,3 +179,17 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     is_secret: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ExportJob(Base):
+    __tablename__ = "export_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    fmt: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", server_default="queued")
+    result_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    query_json: Mapped[dict] = mapped_column(JSONCompat(), default=dict, nullable=False)
+    created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

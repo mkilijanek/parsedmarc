@@ -25,3 +25,11 @@ table{border-collapse:collapse;width:100%;background:var(--panel)}
 th,td{border-bottom:1px solid var(--line);padding:8px;vertical-align:top;font-size:12px}
 th{position:sticky;top:0;background:var(--panel);z-index:1;text-align:left}
 .hint{color:var(--muted);font-size:12px}
+a:focus,button:focus,input:focus{outline:2px solid var(--link);outline-offset:2px}
+@media (max-width: 760px){
+  .nav a{margin-left:8px;font-size:12px}
+  .theme-btn{padding:5px 8px}
+  .filters label{width:100%}
+  .downloads{width:100%;margin-left:0}
+  th:nth-child(7),td:nth-child(7),th:nth-child(8),td:nth-child(8){display:none}
+}

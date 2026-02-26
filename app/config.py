@@ -55,8 +55,11 @@ class Config:
 
     # DB / Redis
     DATABASE_URL: str = field(default_factory=lambda: _env_str("DATABASE_URL", "postgresql+psycopg2://threatfeed:threatfeed@localhost:5432/threatfeed"))
+    DATABASE_READ_URL: str = field(default_factory=lambda: _env_str("DATABASE_READ_URL", ""))
     REDIS_URL: str = field(default_factory=lambda: _env_str("REDIS_URL", "redis://:changeme@localhost:6379/0"))
     CACHE_TTL: int = field(default_factory=lambda: _env_int("CACHE_TTL", 300))
+    EXPORT_JOB_DIR: str = field(default_factory=lambda: _env_str("EXPORT_JOB_DIR", "/tmp/ioc-export-jobs"))
+    EXPORT_ASYNC_THRESHOLD: int = field(default_factory=lambda: _env_int("EXPORT_ASYNC_THRESHOLD", 5000))
 
     # Integrations
     CROWDSEC_API_KEY: str = field(default_factory=lambda: _env_str("CROWDSEC_API_KEY", ""))
@@ -120,3 +123,4 @@ class Config:
     # Security
     ALLOWED_HOSTS: str = field(default_factory=lambda: _env_str("ALLOWED_HOSTS", "*"))
     CORS_ORIGINS: str = field(default_factory=lambda: _env_str("CORS_ORIGINS", "*"))
+    METRICS_AUTH_TOKEN: str = field(default_factory=lambda: _env_str("METRICS_AUTH_TOKEN", ""))
