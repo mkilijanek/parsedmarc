@@ -74,6 +74,8 @@ class Config:
     MISP_VERIFY_SSL: bool = field(default_factory=lambda: _env_bool("MISP_VERIFY_SSL", True))
     MISP_DAYS: int = field(default_factory=lambda: _env_int("MISP_DAYS", 7))
     MISP_SYNC_TIMEOUT_S: int = field(default_factory=lambda: _env_int("MISP_SYNC_TIMEOUT_S", 30))
+    MISP_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("MISP_CIRCUIT_FAIL_THRESHOLD", 3))
+    MISP_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("MISP_CIRCUIT_COOLDOWN_S", 300))
 
     MALWAREBAZAAR_SINCE_DATE: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_SINCE_DATE", ""))
     MALWAREBAZAAR_API_URL: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_API_URL", "https://mb-api.abuse.ch/api/v1/"))
@@ -88,6 +90,8 @@ class Config:
     MWDB_NO_TIME_LIMIT: bool = field(default_factory=lambda: _env_bool("MWDB_NO_TIME_LIMIT", False))
     MWDB_ORGANIZATIONS: str = field(default_factory=lambda: _env_str("MWDB_ORGANIZATIONS", ""))
     MWDB_LIMIT: int = field(default_factory=lambda: _env_int("MWDB_LIMIT", 1000))
+    MWDB_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("MWDB_CIRCUIT_FAIL_THRESHOLD", 3))
+    MWDB_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("MWDB_CIRCUIT_COOLDOWN_S", 300))
 
     ABUSECH_AUTH_KEY: str = field(default_factory=lambda: _env_str("ABUSECH_AUTH_KEY", ""))
     THREATFOX_ENABLED: bool = field(default_factory=lambda: _env_bool("THREATFOX_ENABLED", False))

@@ -226,6 +226,7 @@ class FeedRun(Base):
 
     __table_args__ = (
         Index("idx_feed_runs_feed_started", "feed_source_id", "started_at"),
+        Index("idx_feed_runs_status_started", "status", "started_at"),
     )
 
 

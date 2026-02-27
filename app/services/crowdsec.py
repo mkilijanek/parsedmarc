@@ -4,7 +4,7 @@ import logging
 import requests
 from datetime import datetime, timezone
 from typing import List, Tuple, Dict, Set
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..config import Config
@@ -53,20 +53,26 @@ def update_crowdsec_list(list_id: str) -> Dict[str, int]:
 
     db = SessionLocal()
     try:
-        # Mark existing indicators from this list as inactive if not in incoming
-        existing = db.execute(
-            select(Indicator.id, Indicator.value).where(
-                Indicator.source == "crowdsec",
-                Indicator.source_id == list_id,
-            )
-        ).all()
-        existing_map = {v: i for (i, v) in existing}
-        to_deactivate = [existing_map[v] for v in existing_map.keys() if v not in incoming]
-
-        if to_deactivate:
+        # Deactivate missing indicators via a single SQL UPDATE (avoids loading all rows to Python)
+        if incoming:
             db.execute(
                 update(Indicator)
-                .where(Indicator.id.in_(to_deactivate))
+                .where(
+                    Indicator.source == "crowdsec",
+                    Indicator.source_id == list_id,
+                    Indicator.is_active == True,  # noqa: E712
+                    ~Indicator.value.in_(list(incoming)),
+                )
+                .values(is_active=False, last_seen=now)
+            )
+        else:
+            db.execute(
+                update(Indicator)
+                .where(
+                    Indicator.source == "crowdsec",
+                    Indicator.source_id == list_id,
+                    Indicator.is_active == True,  # noqa: E712
+                )
                 .values(is_active=False, last_seen=now)
             )
 
@@ -121,7 +127,7 @@ def update_crowdsec_list(list_id: str) -> Dict[str, int]:
         )
         db.commit()
 
-        return {"fetched": len(incoming), "deactivated": len(to_deactivate)}
+        return {"fetched": len(incoming)}
     except Exception as e:
         db.rollback()
         try:

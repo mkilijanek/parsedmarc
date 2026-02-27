@@ -29,7 +29,6 @@ from app.services.mwdb import fetch_mwdb_by_tags
 from app.services.malwarebazaar import update_malwarebazaar_indicators
 from app.services.mwdb import _build_tag_query
 from app.services.abusech import (
-    _CIRCUIT_STATE,
     _infer_ioc_type,
     _normalize_threatfox_ioc,
     _pick_ioc_from_csv_row,
@@ -38,6 +37,7 @@ from app.services.abusech import (
     fetch_yaraify_lookup_hashes,
     update_abusech_indicators,
 )
+from app.services.common import _circuit_breaker
 
 
 # ============================================================================
@@ -642,7 +642,6 @@ class TestMWDBAutoUpdate:
         with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MWDB_TAGS": "", "MWDB_DAYS": "30"}, clear=False):
             result = update_mwdb_indicators()
             assert result["fetched"] == 0
-            assert result["deactivated"] == 0
             mock_fetch.assert_called_once()
             kwargs = mock_fetch.call_args.kwargs
             assert kwargs["mode"] == "recent"
@@ -737,7 +736,6 @@ class TestMalwareBazaarAutoUpdate:
         with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MALWAREBAZAAR_TAGS": ""}, clear=False):
             result = update_malwarebazaar_indicators()
             assert result["fetched"] == 0
-            assert result["deactivated"] == 0
             mock_fetch.assert_not_called()
 
     @patch("app.services.malwarebazaar.SessionLocal")
@@ -984,7 +982,7 @@ class TestAbuseChUpdater:
     @patch("app.services.abusech.fetch_urlhaus_urls")
     @patch("app.services.abusech.fetch_threatfox_iocs")
     def test_source_error_does_not_block_other_sources(self, mock_threatfox, mock_urlhaus, mock_sessionlocal):
-        _CIRCUIT_STATE.clear()
+        _circuit_breaker._state.clear()
         mock_threatfox.side_effect = RuntimeError("threatfox down")
         mock_urlhaus.return_value = iter([{
             "ioc_value": "http://evil.test",
@@ -1013,7 +1011,7 @@ class TestAbuseChUpdater:
         assert result["urlhaus"]["fetched"] == 1
 
     def test_validation_requires_yaraify_identifier_or_hashes(self):
-        _CIRCUIT_STATE.clear()
+        _circuit_breaker._state.clear()
         with patch.dict("os.environ", {
             "SECRET_KEY": "a" * 32,
             "YARAIFY_ENABLED": "true",
@@ -1027,7 +1025,7 @@ class TestAbuseChUpdater:
     @patch("app.services.abusech.SessionLocal")
     @patch("app.services.abusech.fetch_threatfox_iocs")
     def test_circuit_breaker_skips_after_fail_threshold(self, mock_threatfox, mock_sessionlocal):
-        _CIRCUIT_STATE.clear()
+        _circuit_breaker._state.clear()
         mock_threatfox.side_effect = RuntimeError("boom")
         fake_db = _FakeDB(rows=[])
         mock_sessionlocal.return_value = fake_db

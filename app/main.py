@@ -92,6 +92,12 @@ def create_app() -> Flask:
     cfg = Config()
     setup_logging(cfg.LOG_LEVEL)
 
+    # Warn about permissive security defaults
+    if cfg.ALLOWED_HOSTS == "*":
+        logger.warning("security_permissive_allowed_hosts", extra={"value": cfg.ALLOWED_HOSTS, "recommendation": "Set ALLOWED_HOSTS to specific hosts in production"})
+    if cfg.CORS_ORIGINS == "*":
+        logger.warning("security_permissive_cors_origins", extra={"value": cfg.CORS_ORIGINS, "recommendation": "Set CORS_ORIGINS to specific origins in production"})
+
     app = Flask(__name__)
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
 
@@ -1290,6 +1296,35 @@ def create_app() -> Flask:
                 cache_access_total.labels(endpoint="health", status="error").inc()
         return Response(body, mimetype="application/json")
 
+    @app.get("/readyz")
+    @limiter.limit("120 per minute")
+    def readyz():
+        checks = {"database": False, "redis": False}
+        # DB check
+        try:
+            db = _db(read_only=True)
+            db.execute(select(func.now()))
+            checks["database"] = True
+        except Exception:
+            checks["database"] = False
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+        # Redis check
+        try:
+            r = get_redis()
+            r.ping()
+            checks["redis"] = True
+        except Exception:
+            checks["redis"] = False
+
+        status = "ready" if all(checks.values()) else "not_ready"
+        payload = {"status": status, "checks": checks}
+        code = 200 if status == "ready" else 503
+        return Response(json.dumps(payload, separators=(",", ":")), status=code, mimetype="application/json")
+
     @app.get("/")
     def index():
         db = _db(read_only=True)
@@ -1317,8 +1352,12 @@ def create_app() -> Flask:
         tlp = (request.args.get("tlp") or "all").upper()
         source = (request.args.get("source") or "all").lower()
         try:
-            min_conf = int(request.args.get("min_conf")) if request.args.get("min_conf") else None
-            max_conf = int(request.args.get("max_conf")) if request.args.get("max_conf") else None
+            min_conf = request.args.get("min_conf", type=int)
+            max_conf = request.args.get("max_conf", type=int)
+            if request.args.get("min_conf") is not None and min_conf is None:
+                raise ValueError("min_conf")
+            if request.args.get("max_conf") is not None and max_conf is None:
+                raise ValueError("max_conf")
         except ValueError:
             return jsonify({"error": "min_conf/max_conf must be integers"}), 400
         limit, offset = _parse_limit_offset(default_limit=1000, max_limit=max(1, cfg.QUERY_RESULT_LIMIT_MAX))
@@ -1364,9 +1403,10 @@ def create_app() -> Flask:
             source_options.extend([str(s) for s in available_sources if s and str(s) != "all"])
             if source not in source_options:
                 source_options.append(source)
-        except Exception as e:
+        except Exception:
             db.close()
-            return jsonify({"error": str(e)}), 400
+            logger.exception("indicators_view_query_failed")
+            return jsonify({"error": "Query failed"}), 400
         finally:
             try:
                 db.close()
@@ -1556,9 +1596,10 @@ def create_app() -> Flask:
         try:
             with db_query_duration_seconds.labels(endpoint=f"export_{fmt}").time():
                 rows = _query_indicators(db, q, type_filter, tlp, source, None, None, limit=limit, offset=offset)
-        except Exception as e:
+        except Exception:
             db.close()
-            return jsonify({"error": str(e)}), 400
+            logger.exception("export_query_failed")
+            return jsonify({"error": "Query failed"}), 400
         finally:
             try:
                 db.close()
@@ -1710,12 +1751,33 @@ def create_app() -> Flask:
                 "trusted_proxy_count": _get_setting(db, "proxy.trusted_proxy_count", os.getenv("TRUSTED_PROXY_COUNT", "0")),
             }
             feed_states = {f.source_id: _read_feed_config_state(db, f) for f in feeds}
-            latest_runs = {
-                f.source_id: db.scalar(
-                    select(FeedRun).where(FeedRun.feed_source_id == f.source_id).order_by(FeedRun.started_at.desc()).limit(1)
-                )
-                for f in feeds
-            }
+            # Fetch latest run per feed in a single query
+            if feeds:
+                source_ids = [f.source_id for f in feeds]
+                from .db import engine as _engine
+                if _engine.dialect.name == "postgresql":
+                    # DISTINCT ON is PostgreSQL-specific but very efficient
+                    latest_run_rows = db.scalars(
+                        select(FeedRun)
+                        .where(FeedRun.feed_source_id.in_(source_ids))
+                        .order_by(FeedRun.feed_source_id, FeedRun.started_at.desc())
+                        .distinct(FeedRun.feed_source_id)
+                    ).all()
+                else:
+                    # Fallback for SQLite (tests): one query per feed
+                    latest_run_rows = [
+                        db.scalar(
+                            select(FeedRun)
+                            .where(FeedRun.feed_source_id == sid)
+                            .order_by(FeedRun.started_at.desc())
+                            .limit(1)
+                        )
+                        for sid in source_ids
+                    ]
+                    latest_run_rows = [r for r in latest_run_rows if r is not None]
+                latest_runs = {r.feed_source_id: r for r in latest_run_rows}
+            else:
+                latest_runs = {}
             scheduler_heartbeat = _get_setting(db, "scheduler.heartbeat", "")
         finally:
             db.close()

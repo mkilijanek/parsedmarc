@@ -5,13 +5,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, Optional, Set
 
 from pymisp import PyMISP
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..config import Config
 from ..db import SessionLocal
 from ..models import Indicator, FeedStats
-from .common import retry_with_backoff
+from .common import retry_with_backoff, _circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,11 @@ def _normalize_value(attr_type: str, value: str) -> Tuple[str, dict]:
 def update_misp_indicators() -> Dict[str, int]:
     cfg = Config()
     now = datetime.now(timezone.utc)
+
+    if _circuit_breaker.is_open("misp"):
+        logger.warning("misp_circuit_open_skipping")
+        return {"skipped": 1, "fetched": 0}
+
     attrs = _fetch_misp_attributes(cfg)
 
     # Track active per event (source_id = event_id)
@@ -184,22 +189,18 @@ def update_misp_indicators() -> Dict[str, int]:
             )
             db.execute(stmt)
 
-        # Deactivate missing per event
+        # Deactivate missing per event via SQL UPDATE (avoids loading all rows to Python)
         for event_id, incoming_values in incoming_by_event.items():
-            existing = db.execute(
-                select(Indicator.id, Indicator.value).where(
+            db.execute(
+                update(Indicator)
+                .where(
                     Indicator.source == "misp",
                     Indicator.source_id == event_id,
+                    Indicator.is_active == True,  # noqa: E712
+                    ~Indicator.value.in_(list(incoming_values)),
                 )
-            ).all()
-            existing_map = {v: i for (i, v) in existing}
-            to_deactivate = [existing_map[v] for v in existing_map.keys() if v not in incoming_values]
-            if to_deactivate:
-                db.execute(
-                    update(Indicator)
-                    .where(Indicator.id.in_(to_deactivate))
-                    .values(is_active=False, last_seen=now)
-                )
+                .values(is_active=False, last_seen=now)
+            )
 
         db.commit()
 
@@ -224,10 +225,16 @@ def update_misp_indicators() -> Dict[str, int]:
         )
         db.commit()
 
+        _circuit_breaker.record_success("misp")
         logger.info("misp_updated", extra={"fetched": len(attrs), "events": len(incoming_by_event)})
         return {"fetched": len(attrs), "events": len(incoming_by_event)}
     except Exception as e:
         db.rollback()
+        _circuit_breaker.record_failure(
+            "misp",
+            fail_threshold=max(1, int(cfg.MISP_CIRCUIT_FAIL_THRESHOLD)),
+            cooldown_s=max(1, int(cfg.MISP_CIRCUIT_COOLDOWN_S)),
+        )
         try:
             db.execute(
                 pg_insert(FeedStats.__table__).values(

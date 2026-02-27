@@ -98,6 +98,42 @@ def throttle_external_request(*, source: str = "external_feed") -> None:
     limiter.acquire(source=source)
 
 
+class CircuitBreaker:
+    """Thread-safe circuit breaker for external service calls.
+
+    Tracks consecutive failures per source. After fail_threshold failures,
+    opens the circuit for cooldown_s seconds before allowing new attempts.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state: dict[str, dict[str, float]] = {}
+
+    def is_open(self, source: str) -> bool:
+        with self._lock:
+            state = self._state.get(source) or {}
+            return float(state.get("open_until", 0.0)) > time.time()
+
+    def record_success(self, source: str) -> None:
+        with self._lock:
+            self._state[source] = {"fails": 0.0, "open_until": 0.0}
+
+    def record_failure(self, source: str, *, fail_threshold: int, cooldown_s: int) -> None:
+        with self._lock:
+            now_ts = time.time()
+            state = self._state.get(source) or {"fails": 0.0, "open_until": 0.0}
+            fails = float(state.get("fails", 0.0)) + 1.0
+            open_until = float(state.get("open_until", 0.0))
+            if fails >= max(1, fail_threshold):
+                open_until = now_ts + max(1, cooldown_s)
+                fails = 0.0
+            self._state[source] = {"fails": fails, "open_until": open_until}
+
+
+# Shared instance used across all feed services
+_circuit_breaker = CircuitBreaker()
+
+
 def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay: float = 1.0, max_delay: float = 30.0, jitter: float = 0.2) -> T:
     """Exponential backoff with jitter for transient failures."""
     attempt = 0

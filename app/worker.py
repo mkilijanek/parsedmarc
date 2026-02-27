@@ -13,7 +13,7 @@ from .services.misp import update_misp_indicators
 from .services.malwarebazaar import update_malwarebazaar_indicators
 from .services.mwdb import update_mwdb_indicators
 from .services.abusech import update_abusech_indicators
-from .services.cleanup import cleanup_old_indicators
+from .services.cleanup import cleanup_old_indicators, cleanup_export_files
 from .services.correlation_snapshot import refresh_correlation_snapshots
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ def main():
     schedule.every(interval).seconds.do(_safe_job("mwdb_update", update_mwdb_indicators))
     schedule.every(interval).seconds.do(_safe_job("abusech_update", update_abusech_indicators))
     schedule.every().day.at("02:00").do(_safe_job("cleanup", cleanup_old_indicators))
+    schedule.every().day.at("03:00").do(_safe_job("cleanup_export_files", cleanup_export_files))
     if cfg.CORRELATION_SNAPSHOT_ENABLED:
         snapshot_interval = max(30, int(cfg.CORRELATION_SNAPSHOT_INTERVAL))
         schedule.every(snapshot_interval).seconds.do(
