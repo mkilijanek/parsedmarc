@@ -1,5 +1,7 @@
 # Database Documentation
 
+Status: updated for `1.1.x` (2026-02-26).
+
 ## Overview
 
 PostgreSQL 16+ with custom schema, functions, and indexes for high-performance IOC storage and retrieval.
@@ -59,6 +61,26 @@ Same IOC from different sources = different rows:
 ### feed_stats
 
 Health and statistics per feed.
+
+### sync_jobs
+
+Queue table for feed synchronization orchestration.
+
+Key fields:
+- `job_id` (unique)
+- `feed_source_id`
+- `trigger_type` (`manual` / `scheduled`)
+- `status` (`queued` / `running` / `success` / `failed`)
+- `error`, `result_json`
+- `created_at`, `started_at`, `finished_at`
+
+Indexes:
+- `idx_sync_jobs_feed_status`
+- `idx_sync_jobs_created`
+- `idx_sync_jobs_status_created`
+- `idx_sync_jobs_trigger_status`
+
+Schema is managed through Alembic migrations (`0001`, `0002`).
 
 ```sql
 CREATE TABLE ti.feed_stats (

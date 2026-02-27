@@ -1,4 +1,4 @@
-.PHONY: up down logs ps test fmt benchmark benchmark-cluster gate readiness dev-bootstrap dev-test dev-check deploy
+.PHONY: up down logs ps test fmt benchmark benchmark-cluster benchmark-weekly gate readiness dev-bootstrap dev-test dev-check deploy
 
 up:
 	docker compose up -d --build
@@ -26,6 +26,10 @@ benchmark:
 
 benchmark-cluster:
 	bash scripts/benchmark_cluster_m12.sh 4 20 64
+
+benchmark-weekly:
+	python scripts/benchmark_suite_m14.py --base-url http://127.0.0.1:8080 --duration 20 --concurrency 32 --runs 3 --output-dir /tmp/m14-suite
+	python scripts/weekly_benchmark_report.py
 
 gate:
 	bash scripts/m15_premerge_gate.sh

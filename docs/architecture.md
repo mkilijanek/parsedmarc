@@ -1,5 +1,7 @@
 # Architecture
 
+Status: updated for `1.1.x` (2026-02-26).
+
 ## Overview
 
 The Threat Feed Aggregator follows a **database-first** architecture where PostgreSQL serves as the central hub for data storage, transformation, and export operations. This design prioritizes performance, consistency, and reliability over application-level complexity.
@@ -182,6 +184,16 @@ schedule.every(10).minutes.do(update_all_feeds)
 - Failed feed updates don't block others
 - Errors logged with structured context
 - `feed_stats.last_fetch_error` tracking
+
+### 5. Sync Scheduler / Queue (1.1.x)
+
+The application now uses a DB-backed sync queue:
+- `sync_jobs` table for job lifecycle tracking
+- idempotent enqueue per feed (prevents duplicate queued/running jobs)
+- manual and scheduled sync paths both use the same queue runner
+- logs include `run_id/job_id` for traceability
+
+Startup is migration-first (Alembic), no runtime `create_all`.
 
 ---
 

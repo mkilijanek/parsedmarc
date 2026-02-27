@@ -169,3 +169,102 @@ class AuditLog(Base):
     ip_address: Mapped[str | None] = mapped_column(InetCompat())
     metadata_: Mapped[dict] = mapped_column("metadata", JSONCompat(), default=dict, nullable=False)
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    is_secret: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ExportJob(Base):
+    __tablename__ = "export_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    fmt: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", server_default="queued")
+    result_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    query_json: Mapped[dict] = mapped_column(JSONCompat(), default=dict, nullable=False)
+    created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Feed(Base):
+    __tablename__ = "feeds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    source_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    schedule_cron: Mapped[str] = mapped_column(String(64), nullable=False, default="*/15 * * * *", server_default="*/15 * * * *")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class FeedRun(Base):
+    __tablename__ = "feed_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    feed_source_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual", server_default="manual")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", server_default="running")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fetched_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    started_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+    finished_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_feed_runs_feed_started", "feed_source_id", "started_at"),
+    )
+
+
+class AppLog(Base):
+    __tablename__ = "app_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    level: Mapped[str] = mapped_column(String(16), nullable=False, default="INFO", server_default="INFO")
+    component: Mapped[str] = mapped_column(String(64), nullable=False, default="app", server_default="app")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    feed_source_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONCompat(), default=dict, nullable=False)
+    created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_app_logs_created", "created_at"),
+        Index("idx_app_logs_feed_created", "feed_source_id", "created_at"),
+    )
+
+
+class SyncJob(Base):
+    __tablename__ = "sync_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    feed_source_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual", server_default="manual")
+    idempotency_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", server_default="queued")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_json: Mapped[dict] = mapped_column(JSONCompat(), default=dict, nullable=False)
+    created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+    started_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_sync_jobs_feed_status", "feed_source_id", "status"),
+        Index("idx_sync_jobs_created", "created_at"),
+        Index("idx_sync_jobs_status_created", "status", "created_at"),
+        Index("idx_sync_jobs_trigger_status", "trigger_type", "status"),
+    )

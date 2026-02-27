@@ -1,11 +1,15 @@
 # Security Policy
 
 ## Supported Versions
-Currently supporting version 1.0.x
+Currently supporting release line `1.1.x`.
 
 ## Reporting Vulnerabilities
-Report to: security@example.com
-PGP Key: [Your PGP key]
+Create a private security report in GitHub Security Advisories for this repository.
+If unavailable, open a private channel with repository maintainers and include:
+- affected version/tag
+- reproduction steps
+- impact assessment
+- proposed fix or mitigation
 
 ## Security Features
 - TLS 1.2+ only
@@ -14,6 +18,8 @@ PGP Key: [Your PGP key]
 - XSS protection
 - CSRF protection
 - Security headers
+- Correlation IDs in API error responses
+- Migration-first startup (no runtime schema creation)
 
 ## Best Practices
 1. Rotate secrets every 90 days
@@ -22,3 +28,4 @@ PGP Key: [Your PGP key]
 4. Regular updates
 5. Monitor logs
 6. Backup data
+7. Run DB migrations before restarting app/worker on upgrades

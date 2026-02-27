@@ -55,8 +55,14 @@ class Config:
 
     # DB / Redis
     DATABASE_URL: str = field(default_factory=lambda: _env_str("DATABASE_URL", "postgresql+psycopg2://threatfeed:threatfeed@localhost:5432/threatfeed"))
+    DATABASE_READ_URL: str = field(default_factory=lambda: _env_str("DATABASE_READ_URL", ""))
     REDIS_URL: str = field(default_factory=lambda: _env_str("REDIS_URL", "redis://:changeme@localhost:6379/0"))
     CACHE_TTL: int = field(default_factory=lambda: _env_int("CACHE_TTL", 300))
+    FEED_HTTP_TIMEOUT_S: int = field(default_factory=lambda: _env_int("FEED_HTTP_TIMEOUT_S", 30))
+    FEED_RETRY_ATTEMPTS: int = field(default_factory=lambda: _env_int("FEED_RETRY_ATTEMPTS", 4))
+    FEED_RETRY_BASE_DELAY_S: int = field(default_factory=lambda: _env_int("FEED_RETRY_BASE_DELAY_S", 1))
+    EXPORT_JOB_DIR: str = field(default_factory=lambda: _env_str("EXPORT_JOB_DIR", "/tmp/ioc-export-jobs"))
+    EXPORT_ASYNC_THRESHOLD: int = field(default_factory=lambda: _env_int("EXPORT_ASYNC_THRESHOLD", 5000))
 
     # Integrations
     CROWDSEC_API_KEY: str = field(default_factory=lambda: _env_str("CROWDSEC_API_KEY", ""))
@@ -67,6 +73,7 @@ class Config:
     # SECURITY: SSL verification enabled by default to prevent MITM attacks
     MISP_VERIFY_SSL: bool = field(default_factory=lambda: _env_bool("MISP_VERIFY_SSL", True))
     MISP_DAYS: int = field(default_factory=lambda: _env_int("MISP_DAYS", 7))
+    MISP_SYNC_TIMEOUT_S: int = field(default_factory=lambda: _env_int("MISP_SYNC_TIMEOUT_S", 30))
 
     MALWAREBAZAAR_SINCE_DATE: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_SINCE_DATE", ""))
     MALWAREBAZAAR_API_URL: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_API_URL", "https://mb-api.abuse.ch/api/v1/"))
@@ -75,7 +82,11 @@ class Config:
     MALWAREBAZAAR_LIMIT: int = field(default_factory=lambda: _env_int("MALWAREBAZAAR_LIMIT", 1000))
     MWDB_URL: str = field(default_factory=lambda: _env_str("MWDB_URL", ""))
     MWDB_AUTH_KEY: str = field(default_factory=lambda: _env_str("MWDB_AUTH_KEY", ""))
+    MWDB_CUSTOM_FILTER: str = field(default_factory=lambda: _env_str("MWDB_CUSTOM_FILTER", ""))
     MWDB_TAGS: str = field(default_factory=lambda: _env_str("MWDB_TAGS", ""))
+    MWDB_DAYS: int = field(default_factory=lambda: _env_int("MWDB_DAYS", 30))
+    MWDB_NO_TIME_LIMIT: bool = field(default_factory=lambda: _env_bool("MWDB_NO_TIME_LIMIT", False))
+    MWDB_ORGANIZATIONS: str = field(default_factory=lambda: _env_str("MWDB_ORGANIZATIONS", ""))
     MWDB_LIMIT: int = field(default_factory=lambda: _env_int("MWDB_LIMIT", 1000))
 
     ABUSECH_AUTH_KEY: str = field(default_factory=lambda: _env_str("ABUSECH_AUTH_KEY", ""))
@@ -120,3 +131,4 @@ class Config:
     # Security
     ALLOWED_HOSTS: str = field(default_factory=lambda: _env_str("ALLOWED_HOSTS", "*"))
     CORS_ORIGINS: str = field(default_factory=lambda: _env_str("CORS_ORIGINS", "*"))
+    METRICS_AUTH_TOKEN: str = field(default_factory=lambda: _env_str("METRICS_AUTH_TOKEN", ""))

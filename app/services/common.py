@@ -54,34 +54,45 @@ class ExternalFeedRateLimiter:
 
 
 _LIMITER_STATE_LOCK = threading.Lock()
-_LIMITER_STATE: tuple[tuple[bool, int, int] | None, ExternalFeedRateLimiter | None] = (None, None)
+_LIMITER_STATE: dict[str, tuple[tuple[bool, int, int], ExternalFeedRateLimiter | None]] = {}
 
 
-def _env_feed_limiter_config() -> tuple[bool, int, int]:
+def _source_env_suffix(source: str) -> str:
+    raw = (source or "external_feed").strip().upper()
+    out = []
+    for ch in raw:
+        if ch.isalnum():
+            out.append(ch)
+        else:
+            out.append("_")
+    return "".join(out)
+
+
+def _env_feed_limiter_config(*, source: str = "external_feed") -> tuple[bool, int, int]:
     enabled = os.getenv("FEED_RATE_LIMIT_ENABLED", "true").strip().lower() in {"1", "true", "yes", "y", "on"}
-    per_second = int(os.getenv("FEED_REQUESTS_PER_SECOND", "10"))
-    per_minute = int(os.getenv("FEED_REQUESTS_PER_MINUTE", "55"))
+    suffix = _source_env_suffix(source)
+    per_second = int(os.getenv(f"FEED_REQUESTS_PER_SECOND_{suffix}", os.getenv("FEED_REQUESTS_PER_SECOND", "10")))
+    per_minute = int(os.getenv(f"FEED_REQUESTS_PER_MINUTE_{suffix}", os.getenv("FEED_REQUESTS_PER_MINUTE", "55")))
     return enabled, per_second, per_minute
 
 
-def _get_feed_limiter() -> ExternalFeedRateLimiter | None:
-    global _LIMITER_STATE
-    cfg = _env_feed_limiter_config()
+def _get_feed_limiter(*, source: str = "external_feed") -> ExternalFeedRateLimiter | None:
+    cfg = _env_feed_limiter_config(source=source)
     with _LIMITER_STATE_LOCK:
-        current_cfg, limiter = _LIMITER_STATE
-        if current_cfg == cfg:
-            return limiter
+        current = _LIMITER_STATE.get(source)
+        if current and current[0] == cfg:
+            return current[1]
         enabled, per_second, per_minute = cfg
         if not enabled or (per_second <= 0 and per_minute <= 0):
             limiter = None
         else:
             limiter = ExternalFeedRateLimiter(per_second=per_second, per_minute=per_minute)
-        _LIMITER_STATE = (cfg, limiter)
+        _LIMITER_STATE[source] = (cfg, limiter)
         return limiter
 
 
 def throttle_external_request(*, source: str = "external_feed") -> None:
-    limiter = _get_feed_limiter()
+    limiter = _get_feed_limiter(source=source)
     if limiter is None:
         return
     limiter.acquire(source=source)

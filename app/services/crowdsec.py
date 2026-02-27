@@ -10,24 +10,29 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ..config import Config
 from ..db import SessionLocal
 from ..models import Indicator, FeedStats
-from .common import retry_with_backoff
+from .common import retry_with_backoff, throttle_external_request
 
 logger = logging.getLogger(__name__)
 
 CROWDSEC_BASE = "https://api.crowdsec.net/v2/blocklists/{list_id}"
 DEFAULT_TLP = "AMBER"  # hard requirement
 
-def _fetch_list(api_key: str, list_id: str) -> List[str]:
+def _fetch_list(api_key: str, list_id: str, *, timeout_s: int, retry_attempts: int, retry_base_delay_s: float) -> List[str]:
     url = CROWDSEC_BASE.format(list_id=list_id)
 
     def _do():
-        resp = requests.get(url, headers={"X-Api-Key": api_key}, timeout=30)
+        throttle_external_request(source="crowdsec")
+        resp = requests.get(url, headers={"X-Api-Key": api_key}, timeout=max(1, timeout_s))
         # Explicit status handling for monitoring
         resp.raise_for_status()
         lines = [ln.strip() for ln in resp.text.splitlines()]
         # Only non-empty, no comments
         return [ln for ln in lines if ln and not ln.startswith("#")]
-    return retry_with_backoff(_do)
+    return retry_with_backoff(
+        _do,
+        max_attempts=max(1, retry_attempts),
+        base_delay=max(0.1, retry_base_delay_s),
+    )
 
 def update_crowdsec_list(list_id: str) -> Dict[str, int]:
     cfg = Config()
@@ -35,7 +40,13 @@ def update_crowdsec_list(list_id: str) -> Dict[str, int]:
         raise RuntimeError("CROWDSEC_API_KEY not set")
     now = datetime.now(timezone.utc)
 
-    indicators_raw = _fetch_list(cfg.CROWDSEC_API_KEY, list_id)
+    indicators_raw = _fetch_list(
+        cfg.CROWDSEC_API_KEY,
+        list_id,
+        timeout_s=cfg.FEED_HTTP_TIMEOUT_S,
+        retry_attempts=cfg.FEED_RETRY_ATTEMPTS,
+        retry_base_delay_s=cfg.FEED_RETRY_BASE_DELAY_S,
+    )
 
     # Normalize by preserving CIDR if present
     incoming: Set[str] = set(indicators_raw)

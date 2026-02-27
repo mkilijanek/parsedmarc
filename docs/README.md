@@ -1,5 +1,7 @@
 # Threat Feed Aggregator - Documentation
 
+Status: updated for `1.1.x` (2026-02-26).
+
 Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed Aggregation system.
 
 ---
@@ -102,6 +104,12 @@ curl "https://localhost:7003/correlations?min_sources=2&type=domain"
 ### 🔄 Auto-Update
 
 Background worker fetches from MISP and CrowdSec every 10 minutes (configurable).
+
+### 🧰 Feed Admin & Sync Jobs
+
+- Per-feed configuration with connection test.
+- Queue-driven synchronization (`sync_jobs`) with job status tracking.
+- Logs filtered by feed, component, severity, and `job_id`.
 
 ### 🔒 Security
 
