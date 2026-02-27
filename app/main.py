@@ -60,6 +60,9 @@ from .metrics import (
     correlation_groups_returned_total,
     cache_access_total,
     db_query_duration_seconds,
+    sync_jobs_queued,
+    sync_jobs_running,
+    export_jobs_pending,
 )
 
 logger = logging.getLogger(__name__)
@@ -1015,6 +1018,7 @@ def create_app() -> Flask:
                     updates[env_key] = _get_setting(db, _feed_value_key(feed.source_id, str(f["key"])), "", secret=False)
             if feed.source_type == "mwdb":
                 updates["MWDB_ORGANIZATIONS"] = _get_setting(db, _feed_value_key(feed.source_id, "organizations"), "", secret=False)
+                updates["MWDB_MY_GROUP"] = _get_setting(db, _feed_value_key(feed.source_id, "my_group"), "", secret=False)
 
             previous = {k: os.environ.get(k) for k in updates.keys()}
             for k, v in updates.items():
@@ -1226,6 +1230,22 @@ def create_app() -> Flask:
                 _app_log("ERROR", "scheduler", "scheduler_loop_error", metadata={"error": str(e)})
                 time.sleep(20)
 
+    def _refresh_job_backlog_metrics() -> None:
+        db = _db(read_only=True)
+        try:
+            queued = db.scalar(select(func.count()).select_from(SyncJob).where(SyncJob.status == "queued")) or 0
+            running = db.scalar(select(func.count()).select_from(SyncJob).where(SyncJob.status == "running")) or 0
+            pending = db.scalar(
+                select(func.count()).select_from(ExportJob).where(ExportJob.status.in_(["queued", "running"]))
+            ) or 0
+            sync_jobs_queued.set(int(queued))
+            sync_jobs_running.set(int(running))
+            export_jobs_pending.set(int(pending))
+        except Exception:
+            logger.warning("metrics_job_backlog_refresh_failed", exc_info=True)
+        finally:
+            db.close()
+
     @app.get("/metrics")
     @limiter.limit("30 per minute")
     def metrics():
@@ -1234,6 +1254,7 @@ def create_app() -> Flask:
             expected = f"Bearer {cfg.METRICS_AUTH_TOKEN}"
             if not hmac.compare_digest(auth, expected):
                 return jsonify({"error": "Unauthorized"}), 401
+        _refresh_job_backlog_metrics()
         return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
     @app.get("/health")
@@ -2029,8 +2050,10 @@ def create_app() -> Flask:
             state = _read_feed_config_state(db, feed)
             mwdb_orgs: List[Dict[str, str]] = []
             mwdb_selected_orgs: List[str] = []
+            mwdb_selected_group: str = ""
             if feed.source_type == "mwdb":
                 mwdb_selected_orgs = [x.strip() for x in _get_setting(db, _feed_value_key(feed.source_id, "organizations"), "").split(",") if x.strip()]
+                mwdb_selected_group = _get_setting(db, _feed_value_key(feed.source_id, "my_group"), "", secret=False)
                 values = {str(f["key"]): _get_feed_field_value(db, feed, f) for f in state["fields"]}
                 mwdb_orgs = _fetch_mwdb_orgs(values.get("base_url", ""), values.get("api_key", ""))
         finally:
@@ -2070,7 +2093,19 @@ def create_app() -> Flask:
                         for o in mwdb_orgs
                     ]
                 )
-                orgs_html = f"<fieldset><legend>MWDB organizations</legend>{options}</fieldset>"
+                group_options = "<option value=''>(none — use TLP:GREEN for all)</option>" + "".join(
+                    f"<option value='{_esc(str(o.get('id') or o.get('name') or ''))}'"
+                    f"{' selected' if str(o.get('id') or o.get('name') or '') == mwdb_selected_group else ''}>"
+                    f"{_esc(str(o.get('name') or o.get('id') or ''))}</option>"
+                    for o in mwdb_orgs
+                )
+                orgs_html = (
+                    f"<fieldset><legend>MWDB organizations</legend>{options}</fieldset>"
+                    f"<fieldset><legend>My MWDB group (TLP:AMBER for group-visible indicators)</legend>"
+                    f"<p style='margin:.2rem 0 .5rem'>Indicators uploaded by this group will be tagged <strong>TLP:AMBER</strong>.</p>"
+                    f"<select name='mwdb_my_group'>{group_options}</select>"
+                    f"</fieldset>"
+                )
             else:
                 orgs_html = "<p>MWDB organizations list is unavailable. Use <strong>Test connection</strong> first.</p>"
         return f"""<!doctype html>
@@ -2185,6 +2220,8 @@ if (form) {{
             if feed.source_type == "mwdb":
                 orgs = [x.strip() for x in request.form.getlist("mwdb_orgs") if x.strip()]
                 _set_setting(db, _feed_value_key(feed.source_id, "organizations"), ",".join(orgs), secret=False)
+                my_grp = (request.form.get("mwdb_my_group") or "").strip()
+                _set_setting(db, _feed_value_key(feed.source_id, "my_group"), my_grp, secret=False)
             if errors:
                 db.rollback()
                 return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Validation failed: {' '.join(errors)}"))

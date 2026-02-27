@@ -195,6 +195,31 @@ def _object_matches_organizations(obj: Dict[str, Any], organizations: List[str])
                         candidates.append(val.strip())
     return any(c.lower() in accepted for c in candidates)
 
+def _object_matches_group(obj: Dict[str, Any], group: str) -> bool:
+    """Return True when the object's uploaders include the specified group name."""
+    if not group:
+        return False
+    g_lower = group.strip().lower()
+    if not g_lower:
+        return False
+    uploaders = obj.get("uploaders") or []
+    if isinstance(uploaders, list):
+        for u in uploaders:
+            if isinstance(u, str) and u.strip().lower() == g_lower:
+                return True
+            if isinstance(u, dict):
+                for key in ("group", "organization", "name", "login", "id"):
+                    val = u.get(key)
+                    if isinstance(val, str) and val.strip().lower() == g_lower:
+                        return True
+    # Also check top-level organization field
+    for key in ("organization", "org", "group"):
+        val = obj.get(key)
+        if isinstance(val, str) and val.strip().lower() == g_lower:
+            return True
+    return False
+
+
 def fetch_mwdb_by_tags(
     *,
     base_url: str,
@@ -205,6 +230,7 @@ def fetch_mwdb_by_tags(
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
     organizations: Optional[List[str]] = None,
+    my_group: Optional[str] = None,
     limit: int = 1000,
     timeout_s: int = 30,
     retry_attempts: int = 4,
@@ -306,6 +332,7 @@ def fetch_mwdb_by_tags(
 
                 metadata = dict(obj)
 
+                tlp = "AMBER" if _object_matches_group(obj, my_group or "") else "GREEN"
                 yield {
                     "ioc_value": str(ioc_value),
                     "ioc_type": "hash" if sha256 else "object_id",
@@ -314,7 +341,7 @@ def fetch_mwdb_by_tags(
                     "first_seen": dt,
                     "last_seen": dt,
                     "confidence": 60,
-                    "tlp": "GREEN",
+                    "tlp": tlp,
                     "is_active": True,
                     "tags": all_tags,
                     "comments": "MWDB tag query",
@@ -364,6 +391,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
 
     since = None if cfg.MWDB_NO_TIME_LIMIT else (now - timedelta(days=max(1, int(cfg.MWDB_DAYS or 0)))) if int(cfg.MWDB_DAYS or 0) > 0 else None
     organizations = _parse_org_list(cfg.MWDB_ORGANIZATIONS)
+    my_group = (cfg.MWDB_MY_GROUP or "").strip() or None
     raw_rows = list(
         fetch_mwdb_by_tags(
             base_url=cfg.MWDB_URL,
@@ -374,6 +402,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
             since=since,
             until=None,
             organizations=organizations,
+            my_group=my_group,
             limit=max(1, int(cfg.MWDB_LIMIT)),
             timeout_s=max(1, int(cfg.FEED_HTTP_TIMEOUT_S)),
             retry_attempts=max(1, int(cfg.FEED_RETRY_ATTEMPTS)),

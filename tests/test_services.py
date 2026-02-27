@@ -25,7 +25,7 @@ from app.services.misp import (
 )
 from app.services.common import ExternalFeedRateLimiter, retry_with_backoff, throttle_external_request
 from app.services.mwdb import update_mwdb_indicators
-from app.services.mwdb import fetch_mwdb_by_tags
+from app.services.mwdb import fetch_mwdb_by_tags, _object_matches_group
 from app.services.malwarebazaar import update_malwarebazaar_indicators
 from app.services.mwdb import _build_tag_query
 from app.services.abusech import (
@@ -728,6 +728,100 @@ class TestMWDBQueryBuilding:
         assert rows == []
         calls = [str(c.args[0]) for c in mock_logger.info.call_args_list if c.args]
         assert "mwdb_stop_reason" in calls
+
+
+class TestMWDBGroupTLP:
+    """Tests for _object_matches_group and TLP:AMBER assignment."""
+
+    def test_no_group_configured_returns_false(self):
+        obj = {"uploaders": [{"group": "mygroup"}]}
+        assert _object_matches_group(obj, "") is False
+
+    def test_matches_uploader_group_key(self):
+        obj = {"uploaders": [{"group": "mygroup", "login": "user1"}]}
+        assert _object_matches_group(obj, "mygroup") is True
+
+    def test_matches_uploader_organization_key(self):
+        obj = {"uploaders": [{"organization": "SecTeam"}]}
+        assert _object_matches_group(obj, "SecTeam") is True
+
+    def test_matches_case_insensitive(self):
+        obj = {"uploaders": [{"group": "MYGROUP"}]}
+        assert _object_matches_group(obj, "mygroup") is True
+
+    def test_no_match_returns_false(self):
+        obj = {"uploaders": [{"group": "othergroup"}]}
+        assert _object_matches_group(obj, "mygroup") is False
+
+    def test_matches_top_level_organization(self):
+        obj = {"organization": "SecTeam", "uploaders": []}
+        assert _object_matches_group(obj, "SecTeam") is True
+
+    def test_string_uploader_matches(self):
+        obj = {"uploaders": ["mygroup", "anothergroup"]}
+        assert _object_matches_group(obj, "mygroup") is True
+
+    def test_empty_uploaders_returns_false(self):
+        obj = {"uploaders": []}
+        assert _object_matches_group(obj, "mygroup") is False
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_tlp_amber_when_group_matches(self, mock_retry):
+        sha = "a" * 64
+        # Second call returns empty to stop pagination
+        mock_retry.side_effect = [
+            {"objects": [{"id": "obj-1", "sha256": sha, "upload_time": "2025-01-01T00:00:00Z", "tags": [], "uploaders": [{"group": "myteam"}]}]},
+            {"objects": []},
+        ]
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=["malware"],
+                my_group="myteam",
+                limit=10,
+            )
+        )
+        assert len(rows) == 1
+        assert rows[0]["tlp"] == "AMBER"
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_tlp_green_when_group_does_not_match(self, mock_retry):
+        sha = "b" * 64
+        mock_retry.side_effect = [
+            {"objects": [{"id": "obj-2", "sha256": sha, "upload_time": "2025-01-01T00:00:00Z", "tags": [], "uploaders": [{"group": "otherteam"}]}]},
+            {"objects": []},
+        ]
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=["malware"],
+                my_group="myteam",
+                limit=10,
+            )
+        )
+        assert len(rows) == 1
+        assert rows[0]["tlp"] == "GREEN"
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_tlp_green_when_no_group_configured(self, mock_retry):
+        sha = "c" * 64
+        mock_retry.side_effect = [
+            {"objects": [{"id": "obj-3", "sha256": sha, "upload_time": "2025-01-01T00:00:00Z", "tags": [], "uploaders": [{"group": "anyteam"}]}]},
+            {"objects": []},
+        ]
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=["malware"],
+                my_group=None,
+                limit=10,
+            )
+        )
+        assert len(rows) == 1
+        assert rows[0]["tlp"] == "GREEN"
 
 
 class TestMalwareBazaarAutoUpdate:

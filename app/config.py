@@ -92,6 +92,7 @@ class Config:
     MWDB_LIMIT: int = field(default_factory=lambda: _env_int("MWDB_LIMIT", 1000))
     MWDB_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("MWDB_CIRCUIT_FAIL_THRESHOLD", 3))
     MWDB_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("MWDB_CIRCUIT_COOLDOWN_S", 300))
+    MWDB_MY_GROUP: str = field(default_factory=lambda: _env_str("MWDB_MY_GROUP", ""))
 
     ABUSECH_AUTH_KEY: str = field(default_factory=lambda: _env_str("ABUSECH_AUTH_KEY", ""))
     THREATFOX_ENABLED: bool = field(default_factory=lambda: _env_bool("THREATFOX_ENABLED", False))
