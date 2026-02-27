@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -144,11 +145,15 @@ def _build_tag_query(tags: List[str]) -> str:
 
 
 def _build_object_query(tags: List[str], custom_filter: str) -> str:
-    tag_query = _build_tag_query(tags)
     extra = (custom_filter or "").strip()
-    if not extra:
+    tag_query = _build_tag_query(tags) if tags else ""
+    if tag_query and extra:
+        return f"({tag_query}) AND ({extra})"
+    if tag_query:
         return tag_query
-    return f"({tag_query}) AND ({extra})"
+    if not extra:
+        return ""
+    return extra
 
 
 def _parse_org_list(raw: str) -> List[str]:
@@ -195,6 +200,7 @@ def fetch_mwdb_by_tags(
     auth_key: str,
     tags: List[str],
     custom_filter: str = "",
+    mode: str = "tags",
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
     organizations: Optional[List[str]] = None,
@@ -225,15 +231,28 @@ def fetch_mwdb_by_tags(
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {auth_key}"})
 
-    # lucene tag query
+    # lucene tag/custom query
     q = _build_object_query(tags, custom_filter)
+    q_hash = hashlib.sha256(q.encode("utf-8")).hexdigest()[:12] if q else "none"
 
     older_than = None
     yielded = 0
     while True:
-        params = {"query": q, "count": str(min(chunk_size, 1000))}
+        params = {"count": str(min(chunk_size, 1000))}
+        if q:
+            params["query"] = q
         if older_than:
             params["older_than"] = older_than
+        logger.info(
+            "mwdb_fetch_page",
+            extra={
+                "mode": mode,
+                "count": params.get("count"),
+                "older_than": params.get("older_than"),
+                "query_hash": q_hash,
+                "query_len": len(q or ""),
+            },
+        )
 
         def _do():
             throttle_external_request(source="mwdb")
@@ -246,9 +265,12 @@ def fetch_mwdb_by_tags(
             base_delay=max(0.1, retry_base_delay_s),
         )
         objs = data.get("objects") or data.get("files") or []
+        logger.info("mwdb_fetch_page_result", extra={"mode": mode, "response_items": len(objs)})
         if not objs:
+            logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "no_results"})
             return
 
+        page_older_than = older_than
         for obj in objs:
             if not _object_matches_organizations(obj, organizations or []):
                 continue
@@ -262,7 +284,8 @@ def fetch_mwdb_by_tags(
             ts = obj.get("upload_time") or obj.get("first_seen") or obj.get("created_at") or ""
             dt = _parse_dt(ts) or datetime.now(tz=timezone.utc)
             if since and dt < since:
-                continue
+                logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "time_cutoff"})
+                return
             if until and dt > until:
                 continue
 
@@ -298,12 +321,17 @@ def fetch_mwdb_by_tags(
             }
             yielded += 1
             if yielded >= limit:
+                logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "limit_reached", "yielded": yielded})
                 return
 
             older_than = obj.get("id") or older_than
 
         # if we didn't update older_than, break to avoid infinite loop
         if not older_than:
+            logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "no_older_than"})
+            return
+        if older_than == page_older_than:
+            logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "stuck_older_than"})
             return
 
 
@@ -326,9 +354,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
     cfg = Config()
     now = datetime.now(timezone.utc)
     tags = _parse_tag_list(cfg.MWDB_TAGS)
-    if not tags:
-        logger.info("mwdb_skipped_no_tags")
-        return {"fetched": 0, "deactivated": 0}
+    mode = "tags" if tags else "recent"
 
     since = None if cfg.MWDB_NO_TIME_LIMIT else (now - timedelta(days=max(1, int(cfg.MWDB_DAYS or 0)))) if int(cfg.MWDB_DAYS or 0) > 0 else None
     organizations = _parse_org_list(cfg.MWDB_ORGANIZATIONS)
@@ -338,6 +364,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
             auth_key=cfg.MWDB_AUTH_KEY,
             tags=tags,
             custom_filter=cfg.MWDB_CUSTOM_FILTER,
+            mode=mode,
             since=since,
             until=None,
             organizations=organizations,
@@ -423,19 +450,19 @@ def update_mwdb_indicators() -> Dict[str, int]:
                 last_update=now,
                 last_fetch_status="success",
                 last_fetch_error=None,
-                metadata={"fetched": len(rows), "tags": tags},
+                metadata={"fetched": len(rows), "tags": tags, "mode": mode},
             ).on_conflict_do_update(
                 index_elements=["source", "source_id"],
                 set_={
                     "last_update": now,
                     "last_fetch_status": "success",
                     "last_fetch_error": None,
-                    "metadata": {"fetched": len(rows), "tags": tags, "organizations": organizations, "days": None if cfg.MWDB_NO_TIME_LIMIT else int(cfg.MWDB_DAYS or 0)},
+                    "metadata": {"fetched": len(rows), "tags": tags, "organizations": organizations, "days": None if cfg.MWDB_NO_TIME_LIMIT else int(cfg.MWDB_DAYS or 0), "mode": mode},
                 },
             )
         )
         db.commit()
-        logger.info("mwdb_updated", extra={"fetched": len(rows), "tags": len(tags)})
+        logger.info("mwdb_updated", extra={"fetched": len(rows), "tags": len(tags), "mode": mode})
         return {"fetched": len(rows), "deactivated": len(to_deactivate)}
     except Exception as e:
         db.rollback()

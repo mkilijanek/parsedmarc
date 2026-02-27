@@ -83,7 +83,7 @@ class Config:
     MWDB_AUTH_KEY: str = field(default_factory=lambda: _env_str("MWDB_AUTH_KEY", ""))
     MWDB_CUSTOM_FILTER: str = field(default_factory=lambda: _env_str("MWDB_CUSTOM_FILTER", ""))
     MWDB_TAGS: str = field(default_factory=lambda: _env_str("MWDB_TAGS", ""))
-    MWDB_DAYS: int = field(default_factory=lambda: _env_int("MWDB_DAYS", 7))
+    MWDB_DAYS: int = field(default_factory=lambda: _env_int("MWDB_DAYS", 30))
     MWDB_NO_TIME_LIMIT: bool = field(default_factory=lambda: _env_bool("MWDB_NO_TIME_LIMIT", False))
     MWDB_ORGANIZATIONS: str = field(default_factory=lambda: _env_str("MWDB_ORGANIZATIONS", ""))
     MWDB_LIMIT: int = field(default_factory=lambda: _env_int("MWDB_LIMIT", 1000))

@@ -67,6 +67,26 @@ SUPPORTED_FIELDS = {"value","type","confidence","tlp","tags","source"}
 # Database-native export formats (formats supported by ti.export_indicators SQL function)
 DB_SUPPORTED_FORMATS = {"txt", "csv", "json"}
 
+
+def _aggregate_fetched_count(result_data: Any) -> int:
+    if isinstance(result_data, dict):
+        # Flat connector result: {"fetched": 10, ...}
+        if "fetched" in result_data and not isinstance(result_data.get("fetched"), dict):
+            try:
+                return max(0, int(result_data.get("fetched", 0) or 0))
+            except Exception:
+                return 0
+        # Nested result: {"feedA": {"fetched": 3}, "feedB": {"fetched": 2}}
+        total = 0
+        for value in result_data.values():
+            if isinstance(value, dict):
+                try:
+                    total += int(value.get("fetched", 0) or 0)
+                except Exception:
+                    continue
+        return max(0, total)
+    return 0
+
 def create_app() -> Flask:
     cfg = Config()
     setup_logging(cfg.LOG_LEVEL)
@@ -335,7 +355,7 @@ def create_app() -> Flask:
                     {"key": "api_key", "label": "MWDB auth key", "secret": True, "required": True, "env": "MWDB_AUTH_KEY", "placeholder": "Leave blank to keep current"},
                     {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "MWDB_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                     {"key": "tags", "label": "MWDB tags (comma-separated)", "secret": False, "required": False, "env": "MWDB_TAGS", "placeholder": "apt, malware"},
-                    {"key": "days", "label": "MWDB days", "secret": False, "required": False, "env": "MWDB_DAYS", "placeholder": "7"},
+                    {"key": "days", "label": "MWDB days", "secret": False, "required": False, "env": "MWDB_DAYS", "placeholder": "30"},
                     {"key": "no_time_limit", "label": "No time limit", "secret": False, "required": False, "env": "MWDB_NO_TIME_LIMIT", "type": "checkbox"},
                 ],
             },
@@ -998,12 +1018,8 @@ def create_app() -> Flask:
 
             started = time.time()
             result = _run_sync_worker_for_feed(feed)
-            fetched_count = 0
             result_data = result.get("result")
-            if isinstance(result_data, dict):
-                for value in result_data.values():
-                    if isinstance(value, dict):
-                        fetched_count += int(value.get("fetched", 0) or 0)
+            fetched_count = _aggregate_fetched_count(result_data)
             dur_ms = int((time.time() - started) * 1000)
 
             run = db.scalar(select(FeedRun).where(FeedRun.run_id == run_id))

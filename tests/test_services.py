@@ -25,6 +25,7 @@ from app.services.misp import (
 )
 from app.services.common import ExternalFeedRateLimiter, retry_with_backoff, throttle_external_request
 from app.services.mwdb import update_mwdb_indicators
+from app.services.mwdb import fetch_mwdb_by_tags
 from app.services.malwarebazaar import update_malwarebazaar_indicators
 from app.services.mwdb import _build_tag_query
 from app.services.abusech import (
@@ -633,12 +634,19 @@ class _FakeDB:
 
 class TestMWDBAutoUpdate:
     @patch("app.services.mwdb.fetch_mwdb_by_tags")
-    def test_skips_when_no_tags(self, mock_fetch):
-        with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MWDB_TAGS": ""}, clear=False):
+    @patch("app.services.mwdb.SessionLocal")
+    def test_uses_recent_mode_when_no_tags(self, mock_sessionlocal, mock_fetch):
+        mock_fetch.return_value = iter([])
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+        with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MWDB_TAGS": "", "MWDB_DAYS": "30"}, clear=False):
             result = update_mwdb_indicators()
             assert result["fetched"] == 0
             assert result["deactivated"] == 0
-            mock_fetch.assert_not_called()
+            mock_fetch.assert_called_once()
+            kwargs = mock_fetch.call_args.kwargs
+            assert kwargs["mode"] == "recent"
+            assert kwargs["tags"] == []
 
     @patch("app.services.mwdb.SessionLocal")
     @patch("app.services.mwdb.fetch_mwdb_by_tags")
@@ -674,6 +682,24 @@ class TestMWDBAutoUpdate:
         assert fake_db.closed == 1
         mock_fetch.assert_called_once()
 
+    @patch("app.services.mwdb.SessionLocal")
+    @patch("app.services.mwdb.fetch_mwdb_by_tags")
+    def test_recent_mode_uses_custom_filter(self, mock_fetch, mock_sessionlocal):
+        mock_fetch.return_value = iter([])
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "MWDB_TAGS": "",
+            "MWDB_URL": "https://mwdb.example.com",
+            "MWDB_AUTH_KEY": "test-key",
+            "MWDB_CUSTOM_FILTER": "tag:evil",
+        }, clear=False):
+            update_mwdb_indicators()
+        kwargs = mock_fetch.call_args.kwargs
+        assert kwargs["mode"] == "recent"
+        assert kwargs["custom_filter"] == "tag:evil"
+
 
 class TestMWDBQueryBuilding:
     def test_single_simple_tag(self):
@@ -685,6 +711,24 @@ class TestMWDBQueryBuilding:
     def test_multiple_tags_mixed(self):
         q = _build_tag_query(["trojan", "feed:vx"])
         assert q == '(tag:trojan OR tag:"feed:vx")'
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    @patch("app.services.mwdb.logger")
+    def test_fetch_logs_stop_reason_no_results(self, mock_logger, mock_retry):
+        mock_retry.return_value = {"objects": []}
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=[],
+                custom_filter="",
+                mode="recent",
+                limit=10,
+            )
+        )
+        assert rows == []
+        calls = [str(c.args[0]) for c in mock_logger.info.call_args_list if c.args]
+        assert "mwdb_stop_reason" in calls
 
 
 class TestMalwareBazaarAutoUpdate:
