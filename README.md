@@ -13,6 +13,7 @@ Production-ready threat feed aggregation and export service:
 - Queue-based sync jobs with per-feed idempotency (`sync_jobs`)
 - Admin feed configuration with `Test connection`, per-feed settings, and optional `custom filter`
 - Unified light/dark theme across overview, indicators, admin, logs, and feed forms
+- MISP integration is disabled by default and can be enabled from Admin feed controls
 
 ## Release Highlights (1.1.x)
 
@@ -24,6 +25,9 @@ Production-ready threat feed aggregation and export service:
 - Feed configuration extended:
   - abuse.ch service selectors (`threatfox`, `urlhaus`, `bazaar`, `feodotracker`, `yaraify`)
   - MWDB: organizations, tags, days/no-time-limit, optional custom filter.
+- MISP safety guard:
+  - sync timeout watchdog (`MISP_SYNC_TIMEOUT_S`, default `30s`)
+  - automatic MISP feed disable on connectivity timeout/failure to avoid blocking workers.
 
 ## Quickstart (Docker Compose)
 

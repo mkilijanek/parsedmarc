@@ -9,6 +9,7 @@ import hmac
 import secrets
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import requests
 from collections import deque
 from datetime import datetime, timezone
@@ -401,7 +402,7 @@ def create_app() -> Flask:
                     source_type=source_type,
                     display_name=display_name,
                     schedule_cron="*/15 * * * *",
-                    enabled=True,
+                    enabled=(source_id != "misp"),
                     deleted=False,
                 )
             )
@@ -1017,7 +1018,17 @@ def create_app() -> Flask:
                     os.environ.pop(k, None)
 
             started = time.time()
-            result = _run_sync_worker_for_feed(feed)
+            if feed.source_type == "misp":
+                timeout_s = max(1, int(cfg.MISP_SYNC_TIMEOUT_S))
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_run_sync_worker_for_feed, feed)
+                    try:
+                        result = future.result(timeout=timeout_s)
+                    except FuturesTimeoutError as e:
+                        future.cancel()
+                        raise TimeoutError(f"MISP sync timeout after {timeout_s}s") from e
+            else:
+                result = _run_sync_worker_for_feed(feed)
             result_data = result.get("result")
             fetched_count = _aggregate_fetched_count(result_data)
             dur_ms = int((time.time() - started) * 1000)
@@ -1038,6 +1049,11 @@ def create_app() -> Flask:
             return result
         except Exception as e:
             db.rollback()
+            elapsed_s = 0
+            try:
+                elapsed_s = int(time.time() - started)  # type: ignore[name-defined]
+            except Exception:
+                elapsed_s = 0
             run = db.scalar(select(FeedRun).where(FeedRun.run_id == run_id))
             if run:
                 run.status = "failed"
@@ -1049,6 +1065,23 @@ def create_app() -> Flask:
                 row.error = str(e)
                 row.finished_at = datetime.now(timezone.utc)
                 row.result_json = {}
+            if job.feed_source_id == "misp":
+                err_text = str(e).lower()
+                timeout_hit = ("timeout" in err_text and elapsed_s >= max(1, int(cfg.MISP_SYNC_TIMEOUT_S)))
+                connect_hit = ("connection" in err_text or "connect" in err_text)
+                if timeout_hit or connect_hit:
+                    misp_feed = db.scalar(select(Feed).where(Feed.source_id == "misp", Feed.deleted == False))  # noqa: E712
+                    if misp_feed and misp_feed.enabled:
+                        misp_feed.enabled = False
+                        _app_log(
+                            "WARNING",
+                            "scheduler",
+                            "misp_auto_disabled_after_connectivity_failure",
+                            feed_source_id="misp",
+                            run_id=run_id,
+                            metadata={"elapsed_s": elapsed_s, "error": str(e), "timeout_s": int(cfg.MISP_SYNC_TIMEOUT_S)},
+                            db=db,
+                        )
             db.commit()
             _app_log("ERROR", "scheduler", "feed_sync_failed", feed_source_id=job.feed_source_id, run_id=run_id, metadata={"error": str(e)}, db=db)
             return {"source": job.feed_source_id, "error": str(e)}

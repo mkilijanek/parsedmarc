@@ -37,6 +37,14 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Add New Feed" in html
 
 
+def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):
+    response = client.get("/admin")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "value='misp'" in html
+    assert ">Enable</button>" in html
+
+
 def test_dark_mode_toggle_script_present(client, sample_indicators):
     response = client.get("/indicators")
     assert response.status_code == 200
