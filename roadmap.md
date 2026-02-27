@@ -66,9 +66,9 @@ architectural changes or major stack evolution
 
 ### Metrics
 
--   [ ] Add Prometheus metrics endpoint
--   [ ] Expose sync duration metrics
--   [ ] Expose success/failure rate per feed
+-   [x] Add Prometheus metrics endpoint
+-   [x] Expose sync duration metrics
+-   [x] Expose success/failure rate per feed
 -   [ ] Expose job backlog size
 
 ### Control & Retry

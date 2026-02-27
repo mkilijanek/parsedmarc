@@ -71,7 +71,7 @@
       function finish() {
         if (done) return;
         done = true;
-        const minVisibleMs = 900;
+        const minVisibleMs = 400;
         const remaining = Math.max(0, minVisibleMs - (Date.now() - startedAt));
         window.setTimeout(function () {
           bar.style.width = "100%";

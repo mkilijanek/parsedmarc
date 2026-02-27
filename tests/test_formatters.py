@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import csv
 import io
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -354,6 +355,22 @@ class TestSecurityToolFormats:
             assert "ipAddressTo" in entry
             assert "networkMask" in entry
 
+    def test_imperva_json_cidr_mask_and_range(self):
+        indicator = Indicator(
+            value="10.0.0.0/8",
+            type="ip",
+            source="test",
+            confidence=50,
+            tlp="WHITE",
+        )
+        result = export_imperva_json([indicator])
+        data = json.loads(result)
+        entry = data["entries"][0]
+        assert entry["type"] == "range"
+        assert entry["ipAddressFrom"] == "10.0.0.0"
+        assert entry["ipAddressTo"] == "10.255.255.255"
+        assert entry["networkMask"] == "255.0.0.0"
+
     def test_arcsight_cef_format(self, sample_indicators):
         """Test ArcSight CEF format."""
         result = export_arcsight_cef(sample_indicators)
@@ -364,6 +381,8 @@ class TestSecurityToolFormats:
         # CEF format: CEF:Version|Device Vendor|Device Product|Device Version|Signature ID|Name|Severity|Extension
         first_line = lines[0]
         assert first_line.startswith("CEF:0|ThreatFeedAggregator|")
+        assert "| src=" not in first_line
+        assert "|src=" in first_line
         assert "TI-IP" in first_line
         assert "src=" in first_line
         assert "cs1Label=TLP" in first_line
@@ -436,6 +455,7 @@ class TestSecurityToolFormats:
         assert "type" in data
         assert data["type"] == "bundle"
         assert "id" in data
+        assert re.match(r"^bundle--[0-9a-f-]{36}$", data["id"])
         assert "objects" in data
 
         # Validate objects
@@ -444,6 +464,7 @@ class TestSecurityToolFormats:
         obj = data["objects"][0]
         assert obj["type"] == "indicator"
         assert obj["spec_version"] == "2.1"
+        assert re.match(r"^indicator--[0-9a-f-]{36}$", obj["id"])
         assert "pattern" in obj
         assert obj["pattern_type"] == "stix"
         assert "confidence" in obj

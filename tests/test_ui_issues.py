@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def test_indicators_formats_links_quote_url_values(client, sample_indicators):
     response = client.get("/indicators?type=url")
@@ -41,6 +43,22 @@ def test_dark_mode_toggle_script_present(client, sample_indicators):
     html = response.get_data(as_text=True)
     assert "localStorage.setItem(themeKey, next);" in html
     assert "id=\"themeToggleGlobal\"" in html
+
+
+def test_startup_loader_uses_shorter_min_visible_delay(client, sample_indicators):
+    response = client.get("/indicators")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "const minVisibleMs = 400;" in html
+
+
+def test_unified_table_template_has_accessibility_roles_and_badges():
+    template = Path("app/templates/table.html").read_text(encoding="utf-8")
+    assert 'role="table"' in template
+    assert 'role="columnheader"' in template
+    assert 'role="cell"' in template
+    assert "badge-tlp" in template
+    assert "badge-type" in template
 
 
 def test_dark_mode_toggle_present_on_overview_and_logs(client, sample_indicators):

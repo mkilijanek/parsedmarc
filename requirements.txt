@@ -10,6 +10,7 @@ schedule==1.2.2
 python-dotenv==1.0.1
 Flask-Limiter==3.7.0
 prometheus-client==0.20.0
+cryptography==45.0.6
 
 # Testing dependencies
 pytest==8.3.4

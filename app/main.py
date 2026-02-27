@@ -18,6 +18,7 @@ from threading import Thread
 from urllib.parse import urlencode
 from typing import Any, Dict, List, Optional, Tuple
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Flask, Response, jsonify, request, make_response, redirect, url_for, stream_with_context, send_file
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -91,20 +92,37 @@ def create_app() -> Flask:
     )
     # Keep a strong reference on the app to prevent flask-limiter weakref GC issues under load.
     app.limiter = limiter  # type: ignore[attr-defined]
-    rps_window: deque[float] = deque()
-    rps_lock = Lock()
+    fallback_rps_window: deque[float] = deque()
+    fallback_rps_lock = Lock()
+
+    def _check_fallback_rps() -> bool:
+        now = time.time()
+        with fallback_rps_lock:
+            cutoff = now - 1.0
+            while fallback_rps_window and fallback_rps_window[0] < cutoff:
+                fallback_rps_window.popleft()
+            if len(fallback_rps_window) >= max(1, int(cfg.REQUESTS_PER_SECOND_MAX)):
+                return False
+            fallback_rps_window.append(now)
+        return True
+
+    def _check_global_rps() -> bool:
+        limit = max(1, int(cfg.REQUESTS_PER_SECOND_MAX))
+        key = f"rps:{int(time.time())}"
+        try:
+            r = get_redis()
+            count = int(r.incr(key))
+            if count == 1:
+                r.expire(key, 2)
+            return count <= limit
+        except Exception:
+            return _check_fallback_rps()
 
     @app.before_request
     def _sec_headers():
         # Hard upper bound for inbound request rate (configured default: 1,000,000 req/s).
-        now = time.time()
-        with rps_lock:
-            cutoff = now - 1.0
-            while rps_window and rps_window[0] < cutoff:
-                rps_window.popleft()
-            if len(rps_window) >= max(1, int(cfg.REQUESTS_PER_SECOND_MAX)):
-                return jsonify({"error": "Global request rate exceeded"}), 429
-            rps_window.append(now)
+        if not _check_global_rps():
+            return jsonify({"error": "Global request rate exceeded"}), 429
         enforce_allowed_hosts()
 
     @app.after_request
@@ -192,46 +210,55 @@ def create_app() -> Flask:
         segs = [prefix] + [f"{k}={parts[k]}" for k in sorted(parts.keys())]
         return "|".join(segs)
 
-    def _secret_enc_key() -> bytes:
+    def _secret_enc_key_v2() -> bytes:
+        return hashlib.blake2b(cfg.SECRET_KEY.encode("utf-8"), digest_size=32).digest()
+
+    def _secret_enc_key_v1() -> bytes:
         return hashlib.sha256(cfg.SECRET_KEY.encode("utf-8")).digest()
 
     def _secret_encrypt(value: str) -> str:
         raw = (value or "").encode("utf-8")
-        nonce = secrets.token_bytes(16)
-        key = _secret_enc_key()
-        stream = bytearray()
-        counter = 0
-        while len(stream) < len(raw):
-            block = hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest()
-            stream.extend(block)
-            counter += 1
-        cipher = bytes(a ^ b for a, b in zip(raw, stream))
-        mac = hmac.new(key, nonce + cipher, hashlib.sha256).digest()
-        return "v1:" + base64.urlsafe_b64encode(nonce + mac + cipher).decode("ascii")
+        nonce = secrets.token_bytes(12)
+        cipher = AESGCM(_secret_enc_key_v2()).encrypt(nonce, raw, None)
+        return "v2:" + base64.urlsafe_b64encode(nonce + cipher).decode("ascii")
 
     def _secret_decrypt(value: str) -> str:
         if not value:
             return ""
+        if value.startswith("v2:"):
+            try:
+                blob = base64.urlsafe_b64decode(value[3:].encode("ascii"))
+                if len(blob) < 13:
+                    return ""
+                nonce = blob[:12]
+                cipher = blob[12:]
+                plain = AESGCM(_secret_enc_key_v2()).decrypt(nonce, cipher, None)
+                return plain.decode("utf-8")
+            except Exception:
+                return ""
         if not value.startswith("v1:"):
             return value
-        blob = base64.urlsafe_b64decode(value[3:].encode("ascii"))
-        if len(blob) < 48:
+        try:
+            blob = base64.urlsafe_b64decode(value[3:].encode("ascii"))
+            if len(blob) < 48:
+                return ""
+            nonce = blob[:16]
+            mac = blob[16:48]
+            cipher = blob[48:]
+            key = _secret_enc_key_v1()
+            expected = hmac.new(key, nonce + cipher, hashlib.sha256).digest()
+            if not hmac.compare_digest(mac, expected):
+                return ""
+            stream = bytearray()
+            counter = 0
+            while len(stream) < len(cipher):
+                block = hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest()
+                stream.extend(block)
+                counter += 1
+            plain = bytes(a ^ b for a, b in zip(cipher, stream))
+            return plain.decode("utf-8")
+        except Exception:
             return ""
-        nonce = blob[:16]
-        mac = blob[16:48]
-        cipher = blob[48:]
-        key = _secret_enc_key()
-        expected = hmac.new(key, nonce + cipher, hashlib.sha256).digest()
-        if not hmac.compare_digest(mac, expected):
-            return ""
-        stream = bytearray()
-        counter = 0
-        while len(stream) < len(cipher):
-            block = hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest()
-            stream.extend(block)
-            counter += 1
-        plain = bytes(a ^ b for a, b in zip(cipher, stream))
-        return plain.decode("utf-8")
 
     def _get_setting(db: Session, key: str, default: str = "", *, secret: bool = False) -> str:
         row = db.scalar(select(AppSetting).where(AppSetting.key == key))
@@ -2426,7 +2453,7 @@ STARTUP_LOADER_SCRIPT = """
   function finish() {
     if (done) { return; }
     done = true;
-    const minVisibleMs = 900;
+    const minVisibleMs = 400;
     const remaining = Math.max(0, minVisibleMs - (Date.now() - startedAt));
     window.setTimeout(function () {
       bar.style.width = '100%';
