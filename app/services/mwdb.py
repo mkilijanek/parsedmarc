@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+import hashlib
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
 import requests
@@ -11,10 +12,72 @@ from ..config import Config
 from ..db import SessionLocal
 from ..metrics import quality_normalized_total, quality_dropped_invalid_total, quality_dedup_merged_total
 from ..models import FeedStats, Indicator
-from .common import throttle_external_request
+from .common import throttle_external_request, retry_with_backoff
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
+
+
+def fetch_mwdb_organizations(*, base_url: str, auth_key: str, timeout_s: int = 10) -> List[Dict[str, str]]:
+    if not base_url:
+        raise ValueError("MWDB_URL is required for data-source mwdb")
+    if not auth_key:
+        raise ValueError("MWDB_AUTH_KEY is required for data-source mwdb")
+    base_url = base_url.rstrip("/")
+    session = requests.Session()
+    session.headers.update({"Authorization": f"Bearer {auth_key}"})
+    endpoints = ["/api/organization", "/api/user/organizations", "/api/user"]
+    found: List[Dict[str, str]] = []
+    seen = set()
+    for path in endpoints:
+        try:
+            throttle_external_request(source="mwdb")
+            resp = session.get(f"{base_url}{path}", params={"count": "200"}, timeout=timeout_s)
+            if resp.status_code >= 400:
+                continue
+            data = resp.json() if resp.content else {}
+            rows: List[Any] = []
+            if isinstance(data, list):
+                rows = data
+            elif isinstance(data, dict):
+                if isinstance(data.get("organizations"), list):
+                    rows = data.get("organizations") or []
+                elif isinstance(data.get("items"), list):
+                    rows = data.get("items") or []
+                elif isinstance(data.get("results"), list):
+                    rows = data.get("results") or []
+                elif isinstance(data.get("data"), list):
+                    rows = data.get("data") or []
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                org_id = str(item.get("id") or item.get("identifier") or item.get("name") or "").strip()
+                org_name = str(item.get("name") or item.get("login") or org_id).strip()
+                if not org_id:
+                    continue
+                key = org_id.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append({"id": org_id, "name": org_name})
+        except Exception:
+            continue
+    return found
+
+
+def test_mwdb_connection(*, base_url: str, auth_key: str, timeout_s: int = 10) -> Dict[str, Any]:
+    if not base_url:
+        raise ValueError("MWDB URL is required")
+    if not auth_key:
+        raise ValueError("MWDB auth key is required")
+    base_url = base_url.rstrip("/")
+    session = requests.Session()
+    session.headers.update({"Authorization": f"Bearer {auth_key}"})
+    throttle_external_request(source="mwdb")
+    resp = session.get(f"{base_url}/api/object", params={"count": "1"}, timeout=timeout_s)
+    resp.raise_for_status()
+    orgs = fetch_mwdb_organizations(base_url=base_url, auth_key=auth_key, timeout_s=timeout_s)
+    return {"ok": True, "organizations": orgs}
 
 def _parse_dt(s: str) -> Optional[datetime]:
     if not s:
@@ -80,15 +143,71 @@ def _build_tag_query(tags: List[str]) -> str:
         return terms[0]
     return "(" + " OR ".join(terms) + ")"
 
+
+def _build_object_query(tags: List[str], custom_filter: str) -> str:
+    extra = (custom_filter or "").strip()
+    tag_query = _build_tag_query(tags) if tags else ""
+    if tag_query and extra:
+        return f"({tag_query}) AND ({extra})"
+    if tag_query:
+        return tag_query
+    if not extra:
+        return ""
+    return extra
+
+
+def _parse_org_list(raw: str) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for val in (raw or "").split(","):
+        item = val.strip()
+        if not item:
+            continue
+        k = item.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(item)
+    return out
+
+
+def _object_matches_organizations(obj: Dict[str, Any], organizations: List[str]) -> bool:
+    if not organizations:
+        return True
+    accepted = {x.strip().lower() for x in organizations if x.strip()}
+    if not accepted:
+        return True
+    candidates: List[str] = []
+    for key in ("organization", "org", "uploader", "author", "owner"):
+        val = obj.get(key)
+        if isinstance(val, str) and val.strip():
+            candidates.append(val.strip())
+    uploaders = obj.get("uploaders")
+    if isinstance(uploaders, list):
+        for it in uploaders:
+            if isinstance(it, str) and it.strip():
+                candidates.append(it.strip())
+            elif isinstance(it, dict):
+                for key in ("organization", "org", "name", "login", "id"):
+                    val = it.get(key)
+                    if isinstance(val, str) and val.strip():
+                        candidates.append(val.strip())
+    return any(c.lower() in accepted for c in candidates)
+
 def fetch_mwdb_by_tags(
     *,
     base_url: str,
     auth_key: str,
     tags: List[str],
-    since: Optional[datetime],
-    until: Optional[datetime],
+    custom_filter: str = "",
+    mode: str = "tags",
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    organizations: Optional[List[str]] = None,
     limit: int = 1000,
     timeout_s: int = 30,
+    retry_attempts: int = 4,
+    retry_base_delay_s: float = 1.0,
     chunk_size: int = 200,
 ) -> Iterator[Dict[str, Any]]:
     """
@@ -112,25 +231,49 @@ def fetch_mwdb_by_tags(
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {auth_key}"})
 
-    # lucene tag query
-    q = _build_tag_query(tags)
+    # lucene tag/custom query
+    q = _build_object_query(tags, custom_filter)
+    q_hash = hashlib.sha256(q.encode("utf-8")).hexdigest()[:12] if q else "none"
 
     older_than = None
     yielded = 0
     while True:
-        params = {"query": q, "count": str(min(chunk_size, 1000))}
+        params = {"count": str(min(chunk_size, 1000))}
+        if q:
+            params["query"] = q
         if older_than:
             params["older_than"] = older_than
+        logger.info(
+            "mwdb_fetch_page",
+            extra={
+                "mode": mode,
+                "count": params.get("count"),
+                "older_than": params.get("older_than"),
+                "query_hash": q_hash,
+                "query_len": len(q or ""),
+            },
+        )
 
-        throttle_external_request(source="mwdb")
-        r = session.get(f"{base_url}/api/object", params=params, timeout=timeout_s)
-        r.raise_for_status()
-        data = r.json()  # expected key: "objects"
+        def _do():
+            throttle_external_request(source="mwdb")
+            resp = session.get(f"{base_url}/api/object", params=params, timeout=timeout_s)
+            resp.raise_for_status()
+            return resp.json()
+        data = retry_with_backoff(
+            _do,
+            max_attempts=max(1, retry_attempts),
+            base_delay=max(0.1, retry_base_delay_s),
+        )
         objs = data.get("objects") or data.get("files") or []
+        logger.info("mwdb_fetch_page_result", extra={"mode": mode, "response_items": len(objs)})
         if not objs:
+            logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "no_results"})
             return
 
+        page_older_than = older_than
         for obj in objs:
+            if not _object_matches_organizations(obj, organizations or []):
+                continue
             # Determine an IOC value - prefer sha256 if present
             sha256 = obj.get("sha256") or obj.get("sha256_hash") or obj.get("checksum") or None
             ioc_value = sha256 or obj.get("id") or obj.get("uuid")
@@ -141,7 +284,8 @@ def fetch_mwdb_by_tags(
             ts = obj.get("upload_time") or obj.get("first_seen") or obj.get("created_at") or ""
             dt = _parse_dt(ts) or datetime.now(tz=timezone.utc)
             if since and dt < since:
-                continue
+                logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "time_cutoff"})
+                return
             if until and dt > until:
                 continue
 
@@ -177,12 +321,17 @@ def fetch_mwdb_by_tags(
             }
             yielded += 1
             if yielded >= limit:
+                logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "limit_reached", "yielded": yielded})
                 return
 
             older_than = obj.get("id") or older_than
 
         # if we didn't update older_than, break to avoid infinite loop
         if not older_than:
+            logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "no_older_than"})
+            return
+        if older_than == page_older_than:
+            logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "stuck_older_than"})
             return
 
 
@@ -205,18 +354,24 @@ def update_mwdb_indicators() -> Dict[str, int]:
     cfg = Config()
     now = datetime.now(timezone.utc)
     tags = _parse_tag_list(cfg.MWDB_TAGS)
-    if not tags:
-        logger.info("mwdb_skipped_no_tags")
-        return {"fetched": 0, "deactivated": 0}
+    mode = "tags" if tags else "recent"
 
+    since = None if cfg.MWDB_NO_TIME_LIMIT else (now - timedelta(days=max(1, int(cfg.MWDB_DAYS or 0)))) if int(cfg.MWDB_DAYS or 0) > 0 else None
+    organizations = _parse_org_list(cfg.MWDB_ORGANIZATIONS)
     raw_rows = list(
         fetch_mwdb_by_tags(
             base_url=cfg.MWDB_URL,
             auth_key=cfg.MWDB_AUTH_KEY,
             tags=tags,
-            since=None,
+            custom_filter=cfg.MWDB_CUSTOM_FILTER,
+            mode=mode,
+            since=since,
             until=None,
+            organizations=organizations,
             limit=max(1, int(cfg.MWDB_LIMIT)),
+            timeout_s=max(1, int(cfg.FEED_HTTP_TIMEOUT_S)),
+            retry_attempts=max(1, int(cfg.FEED_RETRY_ATTEMPTS)),
+            retry_base_delay_s=max(0.1, float(cfg.FEED_RETRY_BASE_DELAY_S)),
         )
     )
     canonical_rows: List[Dict[str, Any]] = []
@@ -295,19 +450,19 @@ def update_mwdb_indicators() -> Dict[str, int]:
                 last_update=now,
                 last_fetch_status="success",
                 last_fetch_error=None,
-                metadata={"fetched": len(rows), "tags": tags},
+                metadata={"fetched": len(rows), "tags": tags, "mode": mode},
             ).on_conflict_do_update(
                 index_elements=["source", "source_id"],
                 set_={
                     "last_update": now,
                     "last_fetch_status": "success",
                     "last_fetch_error": None,
-                    "metadata": {"fetched": len(rows), "tags": tags},
+                    "metadata": {"fetched": len(rows), "tags": tags, "organizations": organizations, "days": None if cfg.MWDB_NO_TIME_LIMIT else int(cfg.MWDB_DAYS or 0), "mode": mode},
                 },
             )
         )
         db.commit()
-        logger.info("mwdb_updated", extra={"fetched": len(rows), "tags": len(tags)})
+        logger.info("mwdb_updated", extra={"fetched": len(rows), "tags": len(tags), "mode": mode})
         return {"fetched": len(rows), "deactivated": len(to_deactivate)}
     except Exception as e:
         db.rollback()

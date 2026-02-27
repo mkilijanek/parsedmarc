@@ -3,24 +3,24 @@
 <h1>{{ title }}</h1>
 
 <form method="get" class="filters">
-  <label>Search
-    <input name="q" value="{{ q or '' }}" placeholder="FTS / substring">
+  <label for="flt-search">Search
+    <input id="flt-search" name="q" value="{{ q or '' }}" placeholder="FTS / substring" aria-label="Search indicators">
   </label>
-  <label>Types (comma)
-    <input name="types" value="{{ types_raw or '' }}" placeholder="ip,domain,hash,apk,ios">
+  <label for="flt-types">Types (comma)
+    <input id="flt-types" name="types" value="{{ types_raw or '' }}" placeholder="ip,domain,hash,apk,ios" aria-label="Filter by indicator types">
   </label>
-  <label>Sources (comma)
-    <input name="sources" value="{{ sources_raw or '' }}" placeholder="misp,malwarebazaar,mwdb,crowdsec">
+  <label for="flt-sources">Sources (comma)
+    <input id="flt-sources" name="sources" value="{{ sources_raw or '' }}" placeholder="misp,malwarebazaar,mwdb,crowdsec" aria-label="Filter by sources">
   </label>
-  <label>TLPs (comma)
-    <input name="tlps" value="{{ tlps_raw or '' }}" placeholder="GREEN,AMBER,RED,WHITE">
+  <label for="flt-tlps">TLPs (comma)
+    <input id="flt-tlps" name="tlps" value="{{ tlps_raw or '' }}" placeholder="GREEN,AMBER,RED,WHITE" aria-label="Filter by TLP">
   </label>
-  <label>
-    <input type="checkbox" name="active_only" value="1" {% if active_only %}checked{% endif %}>
+  <label for="flt-active">
+    <input id="flt-active" type="checkbox" name="active_only" value="1" {% if active_only %}checked{% endif %}>
     active only
   </label>
-  <label>Limit
-    <input name="limit" value="{{ limit }}" size="6">
+  <label for="flt-limit">Limit
+    <input id="flt-limit" name="limit" value="{{ limit }}" size="6" aria-label="Limit rows">
   </label>
   <button class="btn" type="submit">Apply</button>
 
@@ -33,44 +33,44 @@
 </form>
 
 <div class="tablewrap">
-<table>
+<table role="table" aria-label="Threat indicators results">
   <thead>
-    <tr>
-      <th>last_seen</th>
-      <th>ioc_value</th>
-      <th>type</th>
-      <th>source</th>
-      <th>confidence</th>
-      <th>TLP</th>
-      <th>tags</th>
+    <tr role="row">
+      <th role="columnheader" scope="col" aria-sort="none">last_seen</th>
+      <th role="columnheader" scope="col" aria-sort="none">ioc_value</th>
+      <th role="columnheader" scope="col" aria-sort="none">type</th>
+      <th role="columnheader" scope="col" aria-sort="none">source</th>
+      <th role="columnheader" scope="col" aria-sort="none">confidence</th>
+      <th role="columnheader" scope="col" aria-sort="none">TLP</th>
+      <th role="columnheader" scope="col" aria-sort="none">tags</th>
       {% if show_mobile %}
-      <th>platform</th>
-      <th>package</th>
-      <th>version</th>
-      <th>permissions</th>
+      <th class="col-platform" role="columnheader" scope="col" aria-sort="none">platform</th>
+      <th class="col-package" role="columnheader" scope="col" aria-sort="none">package</th>
+      <th class="col-version" role="columnheader" scope="col" aria-sort="none">version</th>
+      <th class="col-permissions" role="columnheader" scope="col" aria-sort="none">permissions</th>
       {% endif %}
-      <th>comments</th>
+      <th role="columnheader" scope="col" aria-sort="none">comments</th>
     </tr>
   </thead>
   <tbody>
     {% for r in rows %}
-    <tr>
-      <td class="mono">{{ r.last_seen }}</td>
-      <td class="mono">{{ r.ioc_value }}</td>
-      <td>{{ r.ioc_type }}</td>
-      <td>{{ r.source }}</td>
-      <td>{{ r.confidence }}</td>
-      <td>{{ r.tlp }}</td>
-      <td class="mono">{{ (r.tags or [])|join(',') }}</td>
+    <tr role="row">
+      <td role="cell" class="mono">{{ r.last_seen }}</td>
+      <td role="cell" class="mono">{{ r.ioc_value }}</td>
+      <td role="cell"><span class="badge-type badge-{{ r.ioc_type|lower }}">{{ r.ioc_type }}</span></td>
+      <td role="cell">{{ r.source }}</td>
+      <td role="cell">{{ r.confidence }}</td>
+      <td role="cell"><span class="badge-tlp badge-tlp-{{ r.tlp|upper }}">{{ r.tlp }}</span></td>
+      <td role="cell" class="mono">{{ (r.tags or [])|join(',') }}</td>
       {% if show_mobile %}
-      <td>{{ r.platform or '' }}</td>
-      <td class="mono">{{ r.package_name or '' }}</td>
-      <td class="mono">{{ r.app_version or '' }}</td>
-      <td class="mono">
+      <td role="cell" class="col-platform">{{ r.platform or '' }}</td>
+      <td role="cell" class="mono col-package">{{ r.package_name or '' }}</td>
+      <td role="cell" class="mono col-version">{{ r.app_version or '' }}</td>
+      <td role="cell" class="mono col-permissions">
         {% if r.permissions %}{{ r.permissions|join(',') }}{% endif %}
       </td>
       {% endif %}
-      <td>{{ r.comments or '' }}</td>
+      <td role="cell">{{ r.comments or '' }}</td>
     </tr>
     {% endfor %}
   </tbody>

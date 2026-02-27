@@ -1,5 +1,7 @@
 # Security Audit Report - IOC Service (kili branch)
 
+Status: updated for 1.1.x (2026-02-26).
+
 **Audit Date:** 2025-12-17
 **Branch Audited:** kili
 **Remediation Branch:** claude/security-audit-kili-2Ah1l

@@ -1,5 +1,7 @@
 # Confluence Export Package
 
+Status: updated for 1.1.x (2026-02-26).
+
 Ten katalog zawiera ujednoliconą dokumentację projektu w formacie **Confluence Wiki Markup**,
 przygotowaną do importu jako drzewo stron i podstron w **Confluence 9.2.13**.
 

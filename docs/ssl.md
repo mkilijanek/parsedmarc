@@ -1,5 +1,7 @@
 # SSL/TLS Documentation
 
+Status: updated for 1.1.x (2026-02-26).
+
 ## Overview
 
 The application uses Nginx as a TLS-terminating reverse proxy with automatic certificate management.

@@ -1,8 +1,49 @@
 # Configuration
 
+Status: updated for `1.1.x` (2026-02-26).
+
 ## Environment Variables
 
 All configuration is done via environment variables. No config files required.
+
+---
+
+## New in 1.1.x (Feeds & Sync)
+
+### Feed Transport / Retry
+
+```bash
+FEED_HTTP_TIMEOUT_S=30
+FEED_RETRY_ATTEMPTS=4
+FEED_RETRY_BASE_DELAY_S=1
+```
+
+### Feed-level Rate Limits (global defaults + optional per-source override)
+
+```bash
+FEED_RATE_LIMIT_ENABLED=true
+FEED_REQUESTS_PER_SECOND=10
+FEED_REQUESTS_PER_MINUTE=55
+```
+
+Optional per source (example for MWDB):
+
+```bash
+FEED_REQUESTS_PER_SECOND_MWDB=5
+FEED_REQUESTS_PER_MINUTE_MWDB=40
+```
+
+### MWDB Feed Options
+
+```bash
+MWDB_TAGS=apt,malware
+MWDB_DAYS=30
+MWDB_NO_TIME_LIMIT=false
+MWDB_ORGANIZATIONS=
+MWDB_CUSTOM_FILTER=
+```
+
+`MWDB_CUSTOM_FILTER` is optional and appended to MWDB query expression.
 
 ---
 

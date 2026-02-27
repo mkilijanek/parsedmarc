@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import csv
 import io
+import time
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -503,6 +504,31 @@ class TestExportEndpoints:
         body = response.get_data(as_text=True)
         assert len(body.strip()) > 0
         assert "\"index\"" in body
+
+    def test_export_async_job_flow(self, client, sample_indicators):
+        """Test asynchronous export job creation and retrieval."""
+        response = client.get("/indicators/json?type=ip&limit=100000&async=1")
+        assert response.status_code == 202
+        data = response.get_json()
+        assert "job_id" in data
+        status_url = data["status_url"]
+        download_url = data["download_url"]
+
+        # Poll briefly for completion.
+        for _ in range(20):
+            st = client.get(status_url)
+            assert st.status_code == 200
+            status = st.get_json()["status"]
+            if status == "completed":
+                break
+            time.sleep(0.02)
+
+        final_status = client.get(status_url).get_json()["status"]
+        assert final_status in {"running", "completed", "failed", "queued"}
+        if final_status == "completed":
+            dl = client.get(download_url)
+            assert dl.status_code == 200
+            assert "application/json" in dl.content_type
 
 
 # ============================================================================

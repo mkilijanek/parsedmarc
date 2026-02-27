@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import csv
 import io
+import ipaddress
 import json
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Iterable, Dict, Any, List
 
@@ -193,13 +195,32 @@ def export_f5_datagroup(indicators: Iterable[Indicator]) -> str:
 def export_imperva_json(indicators: Iterable[Indicator]) -> str:
     entries = []
     for ind in _ip_or_all(indicators):
-        entries.append({
-            "type": "single",
-            "ipAddressFrom": ind.value,
-            "ipAddressTo": ind.value,
-            "networkMask": "255.255.255.255",
-            "comment": "Threat feed indicator",
-        })
+        try:
+            net = ipaddress.ip_network(ind.value, strict=False)
+            if net.prefixlen == net.max_prefixlen:
+                entries.append({
+                    "type": "single",
+                    "ipAddressFrom": str(net.network_address),
+                    "ipAddressTo": str(net.network_address),
+                    "networkMask": str(net.netmask),
+                    "comment": "Threat feed indicator",
+                })
+            else:
+                entries.append({
+                    "type": "range",
+                    "ipAddressFrom": str(net.network_address),
+                    "ipAddressTo": str(net.broadcast_address),
+                    "networkMask": str(net.netmask),
+                    "comment": "Threat feed indicator",
+                })
+        except ValueError:
+            entries.append({
+                "type": "single",
+                "ipAddressFrom": ind.value,
+                "ipAddressTo": ind.value,
+                "networkMask": "255.255.255.255",
+                "comment": "Threat feed indicator",
+            })
     payload = {"name": "ThreatFeed-Blocklist", "entries": entries}
     return _json_pretty(payload)
 
@@ -209,7 +230,7 @@ def export_arcsight_cef(indicators: Iterable[Indicator]) -> str:
     for ind in _ip_or_all(indicators):
         sev = 7 if ind.confidence >= 70 else 5 if ind.confidence >= 50 else 3
         line = (
-            f"CEF:0|ThreatFeedAggregator|IOC Feed|1.0|TI-IP|Threat Intelligence: {ind.value}|{sev}| "
+            f"CEF:0|ThreatFeedAggregator|IOC Feed|1.0|TI-IP|Threat Intelligence: {ind.value}|{sev}|"
             f"src={ind.value} cs1Label=TLP cs1={ind.tlp} cs2Label=Confidence cs2={ind.confidence}"
         )
         out.append(line)
@@ -279,11 +300,10 @@ def export_splunk_hec(indicators: Iterable[Indicator], index: str = "threat_inte
 # 4.13 Fidelis STIX 2.1 Bundle
 def export_fidelis_stix_bundle(indicators: Iterable[Indicator]) -> str:
     now = _utc_iso(datetime.now(timezone.utc))
-    bundle_id = f"bundle--threat-feed-{int(time.time())}"
+    bundle_id = f"bundle--{uuid.uuid4()}"
     objects: List[Dict[str, Any]] = []
     for ind in indicators:
-        # Deterministic-ish id (not a real UUIDv4, but acceptable for export object identifiers)
-        oid = "indicator--" + _sanitize_name(ind.value)
+        oid = f"indicator--{uuid.uuid5(uuid.NAMESPACE_URL, f'{ind.type}:{ind.value}')}"
         if ind.type == "ip":
             pattern = f"[ipv4-addr:value = '{ind.value}']" if ":" not in ind.value else f"[ipv6-addr:value = '{ind.value}']"
         elif ind.type == "domain":

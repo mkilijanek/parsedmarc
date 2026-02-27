@@ -33,8 +33,8 @@ def validate_search_query(query: str) -> bool:
         return True
     if len(query) > _MAX_QUERY_LEN:
         return False
-    # Defense-in-depth: even though we compile to SQLAlchemy safely, reject common SQLi payload markers
-    dangerous = ["--", ";", "/*", "*/", "DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "'", '"']
+    # Defense-in-depth: reject known SQL meta-markers while allowing quoted Kibana syntax.
+    dangerous = ["--", ";", "/*", "*/", "XP_", "0X"]
     up = query.upper()
     return not any(d in up for d in dangerous)
 

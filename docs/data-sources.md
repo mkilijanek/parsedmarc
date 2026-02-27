@@ -1,5 +1,7 @@
 # Data Sources
 
+Status: updated for `1.1.x` (2026-02-26).
+
 ## Overview
 
 The Threat Feed Aggregator integrates multiple threat intelligence sources to provide comprehensive IOC coverage. All sources are normalized to a unified schema and stored in PostgreSQL.
@@ -159,6 +161,10 @@ python -m app.cli fetch \
 MWDB_URL=https://mwdb.cert.pl
 MWDB_AUTH_KEY=your-api-key
 MWDB_TAGS=malware,apt
+MWDB_CUSTOM_FILTER=
+MWDB_DAYS=30
+MWDB_NO_TIME_LIMIT=false
+MWDB_ORGANIZATIONS=
 MWDB_LIMIT=1000
 ```
 
@@ -182,6 +188,11 @@ python -m app.cli fetch \
 - Extracted IPs and domains
 - URLs from configs
 
+**Feed-specific controls (Admin):**
+- `Test connection`
+- dynamic user organization selection
+- optional custom query filter (stored per feed)
+
 ---
 
 ### 5. abuse.ch Extended Feeds
@@ -196,6 +207,7 @@ python -m app.cli fetch \
 - YARAify (`https://yaraify-api.abuse.ch/api/v1/`)
 - FeodoTracker (`https://feodotracker.abuse.ch/downloads/ipblocklist.txt`)
 - Hunting API false-positive list (`https://hunting-api.abuse.ch/api/v1/`, query `get_fplist`)
+- Bazaar integration toggle (routes to MalwareBazaar tag ingestion)
 
 **Configuration:**
 ```bash
@@ -214,6 +226,10 @@ YARAIFY_LOOKUP_HASHES=sha256_1,sha256_2
 HUNTING_FPLIST_ENABLED=true
 HUNTING_FPLIST_FORMAT=csv
 ```
+
+Admin feed configuration for `abusech` supports selectors:
+- `threatfox`, `urlhaus`, `bazaar`, `feodotracker`, `yaraify`
+- optional `custom filter` field (stored per feed)
 
 **IOC types:**
 - ThreatFox: IP/domain/url/hash (normalized)

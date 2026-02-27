@@ -1,5 +1,7 @@
 # Operations Runbook (M15)
 
+Status: updated for `1.1.x` (2026-02-26).
+
 ## Scope
 
 Operational playbook for the IOC service in production-like environments with shared resources.
@@ -83,6 +85,21 @@ Recommended thresholds:
 - mixed throughput >= 700 req/s
 - mixed p95 <= 350 ms
 - mixed error rate <= 1%
+
+## Upgrade Procedure (Required Since 1.1.x)
+
+Always run migrations before app/worker restart:
+
+```bash
+docker compose -f docker-compose-release.yml pull
+docker compose -f docker-compose-release.yml up -d app worker
+```
+
+Post-upgrade verification:
+
+```bash
+docker compose -f docker-compose-release.yml logs --tail=200 app worker | rg "UndefinedTable|DetachedInstanceError|sync_job_enqueued|feed_sync_completed"
+```
 
 ## Rollback
 

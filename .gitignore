@@ -9,3 +9,5 @@ build/
 .venv/
 .vscode/
 .idea/
+AGENTS.md
+app.log

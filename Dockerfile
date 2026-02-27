@@ -17,7 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl libpq5 && 
 # SECURITY: Copy files with proper ownership from the start
 COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
 COPY --chown=appuser:appuser app/ ./app/
-COPY --chown=appuser:appuser scripts/benchmark_m12.py ./scripts/benchmark_m12.py
+COPY --chown=appuser:appuser scripts/ ./scripts/
+COPY --chown=appuser:appuser alembic/ ./alembic/
+COPY --chown=appuser:appuser alembic.ini ./alembic.ini
 COPY --chown=appuser:appuser scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 ENV PATH=/home/appuser/.local/bin:$PATH \

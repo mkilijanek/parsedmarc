@@ -1,5 +1,7 @@
 # CLI Documentation
 
+Status: updated for `1.1.x` (2026-02-26).
+
 ## Overview
 
 The CLI tool (`app.cli`) provides manual ingestion of IOCs from MalwareBazaar and MWDB repositories. It offers fine-grained control over what data gets imported.

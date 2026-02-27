@@ -1,5 +1,7 @@
 # Web UI Documentation
 
+Status: updated for `1.1.x` (2026-02-26).
+
 ## Overview
 
 The Web UI provides a browser-based interface for searching and viewing IOCs with WCAG 2.1 AA accessibility compliance.
@@ -16,6 +18,7 @@ System overview with statistics and quick links.
 - Total/active indicator counts
 - Feed statistics table
 - Quick links to exports
+- Shared dark/light theme toggle with persisted preference
 
 ### Indicator Search: `/indicators`
 
@@ -94,13 +97,16 @@ Responsive design with:
 
 ### Theming
 
-Edit inline CSS in `app/main.py`:
+Theme is unified across `/`, `/indicators`, `/admin`, `/logs`, and feed config pages.
+Preference is stored in browser `localStorage` under key `ioc-theme`.
 
-```python
-def _render_indicators(...):
-    # CSS variables in <style> block
-    # Modify colors, fonts, spacing
-```
+### Admin Feed Configuration UX
+
+Feed forms include:
+- `Save settings`
+- `Test connection`
+- `Back`
+- Disabled/loading button states on submit
 
 ### Layout
 
