@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Updated for release line `1.1.x` (2026-02-26).
+Updated for release line `1.1.x` (2026-03-01).
 
 ## Quick Start
 
@@ -40,8 +40,21 @@ curl -k https://localhost:7003/health
 
 ### Monitoring
 - Health: https://your-domain:7003/health
+- Readiness: https://your-domain:7003/readyz
 - Logs: docker compose logs -f
 - Stats: https://your-domain:7003/api/stats
+- Metrics: https://your-domain:7003/metrics (deploy behind VPN/internal network)
+
+**Key Prometheus metrics for alerting:**
+
+| Metric                | Alert condition                          |
+|-----------------------|------------------------------------------|
+| `sync_jobs_queued`    | > 10 for > 5 min → worker may be stuck  |
+| `sync_jobs_running`   | > 5 simultaneously → concurrency issue  |
+| `export_jobs_pending` | > 20 for > 10 min → export backlog      |
+| `active_indicators`   | Sudden drop → feed sync failure          |
+
+See `docs/api.md` for the full list of exposed metrics.
 
 ### Backup
 ```bash

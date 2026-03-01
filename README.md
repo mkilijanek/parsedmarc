@@ -1,6 +1,6 @@
 # Threat Intelligence Feed Aggregator
 
-Updated for release line `1.1.x` (2026-02-26).
+Updated for release line `1.1.x` (2026-03-01).
 
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
@@ -28,6 +28,10 @@ Production-ready threat feed aggregation and export service:
 - MISP safety guard:
   - sync timeout watchdog (`MISP_SYNC_TIMEOUT_S`, default `30s`)
   - automatic MISP feed disable on connectivity timeout/failure to avoid blocking workers.
+- **MWDB "My MWDB group" selector** — configure `MWDB_MY_GROUP` or use the Admin UI dropdown; indicators from that group are tagged `TLP:AMBER`.
+- **Prometheus job backlog metrics** — `sync_jobs_queued`, `sync_jobs_running`, `export_jobs_pending` Gauges refreshed on each `/metrics` scrape.
+- **Export file cleanup** — scheduled job at 03:00 UTC removes stale files from `EXPORT_JOB_DIR` (prevents unbounded `/tmp` growth).
+- **CircuitBreaker** for MWDB, MISP, and abuse.ch — configurable fail threshold and cooldown; state logged with `circuit_open`/`circuit_recovered` events.
 
 ## Quickstart (Docker Compose)
 

@@ -1257,9 +1257,31 @@ def create_app() -> Flask:
         _refresh_job_backlog_metrics()
         return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
+    @app.get("/healthz")
+    @limiter.limit("120 per minute")
+    def healthz():
+        """Liveness probe — self-checks only, no external network calls.
+
+        Safe for F5/Nginx/Kubernetes liveness monitors. Always fast (< 50 ms).
+        Returns 200 as long as the process is alive and accepting requests.
+        """
+        return Response(
+            json.dumps({"status": "ok"}, separators=(",", ":")),
+            status=200,
+            mimetype="application/json",
+        )
+
     @app.get("/health")
     @limiter.limit("60 per minute")
     def health():
+        """Legacy combined health endpoint (DB + Redis + cached dep status).
+
+        Kept for backward compatibility. Does NOT make live external calls to MISP/MWDB;
+        uses the DepStatusCache populated by background worker runs instead.
+        For liveness monitoring use /healthz; for readiness use /readyz.
+        """
+        from .services.common import _dep_status
+
         health_cache_key = _cache_key("health", deep=True)
         try:
             r = get_redis()
@@ -1272,7 +1294,7 @@ def create_app() -> Flask:
             cache_access_total.labels(endpoint="health", status="error").inc()
             r = None
 
-        checks = {"database": False, "redis": False, "misp": False, "crowdsec": False}
+        checks: dict[str, bool] = {"database": False, "redis": False}
         # DB check
         try:
             db = _db(read_only=True)
@@ -1287,27 +1309,24 @@ def create_app() -> Flask:
                 pass
         # Redis check
         try:
-            r = get_redis()
-            r.ping()
+            r2 = get_redis()
+            r2.ping()
             checks["redis"] = True
         except Exception:
             checks["redis"] = False
-        # MISP check (lightweight)
+
+        # Dependency checks: read from in-process cache (no live network calls)
+        dep_all = _dep_status.get_all()
         if cfg.MISP_URL and cfg.MISP_API_KEY:
-            try:
-                from pymisp import PyMISP
-                m = PyMISP(cfg.MISP_URL, cfg.MISP_API_KEY, ssl=cfg.MISP_VERIFY_SSL)
-                # server version call
-                _ = m.server_settings()
-                checks["misp"] = True
-            except Exception:
-                checks["misp"] = False
+            misp_entry = dep_all.get("misp") or {}
+            checks["misp"] = misp_entry.get("status") == "ok"
         else:
-            checks["misp"] = False
-        # CrowdSec check (auth header present)
+            checks["misp"] = False  # not configured
         checks["crowdsec"] = bool(cfg.CROWDSEC_API_KEY)
 
-        status = "healthy" if all(checks.values()) else "degraded"
+        # Overall status: infra (DB+Redis) must be ok; external deps are advisory
+        infra_ok = checks["database"] and checks["redis"]
+        status = "healthy" if infra_ok else "degraded"
         payload = {"status": status, "checks": checks}
         body = json.dumps(payload, separators=(",", ":"))
         if r is not None:
@@ -1317,9 +1336,41 @@ def create_app() -> Flask:
                 cache_access_total.labels(endpoint="health", status="error").inc()
         return Response(body, mimetype="application/json")
 
+    @app.get("/deps")
+    @limiter.limit("30 per minute")
+    def deps():
+        """Dependency status snapshot.
+
+        Returns the last known status for each external dependency populated
+        by background worker runs and health-check functions. No live network
+        calls are made — this endpoint is always fast.
+
+        Response shape::
+
+            {
+              "misp": {
+                "status": "ok" | "degraded" | "down" | "unknown",
+                "last_ok_ts": <epoch float> | null,
+                "last_check_ts": <epoch float> | null,
+                "last_error": <str> | null,
+                "last_duration_ms": <int> | null
+              },
+              ...
+            }
+        """
+        from .services.common import _dep_status
+        payload = _dep_status.get_all()
+        return Response(json.dumps(payload, separators=(",", ":")), status=200, mimetype="application/json")
+
     @app.get("/readyz")
     @limiter.limit("120 per minute")
     def readyz():
+        """Readiness probe — DB and Redis must be reachable.
+
+        Returns 503 when DB or Redis are unavailable so that load balancers
+        can stop routing traffic to this instance. Does NOT check external
+        feeds (MISP/MWDB); feed outages must not affect readiness.
+        """
         checks = {"database": False, "redis": False}
         # DB check
         try:

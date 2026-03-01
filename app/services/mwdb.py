@@ -13,7 +13,7 @@ from ..config import Config
 from ..db import SessionLocal
 from ..metrics import quality_normalized_total, quality_dropped_invalid_total, quality_dedup_merged_total
 from ..models import FeedStats, Indicator
-from .common import throttle_external_request, retry_with_backoff, _circuit_breaker
+from .common import throttle_external_request, retry_with_backoff, _circuit_breaker, _dep_status
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -226,6 +226,7 @@ def fetch_mwdb_by_tags(
     auth_key: str,
     tags: List[str],
     custom_filter: str = "",
+    default_query: str = "type:*",
     mode: str = "tags",
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
@@ -242,7 +243,9 @@ def fetch_mwdb_by_tags(
     Auth: Authorization: Bearer <auth_key> (JWT token).
 
     Query strategy:
-      - build lucene: (tag:tag1 OR tag:tag2 OR ...)
+      - build lucene: (tag:tag1 OR tag:tag2 OR ...) from tags/custom_filter
+      - if neither tags nor custom_filter are set, fall back to ``default_query``
+        (default: ``type:*``) to avoid empty-query edge cases on strict MWDB installs
       - fetch recent objects in pages using older_than
       - post-filter by time range if upload_time present
       - stop when limit reached (best-effort)
@@ -256,18 +259,25 @@ def fetch_mwdb_by_tags(
 
     base_url = base_url.rstrip("/")
 
-    # lucene tag/custom query
+    # lucene tag/custom query — always send a query param
     q = _build_object_query(tags, custom_filter)
-    q_hash = hashlib.sha256(q.encode("utf-8")).hexdigest()[:12] if q else "none"
+    if not q:
+        # Fall back to safe default so the API always receives a query param
+        q = (default_query or "type:*").strip()
+    q_hash = hashlib.sha256(q.encode("utf-8")).hexdigest()[:12]
+    query_sent = bool(q)
 
     older_than = None
     yielded = 0
+    filtered_org = 0
+    filtered_time = 0
+    filtered_no_ioc = 0
     with requests.Session() as session:
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         while True:
-            params = {"count": str(min(chunk_size, 1000))}
-            if q:
-                params["query"] = q
+            params: Dict[str, str] = {"count": str(min(chunk_size, 1000))}
+            # Always send query to avoid empty-query edge cases
+            params["query"] = q
             if older_than:
                 params["older_than"] = older_than
             logger.info(
@@ -277,7 +287,8 @@ def fetch_mwdb_by_tags(
                     "count": params.get("count"),
                     "older_than": params.get("older_than"),
                     "query_hash": q_hash,
-                    "query_len": len(q or ""),
+                    "query_len": len(q),
+                    "query_sent": query_sent,
                 },
             )
 
@@ -292,29 +303,47 @@ def fetch_mwdb_by_tags(
                 base_delay=max(0.1, retry_base_delay_s),
             )
             objs = data.get("objects") or data.get("files") or []
-            logger.info("mwdb_fetch_page_result", extra={"mode": mode, "response_items": len(objs)})
+            logger.info("mwdb_fetch_page_result", extra={
+                "mode": mode,
+                "response_items": len(objs),
+                "query_hash": q_hash,
+            })
             if not objs:
-                logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "no_results"})
+                logger.info("mwdb_stop_reason", extra={
+                    "mode": mode, "reason": "no_results",
+                    "yielded": yielded, "query_hash": q_hash,
+                    "filtered_org": filtered_org, "filtered_time": filtered_time,
+                    "filtered_no_ioc": filtered_no_ioc,
+                })
                 return
 
             page_older_than = older_than
             for obj in objs:
                 if not _object_matches_organizations(obj, organizations or []):
+                    filtered_org += 1
                     continue
                 # Determine an IOC value - prefer sha256 if present
                 sha256 = obj.get("sha256") or obj.get("sha256_hash") or obj.get("checksum") or None
                 ioc_value = sha256 or obj.get("id") or obj.get("uuid")
                 if not ioc_value:
+                    filtered_no_ioc += 1
                     continue
 
                 # time filtering
                 ts = obj.get("upload_time") or obj.get("first_seen") or obj.get("created_at") or ""
-                dt = _parse_dt(ts) or datetime.now(tz=timezone.utc)
-                if since and dt < since:
-                    logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "time_cutoff"})
-                    return
-                if until and dt > until:
-                    continue
+                dt = _parse_dt(ts)
+                # If timestamp parsing fails, dt=None: skip time filtering for this object
+                # (do not early-break, as response may not be sorted deterministically)
+                if dt is not None:
+                    if since and dt < since:
+                        filtered_time += 1
+                        # Only early-break when we know MWDB sorts newest-first and we've
+                        # moved past the cutoff on this page. Continue to next page is safe
+                        # but conservative: skip this object and let older_than advance.
+                        continue
+                    if until and dt > until:
+                        filtered_time += 1
+                        continue
 
                 obj_tags = _normalize_obj_tags(obj.get("tags"))
 
@@ -349,17 +378,27 @@ def fetch_mwdb_by_tags(
                 }
                 yielded += 1
                 if yielded >= limit:
-                    logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "limit_reached", "yielded": yielded})
+                    logger.info("mwdb_stop_reason", extra={
+                        "mode": mode, "reason": "limit_reached", "yielded": yielded,
+                        "query_hash": q_hash, "filtered_org": filtered_org,
+                        "filtered_time": filtered_time, "filtered_no_ioc": filtered_no_ioc,
+                    })
                     return
 
                 older_than = obj.get("id") or older_than
 
             # if we didn't update older_than, break to avoid infinite loop
             if not older_than:
-                logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "no_older_than"})
+                logger.info("mwdb_stop_reason", extra={
+                    "mode": mode, "reason": "no_older_than", "yielded": yielded,
+                    "query_hash": q_hash,
+                })
                 return
             if older_than == page_older_than:
-                logger.info("mwdb_stop_reason", extra={"mode": mode, "reason": "stuck_older_than"})
+                logger.info("mwdb_stop_reason", extra={
+                    "mode": mode, "reason": "stuck_older_than", "yielded": yielded,
+                    "query_hash": q_hash,
+                })
                 return
 
 
@@ -398,6 +437,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
             auth_key=cfg.MWDB_AUTH_KEY,
             tags=tags,
             custom_filter=cfg.MWDB_CUSTOM_FILTER,
+            default_query=cfg.MWDB_DEFAULT_QUERY,
             mode=mode,
             since=since,
             until=None,
@@ -510,6 +550,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
         )
         db.commit()
         _circuit_breaker.record_success("mwdb")
+        _dep_status.update("mwdb", "ok")
         logger.info("mwdb_updated", extra={"fetched": len(rows), "tags": len(tags), "mode": mode})
         return {"fetched": len(rows)}
     except Exception as e:
@@ -519,6 +560,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
             fail_threshold=max(1, int(cfg.MWDB_CIRCUIT_FAIL_THRESHOLD)),
             cooldown_s=max(1, int(cfg.MWDB_CIRCUIT_COOLDOWN_S)),
         )
+        _dep_status.update("mwdb", "down", error=str(e))
         try:
             db.execute(
                 pg_insert(FeedStats.__table__).values(

@@ -28,14 +28,17 @@ def _signal_handler(signum, frame):
 def _safe_job(name: str, fn):
     def _wrap():
         if shutdown_requested:
-            logger.info("job_skipped_shutdown", extra={"job": name})
+            logger.info("job_skipped", extra={"job": name, "skipped_reason": "shutdown"})
             return
+        t0 = time.monotonic()
         try:
             logger.info("job_start", extra={"job": name})
             fn()
-            logger.info("job_success", extra={"job": name})
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            logger.info("job_success", extra={"job": name, "duration_ms": duration_ms})
         except Exception as e:
-            logger.error("job_failed", extra={"job": name, "error": str(e)}, exc_info=True)
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            logger.error("job_failed", extra={"job": name, "error": str(e), "duration_ms": duration_ms}, exc_info=True)
     return _wrap
 
 def main():

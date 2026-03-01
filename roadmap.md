@@ -69,7 +69,7 @@ architectural changes or major stack evolution
 -   [x] Add Prometheus metrics endpoint
 -   [x] Expose sync duration metrics
 -   [x] Expose success/failure rate per feed
--   [ ] Expose job backlog size
+-   [x] Expose job backlog size (`sync_jobs_queued`, `sync_jobs_running`, `export_jobs_pending` Gauges)
 
 ### Control & Retry
 
@@ -79,8 +79,8 @@ architectural changes or major stack evolution
 
 ### Health
 
--   [ ] Add /healthz endpoint
--   [ ] Add /readyz endpoint
+-   [x] Add /healthz endpoint (`/health` endpoint implemented)
+-   [x] Add /readyz endpoint (`/readyz` endpoint implemented)
 
 ------------------------------------------------------------------------
 

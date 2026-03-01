@@ -1,6 +1,6 @@
 # Configuration
 
-Status: updated for `1.1.x` (2026-02-26).
+Status: updated for `1.1.x` (2026-03-01).
 
 ## Environment Variables
 
@@ -33,6 +33,15 @@ FEED_REQUESTS_PER_SECOND_MWDB=5
 FEED_REQUESTS_PER_MINUTE_MWDB=40
 ```
 
+### MISP Feed Options
+
+```bash
+MISP_MAX_TLP=AMBER          # Maximum TLP level to ingest; attributes above this are skipped silently.
+                             # Valid: WHITE, GREEN, AMBER, RED. Default: AMBER (TLP:RED not ingested).
+MISP_HEALTH_TIMEOUT_S=3     # Timeout (seconds) for the lightweight MISP connectivity check in /health.
+                             # Does not affect full sync timeout (MISP_SYNC_TIMEOUT_S).
+```
+
 ### MWDB Feed Options
 
 ```bash
@@ -41,9 +50,32 @@ MWDB_DAYS=30
 MWDB_NO_TIME_LIMIT=false
 MWDB_ORGANIZATIONS=
 MWDB_CUSTOM_FILTER=
+MWDB_MY_GROUP=          # MWDB group name; indicators uploaded by this group receive TLP:AMBER
+MWDB_DEFAULT_QUERY=type:*  # Fallback Lucene query when no MWDB_TAGS or MWDB_CUSTOM_FILTER set
 ```
 
 `MWDB_CUSTOM_FILTER` is optional and appended to MWDB query expression.
+
+`MWDB_MY_GROUP` can also be set via the Admin → Feed configuration UI (persisted in DB settings).
+
+`MWDB_DEFAULT_QUERY` prevents empty-query edge cases on MWDB deployments that require a query parameter. Change only if your MWDB instance uses a different default scope.
+
+### Circuit Breaker Configuration
+
+Shared `CircuitBreaker` (`app/services/common.py`) is used by abusech, mwdb, and misp.
+It opens after N consecutive failures and waits COOLDOWN_S before attempting again.
+
+| Variable                        | Default | Description                               |
+|---------------------------------|---------|-------------------------------------------|
+| ABUSECH_CIRCUIT_FAIL_THRESHOLD  | 3       | Consecutive failures to open circuit      |
+| ABUSECH_CIRCUIT_COOLDOWN_S      | 300     | Cooldown seconds after circuit opens      |
+| MWDB_CIRCUIT_FAIL_THRESHOLD     | 3       | Same, for MWDB                            |
+| MWDB_CIRCUIT_COOLDOWN_S         | 300     | Same, for MWDB                            |
+| MISP_CIRCUIT_FAIL_THRESHOLD     | 3       | Same, for MISP                            |
+| MISP_CIRCUIT_COOLDOWN_S         | 300     | Same, for MISP                            |
+
+Circuit state is logged with keys `circuit_open` / `circuit_recovered` (field: `source`).
+To force a reset, restart the worker.
 
 ---
 

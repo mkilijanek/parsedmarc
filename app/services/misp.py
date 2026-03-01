@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ..config import Config
 from ..db import SessionLocal
 from ..models import Indicator, FeedStats
-from .common import retry_with_backoff, _circuit_breaker
+from .common import retry_with_backoff, _circuit_breaker, _dep_status
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,14 @@ TYPE_MAPPING = {
 }
 
 HIGH_CONF_TAGS = {'apt','malware','ransomware','banker','apt28','apt29'}
+
+# TLP level ordering (lower = less sensitive).
+_TLP_ORDER: Dict[str, int] = {"WHITE": 0, "GREEN": 1, "AMBER": 2, "RED": 3}
+
+
+def tlp_exceeds_max(tlp: str, max_tlp: str) -> bool:
+    """Return True when *tlp* is more sensitive than *max_tlp* and should be skipped."""
+    return _TLP_ORDER.get(tlp, 99) > _TLP_ORDER.get(max_tlp.upper(), 2)
 
 def extract_tlp_from_tags(attr_tags: List[str] | None, event_tags: List[str] | None) -> str:
     # Priority: attribute tags -> event tags -> default GREEN
@@ -95,6 +103,50 @@ def _normalize_value(attr_type: str, value: str) -> Tuple[str, dict]:
         return parts[0].strip(), meta
     return value.strip(), meta
 
+
+def misp_health_check(cfg: "Config") -> Dict[str, object]:
+    """Lightweight MISP connectivity check with bounded timeout.
+
+    Uses ``MISP_HEALTH_TIMEOUT_S`` (default 3 s) and integrates with the
+    circuit breaker.  Result is written to ``_dep_status`` so that
+    ``/deps`` can report it without making live calls.
+
+    Returns a dict with keys ``status`` ("ok" | "down"), ``duration_ms``,
+    and optionally ``error``.
+    """
+    import time as _time
+    if not cfg.MISP_URL or not cfg.MISP_API_KEY:
+        result: Dict[str, object] = {"status": "down", "error": "not_configured", "duration_ms": 0}
+        _dep_status.update("misp", "down", error="not_configured", duration_ms=0)
+        return result
+
+    if _circuit_breaker.is_open("misp"):
+        result = {"status": "down", "error": "circuit_open", "duration_ms": 0}
+        _dep_status.update("misp", "down", error="circuit_open", duration_ms=0)
+        return result
+
+    timeout = max(1, int(cfg.MISP_HEALTH_TIMEOUT_S))
+    t0 = _time.monotonic()
+    try:
+        import requests as _requests
+        resp = _requests.get(
+            cfg.MISP_URL.rstrip("/") + "/servers/getVersion.json",
+            headers={"Authorization": cfg.MISP_API_KEY, "Accept": "application/json"},
+            timeout=timeout,
+            verify=cfg.MISP_VERIFY_SSL,
+        )
+        resp.raise_for_status()
+        duration_ms = int((_time.monotonic() - t0) * 1000)
+        _dep_status.update("misp", "ok", duration_ms=duration_ms)
+        return {"status": "ok", "duration_ms": duration_ms}
+    except Exception as exc:
+        duration_ms = int((_time.monotonic() - t0) * 1000)
+        err = str(exc)
+        _dep_status.update("misp", "down", error=err, duration_ms=duration_ms)
+        logger.warning("misp_health_check_failed", extra={"error": err, "duration_ms": duration_ms})
+        return {"status": "down", "error": err, "duration_ms": duration_ms}
+
+
 def update_misp_indicators() -> Dict[str, int]:
     cfg = Config()
     now = datetime.now(timezone.utc)
@@ -105,6 +157,11 @@ def update_misp_indicators() -> Dict[str, int]:
 
     attrs = _fetch_misp_attributes(cfg)
 
+    max_tlp = (cfg.MISP_MAX_TLP or "AMBER").upper()
+    if max_tlp not in _TLP_ORDER:
+        logger.warning("misp_invalid_max_tlp", extra={"value": max_tlp, "fallback": "AMBER"})
+        max_tlp = "AMBER"
+
     # Track active per event (source_id = event_id)
     # We mark inactive attributes that disappeared from the last window per event.
     db = SessionLocal()
@@ -113,6 +170,7 @@ def update_misp_indicators() -> Dict[str, int]:
         incoming_by_event: Dict[str, Set[str]] = {}
         inserted = 0
         updated = 0
+        tlp_skipped = 0
 
         for a in attrs:
             a_type = a.get("type")
@@ -136,6 +194,11 @@ def update_misp_indicators() -> Dict[str, int]:
                 event_tags = [t.get("name") for t in (ev.get("Tag") or []) if isinstance(t, dict) and t.get("name")]  # type: ignore
 
             tlp = extract_tlp_from_tags(attr_tags, event_tags)
+
+            if tlp_exceeds_max(tlp, max_tlp):
+                tlp_skipped += 1
+                continue
+
             distribution = int(ev.get("distribution") if isinstance(ev, dict) and ev.get("distribution") is not None else 3)
             tags = list({t for t in (attr_tags or []) + (event_tags or []) if t})
             confidence = compute_confidence(distribution, tags)
@@ -212,22 +275,28 @@ def update_misp_indicators() -> Dict[str, int]:
                 last_update=now,
                 last_fetch_status="success",
                 last_fetch_error=None,
-                metadata={"fetched": len(attrs), "days": cfg.MISP_DAYS},
+                metadata={"fetched": len(attrs), "days": cfg.MISP_DAYS, "tlp_skipped": tlp_skipped},
             ).on_conflict_do_update(
                 index_elements=["source","source_id"],
                 set_={
                     "last_update": now,
                     "last_fetch_status": "success",
                     "last_fetch_error": None,
-                    "metadata": {"fetched": len(attrs), "days": cfg.MISP_DAYS},
+                    "metadata": {"fetched": len(attrs), "days": cfg.MISP_DAYS, "tlp_skipped": tlp_skipped},
                 }
             )
         )
         db.commit()
 
         _circuit_breaker.record_success("misp")
-        logger.info("misp_updated", extra={"fetched": len(attrs), "events": len(incoming_by_event)})
-        return {"fetched": len(attrs), "events": len(incoming_by_event)}
+        _dep_status.update("misp", "ok")
+        logger.info("misp_updated", extra={
+            "fetched": len(attrs),
+            "events": len(incoming_by_event),
+            "tlp_skipped": tlp_skipped,
+            "max_tlp": max_tlp,
+        })
+        return {"fetched": len(attrs), "events": len(incoming_by_event), "tlp_skipped": tlp_skipped}
     except Exception as e:
         db.rollback()
         _circuit_breaker.record_failure(
@@ -235,6 +304,7 @@ def update_misp_indicators() -> Dict[str, int]:
             fail_threshold=max(1, int(cfg.MISP_CIRCUIT_FAIL_THRESHOLD)),
             cooldown_s=max(1, int(cfg.MISP_CIRCUIT_COOLDOWN_S)),
         )
+        _dep_status.update("misp", "down", error=str(e))
         try:
             db.execute(
                 pg_insert(FeedStats.__table__).values(

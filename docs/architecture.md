@@ -1,6 +1,6 @@
 # Architecture
 
-Status: updated for `1.1.x` (2026-02-26).
+Status: updated for `1.1.x` (2026-03-01).
 
 ## Overview
 
@@ -181,6 +181,7 @@ schedule.every(10).minutes.do(update_all_feeds)
 
 **Error Handling:**
 - Exponential backoff for transient errors
+- CircuitBreaker (`app/services/common.py`) — opens after N consecutive failures, recovers after cooldown; used by abusech, mwdb, misp
 - Failed feed updates don't block others
 - Errors logged with structured context
 - `feed_stats.last_fetch_error` tracking
@@ -357,6 +358,11 @@ active_indicators
 database_connection_pool_size
 redis_cache_hit_ratio
 
+# Job backlog metrics (Gauge, refreshed on each /metrics scrape)
+sync_jobs_queued      # SyncJobs in status=queued
+sync_jobs_running     # SyncJobs in status=running
+export_jobs_pending   # ExportJobs in status=queued or running
+
 # System metrics (via node_exporter)
 node_cpu_usage
 node_memory_usage
@@ -409,7 +415,7 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 
 | Component | Technology | Version | Purpose |
 |-----------|------------|---------|---------|
-| Application | Python | 3.11 | Runtime |
+| Application | Python | 3.12 | Runtime |
 | Web Framework | Flask | 3.1.3 | HTTP server |
 | WSGI Server | Gunicorn | 22.0.0 | Production server |
 | Database | PostgreSQL | 16+ | Data storage |
@@ -420,7 +426,7 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 | Rate Limiting | Flask-Limiter | 3.7.0 | API rate limiting |
 | Metrics | prometheus-client | 0.20.0 | Metrics export |
 | MISP Client | pymisp | 2.4.179 | MISP integration |
-| JSON | stdlib `json` | Python 3.11+ | JSON serialization |
+| JSON | stdlib `json` | Python 3.12+ | JSON serialization |
 
 ---
 
