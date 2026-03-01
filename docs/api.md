@@ -1,6 +1,6 @@
 # API Documentation
 
-Status: updated for `1.1.x` (2026-02-26).
+Status: updated for `1.1.x` (2026-03-01).
 
 ## Overview
 
@@ -62,11 +62,75 @@ Returns:
 - queued/running sync jobs
 - latest run history
 
-### Health Check
+### Health / Liveness / Readiness
 
-#### `GET /health`
+#### `GET /healthz` — Liveness probe
 
-Returns service health status and integration checks.
+Pure liveness endpoint — no external calls, always fast (< 50 ms).
+Use this for F5/Nginx/Kubernetes **liveness** monitors.
+
+**Rate Limit:** 120 requests/minute
+
+**Response (always 200):**
+```json
+{"status": "ok"}
+```
+
+---
+
+#### `GET /readyz` — Readiness probe
+
+Checks DB and Redis only. Returns 503 when either is unavailable.
+Use this for load-balancer **readiness** checks (removes instance from pool when infra is down).
+Does **not** check external feeds — a MISP outage must not affect readiness.
+
+**Rate Limit:** 120 requests/minute
+
+**Response (200 when ready):**
+```json
+{"status": "ready", "checks": {"database": true, "redis": true}}
+```
+
+**Response (503 when not ready):**
+```json
+{"status": "not_ready", "checks": {"database": true, "redis": false}}
+```
+
+---
+
+#### `GET /deps` — Dependency status snapshot
+
+Returns the last known health of each external dependency (MISP, MWDB, …) populated by background worker runs. No live network calls — always fast.
+
+**Rate Limit:** 30 requests/minute
+
+**Response:**
+```json
+{
+  "misp": {
+    "status": "ok",
+    "last_ok_ts": 1740000000.0,
+    "last_check_ts": 1740000060.0,
+    "last_error": null,
+    "last_duration_ms": 42
+  },
+  "mwdb": {
+    "status": "down",
+    "last_ok_ts": 1739990000.0,
+    "last_check_ts": 1740000120.0,
+    "last_error": "Connection refused",
+    "last_duration_ms": null
+  }
+}
+```
+
+**Status Values per entry:** `ok`, `degraded`, `down`, `unknown`
+
+---
+
+#### `GET /health` — Legacy combined check
+
+Backward-compatible endpoint. Checks DB + Redis live; reads MISP/CrowdSec status from in-process cache (no live MISP calls). Prefer `/healthz` for monitors.
 
 **Rate Limit:** 60 requests/minute
 
@@ -84,8 +148,8 @@ Returns service health status and integration checks.
 ```
 
 **Status Values:**
-- `healthy` - All checks passed
-- `degraded` - Some checks failed
+- `healthy` - DB + Redis OK
+- `degraded` - DB or Redis unreachable
 
 ---
 
@@ -111,6 +175,14 @@ Returns Prometheus-compatible metrics for monitoring.
 - `correlation_groups_returned_total` - Returned correlation group count
 - `cache_access_total` - Cache hit/miss counter by endpoint
 - `db_query_duration_seconds` - Database query latency by endpoint
+
+**Job Backlog Metrics (Gauge — refreshed on each scrape):**
+
+| Metric                | Description                                       |
+|-----------------------|---------------------------------------------------|
+| `sync_jobs_queued`    | SyncJobs currently in status=queued               |
+| `sync_jobs_running`   | SyncJobs currently in status=running              |
+| `export_jobs_pending` | ExportJobs in status=queued or status=running     |
 
 **Security Note:** Deploy this endpoint behind internal network/VPN in production.
 
@@ -430,10 +502,13 @@ Rate limits are enforced per client IP address:
 
 | Endpoint | Limit |
 |----------|-------|
+| `/healthz` | 120/minute |
+| `/readyz` | 120/minute |
+| `/deps` | 30/minute |
+| `/health` | 60/minute |
 | `/indicators` | 20/minute |
 | `/indicators/<format>` | 30/minute |
 | `/correlations` | 20/minute |
-| `/health` | 60/minute |
 | `/metrics` | 30/minute |
 | `/misp/*` | 30/minute |
 | `/crowdsec/*` | 30/minute |

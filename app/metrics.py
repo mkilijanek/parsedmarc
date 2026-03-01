@@ -18,3 +18,6 @@ correlation_query_duration_seconds = Histogram('correlation_query_duration_secon
 correlation_groups_returned_total = Counter('correlation_groups_returned_total', 'Correlation groups returned')
 cache_access_total = Counter('cache_access_total', 'Cache accesses', ['endpoint', 'status'])
 db_query_duration_seconds = Histogram('db_query_duration_seconds', 'Database query duration', ['endpoint'])
+sync_jobs_queued = Gauge('sync_jobs_queued', 'SyncJobs waiting to be picked up')
+sync_jobs_running = Gauge('sync_jobs_running', 'SyncJobs currently executing')
+export_jobs_pending = Gauge('export_jobs_pending', 'ExportJobs queued or running')

@@ -1,6 +1,6 @@
 # Maintenance Plan (Post-M16)
 
-Status: updated for 1.1.x (2026-02-26).
+Status: updated for 1.1.x (2026-03-01).
 
 ## Horizon
 
@@ -15,6 +15,9 @@ Operational plan for the next 90 days after M16 completion.
 - run `python scripts/benchmark_suite_m14.py --base-url http://127.0.0.1:8080 --duration 20 --concurrency 64 --runs 1`
 3. Validate ingestion health:
 - verify worker logs and source update freshness.
+4. Check job backlog:
+- `curl -s http://127.0.0.1:8080/metrics | grep -E "sync_jobs|export_jobs"`
+- If `sync_jobs_queued` > 10 for an extended period, restart the worker.
 
 ## Biweekly
 
@@ -35,6 +38,8 @@ bash scripts/m15_premerge_gate.sh
 bash scripts/m16_release_readiness.sh
 ```
 3. Review dependencies and security advisories (including Dependabot findings).
+4. Validate `MWDB_MY_GROUP` configuration and confirm `TLP:AMBER` is being applied to
+   indicators from that group (query: `source:mwdb AND tlp:AMBER`).
 
 ## Capacity Policy
 

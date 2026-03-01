@@ -45,7 +45,7 @@ def infer_type_from_value(value: str) -> str:
     try:
         ipaddress.ip_address(v)
         return "ip"
-    except Exception:
+    except ValueError:
         pass
     if "." in v and "/" not in v and " " not in v:
         return "domain"

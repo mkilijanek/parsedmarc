@@ -60,6 +60,9 @@ from .metrics import (
     correlation_groups_returned_total,
     cache_access_total,
     db_query_duration_seconds,
+    sync_jobs_queued,
+    sync_jobs_running,
+    export_jobs_pending,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,6 +94,12 @@ def _aggregate_fetched_count(result_data: Any) -> int:
 def create_app() -> Flask:
     cfg = Config()
     setup_logging(cfg.LOG_LEVEL)
+
+    # Warn about permissive security defaults
+    if cfg.ALLOWED_HOSTS == "*":
+        logger.warning("security_permissive_allowed_hosts", extra={"value": cfg.ALLOWED_HOSTS, "recommendation": "Set ALLOWED_HOSTS to specific hosts in production"})
+    if cfg.CORS_ORIGINS == "*":
+        logger.warning("security_permissive_cors_origins", extra={"value": cfg.CORS_ORIGINS, "recommendation": "Set CORS_ORIGINS to specific origins in production"})
 
     app = Flask(__name__)
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
@@ -1009,6 +1018,7 @@ def create_app() -> Flask:
                     updates[env_key] = _get_setting(db, _feed_value_key(feed.source_id, str(f["key"])), "", secret=False)
             if feed.source_type == "mwdb":
                 updates["MWDB_ORGANIZATIONS"] = _get_setting(db, _feed_value_key(feed.source_id, "organizations"), "", secret=False)
+                updates["MWDB_MY_GROUP"] = _get_setting(db, _feed_value_key(feed.source_id, "my_group"), "", secret=False)
 
             previous = {k: os.environ.get(k) for k in updates.keys()}
             for k, v in updates.items():
@@ -1220,6 +1230,22 @@ def create_app() -> Flask:
                 _app_log("ERROR", "scheduler", "scheduler_loop_error", metadata={"error": str(e)})
                 time.sleep(20)
 
+    def _refresh_job_backlog_metrics() -> None:
+        db = _db(read_only=True)
+        try:
+            queued = db.scalar(select(func.count()).select_from(SyncJob).where(SyncJob.status == "queued")) or 0
+            running = db.scalar(select(func.count()).select_from(SyncJob).where(SyncJob.status == "running")) or 0
+            pending = db.scalar(
+                select(func.count()).select_from(ExportJob).where(ExportJob.status.in_(["queued", "running"]))
+            ) or 0
+            sync_jobs_queued.set(int(queued))
+            sync_jobs_running.set(int(running))
+            export_jobs_pending.set(int(pending))
+        except Exception:
+            logger.warning("metrics_job_backlog_refresh_failed", exc_info=True)
+        finally:
+            db.close()
+
     @app.get("/metrics")
     @limiter.limit("30 per minute")
     def metrics():
@@ -1228,11 +1254,34 @@ def create_app() -> Flask:
             expected = f"Bearer {cfg.METRICS_AUTH_TOKEN}"
             if not hmac.compare_digest(auth, expected):
                 return jsonify({"error": "Unauthorized"}), 401
+        _refresh_job_backlog_metrics()
         return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
+    @app.get("/healthz")
+    @limiter.limit("120 per minute")
+    def healthz():
+        """Liveness probe — self-checks only, no external network calls.
+
+        Safe for F5/Nginx/Kubernetes liveness monitors. Always fast (< 50 ms).
+        Returns 200 as long as the process is alive and accepting requests.
+        """
+        return Response(
+            json.dumps({"status": "ok"}, separators=(",", ":")),
+            status=200,
+            mimetype="application/json",
+        )
 
     @app.get("/health")
     @limiter.limit("60 per minute")
     def health():
+        """Legacy combined health endpoint (DB + Redis + cached dep status).
+
+        Kept for backward compatibility. Does NOT make live external calls to MISP/MWDB;
+        uses the DepStatusCache populated by background worker runs instead.
+        For liveness monitoring use /healthz; for readiness use /readyz.
+        """
+        from .services.common import _dep_status
+
         health_cache_key = _cache_key("health", deep=True)
         try:
             r = get_redis()
@@ -1245,7 +1294,84 @@ def create_app() -> Flask:
             cache_access_total.labels(endpoint="health", status="error").inc()
             r = None
 
-        checks = {"database": False, "redis": False, "misp": False, "crowdsec": False}
+        checks: dict[str, bool] = {"database": False, "redis": False}
+        # DB check
+        try:
+            db = _db(read_only=True)
+            db.execute(select(func.now()))
+            checks["database"] = True
+        except Exception:
+            checks["database"] = False
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+        # Redis check
+        try:
+            r2 = get_redis()
+            r2.ping()
+            checks["redis"] = True
+        except Exception:
+            checks["redis"] = False
+
+        # Dependency checks: read from in-process cache (no live network calls)
+        dep_all = _dep_status.get_all()
+        if cfg.MISP_URL and cfg.MISP_API_KEY:
+            misp_entry = dep_all.get("misp") or {}
+            checks["misp"] = misp_entry.get("status") == "ok"
+        else:
+            checks["misp"] = False  # not configured
+        checks["crowdsec"] = bool(cfg.CROWDSEC_API_KEY)
+
+        # Overall status: infra (DB+Redis) must be ok; external deps are advisory
+        infra_ok = checks["database"] and checks["redis"]
+        status = "healthy" if infra_ok else "degraded"
+        payload = {"status": status, "checks": checks}
+        body = json.dumps(payload, separators=(",", ":"))
+        if r is not None:
+            try:
+                r.setex(health_cache_key, max(1, cfg.HEALTH_CACHE_TTL), body)
+            except Exception:
+                cache_access_total.labels(endpoint="health", status="error").inc()
+        return Response(body, mimetype="application/json")
+
+    @app.get("/deps")
+    @limiter.limit("30 per minute")
+    def deps():
+        """Dependency status snapshot.
+
+        Returns the last known status for each external dependency populated
+        by background worker runs and health-check functions. No live network
+        calls are made — this endpoint is always fast.
+
+        Response shape::
+
+            {
+              "misp": {
+                "status": "ok" | "degraded" | "down" | "unknown",
+                "last_ok_ts": <epoch float> | null,
+                "last_check_ts": <epoch float> | null,
+                "last_error": <str> | null,
+                "last_duration_ms": <int> | null
+              },
+              ...
+            }
+        """
+        from .services.common import _dep_status
+        payload = _dep_status.get_all()
+        return Response(json.dumps(payload, separators=(",", ":")), status=200, mimetype="application/json")
+
+    @app.get("/readyz")
+    @limiter.limit("120 per minute")
+    def readyz():
+        """Readiness probe — DB and Redis must be reachable.
+
+        Returns 503 when DB or Redis are unavailable so that load balancers
+        can stop routing traffic to this instance. Does NOT check external
+        feeds (MISP/MWDB); feed outages must not affect readiness.
+        """
+        checks = {"database": False, "redis": False}
         # DB check
         try:
             db = _db(read_only=True)
@@ -1265,30 +1391,11 @@ def create_app() -> Flask:
             checks["redis"] = True
         except Exception:
             checks["redis"] = False
-        # MISP check (lightweight)
-        if cfg.MISP_URL and cfg.MISP_API_KEY:
-            try:
-                from pymisp import PyMISP
-                m = PyMISP(cfg.MISP_URL, cfg.MISP_API_KEY, ssl=cfg.MISP_VERIFY_SSL)
-                # server version call
-                _ = m.server_settings()
-                checks["misp"] = True
-            except Exception:
-                checks["misp"] = False
-        else:
-            checks["misp"] = False
-        # CrowdSec check (auth header present)
-        checks["crowdsec"] = bool(cfg.CROWDSEC_API_KEY)
 
-        status = "healthy" if all(checks.values()) else "degraded"
+        status = "ready" if all(checks.values()) else "not_ready"
         payload = {"status": status, "checks": checks}
-        body = json.dumps(payload, separators=(",", ":"))
-        if r is not None:
-            try:
-                r.setex(health_cache_key, max(1, cfg.HEALTH_CACHE_TTL), body)
-            except Exception:
-                cache_access_total.labels(endpoint="health", status="error").inc()
-        return Response(body, mimetype="application/json")
+        code = 200 if status == "ready" else 503
+        return Response(json.dumps(payload, separators=(",", ":")), status=code, mimetype="application/json")
 
     @app.get("/")
     def index():
@@ -1317,8 +1424,12 @@ def create_app() -> Flask:
         tlp = (request.args.get("tlp") or "all").upper()
         source = (request.args.get("source") or "all").lower()
         try:
-            min_conf = int(request.args.get("min_conf")) if request.args.get("min_conf") else None
-            max_conf = int(request.args.get("max_conf")) if request.args.get("max_conf") else None
+            min_conf = request.args.get("min_conf", type=int)
+            max_conf = request.args.get("max_conf", type=int)
+            if request.args.get("min_conf") is not None and min_conf is None:
+                raise ValueError("min_conf")
+            if request.args.get("max_conf") is not None and max_conf is None:
+                raise ValueError("max_conf")
         except ValueError:
             return jsonify({"error": "min_conf/max_conf must be integers"}), 400
         limit, offset = _parse_limit_offset(default_limit=1000, max_limit=max(1, cfg.QUERY_RESULT_LIMIT_MAX))
@@ -1364,9 +1475,10 @@ def create_app() -> Flask:
             source_options.extend([str(s) for s in available_sources if s and str(s) != "all"])
             if source not in source_options:
                 source_options.append(source)
-        except Exception as e:
+        except Exception:
             db.close()
-            return jsonify({"error": str(e)}), 400
+            logger.exception("indicators_view_query_failed")
+            return jsonify({"error": "Query failed"}), 400
         finally:
             try:
                 db.close()
@@ -1556,9 +1668,10 @@ def create_app() -> Flask:
         try:
             with db_query_duration_seconds.labels(endpoint=f"export_{fmt}").time():
                 rows = _query_indicators(db, q, type_filter, tlp, source, None, None, limit=limit, offset=offset)
-        except Exception as e:
+        except Exception:
             db.close()
-            return jsonify({"error": str(e)}), 400
+            logger.exception("export_query_failed")
+            return jsonify({"error": "Query failed"}), 400
         finally:
             try:
                 db.close()
@@ -1710,12 +1823,33 @@ def create_app() -> Flask:
                 "trusted_proxy_count": _get_setting(db, "proxy.trusted_proxy_count", os.getenv("TRUSTED_PROXY_COUNT", "0")),
             }
             feed_states = {f.source_id: _read_feed_config_state(db, f) for f in feeds}
-            latest_runs = {
-                f.source_id: db.scalar(
-                    select(FeedRun).where(FeedRun.feed_source_id == f.source_id).order_by(FeedRun.started_at.desc()).limit(1)
-                )
-                for f in feeds
-            }
+            # Fetch latest run per feed in a single query
+            if feeds:
+                source_ids = [f.source_id for f in feeds]
+                from .db import engine as _engine
+                if _engine.dialect.name == "postgresql":
+                    # DISTINCT ON is PostgreSQL-specific but very efficient
+                    latest_run_rows = db.scalars(
+                        select(FeedRun)
+                        .where(FeedRun.feed_source_id.in_(source_ids))
+                        .order_by(FeedRun.feed_source_id, FeedRun.started_at.desc())
+                        .distinct(FeedRun.feed_source_id)
+                    ).all()
+                else:
+                    # Fallback for SQLite (tests): one query per feed
+                    latest_run_rows = [
+                        db.scalar(
+                            select(FeedRun)
+                            .where(FeedRun.feed_source_id == sid)
+                            .order_by(FeedRun.started_at.desc())
+                            .limit(1)
+                        )
+                        for sid in source_ids
+                    ]
+                    latest_run_rows = [r for r in latest_run_rows if r is not None]
+                latest_runs = {r.feed_source_id: r for r in latest_run_rows}
+            else:
+                latest_runs = {}
             scheduler_heartbeat = _get_setting(db, "scheduler.heartbeat", "")
         finally:
             db.close()
@@ -1967,8 +2101,10 @@ def create_app() -> Flask:
             state = _read_feed_config_state(db, feed)
             mwdb_orgs: List[Dict[str, str]] = []
             mwdb_selected_orgs: List[str] = []
+            mwdb_selected_group: str = ""
             if feed.source_type == "mwdb":
                 mwdb_selected_orgs = [x.strip() for x in _get_setting(db, _feed_value_key(feed.source_id, "organizations"), "").split(",") if x.strip()]
+                mwdb_selected_group = _get_setting(db, _feed_value_key(feed.source_id, "my_group"), "", secret=False)
                 values = {str(f["key"]): _get_feed_field_value(db, feed, f) for f in state["fields"]}
                 mwdb_orgs = _fetch_mwdb_orgs(values.get("base_url", ""), values.get("api_key", ""))
         finally:
@@ -2008,7 +2144,19 @@ def create_app() -> Flask:
                         for o in mwdb_orgs
                     ]
                 )
-                orgs_html = f"<fieldset><legend>MWDB organizations</legend>{options}</fieldset>"
+                group_options = "<option value=''>(none — use TLP:GREEN for all)</option>" + "".join(
+                    f"<option value='{_esc(str(o.get('id') or o.get('name') or ''))}'"
+                    f"{' selected' if str(o.get('id') or o.get('name') or '') == mwdb_selected_group else ''}>"
+                    f"{_esc(str(o.get('name') or o.get('id') or ''))}</option>"
+                    for o in mwdb_orgs
+                )
+                orgs_html = (
+                    f"<fieldset><legend>MWDB organizations</legend>{options}</fieldset>"
+                    f"<fieldset><legend>My MWDB group (TLP:AMBER for group-visible indicators)</legend>"
+                    f"<p style='margin:.2rem 0 .5rem'>Indicators uploaded by this group will be tagged <strong>TLP:AMBER</strong>.</p>"
+                    f"<select name='mwdb_my_group'>{group_options}</select>"
+                    f"</fieldset>"
+                )
             else:
                 orgs_html = "<p>MWDB organizations list is unavailable. Use <strong>Test connection</strong> first.</p>"
         return f"""<!doctype html>
@@ -2123,6 +2271,8 @@ if (form) {{
             if feed.source_type == "mwdb":
                 orgs = [x.strip() for x in request.form.getlist("mwdb_orgs") if x.strip()]
                 _set_setting(db, _feed_value_key(feed.source_id, "organizations"), ",".join(orgs), secret=False)
+                my_grp = (request.form.get("mwdb_my_group") or "").strip()
+                _set_setting(db, _feed_value_key(feed.source_id, "my_group"), my_grp, secret=False)
             if errors:
                 db.rollback()
                 return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Validation failed: {' '.join(errors)}"))
