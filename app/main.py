@@ -66,6 +66,7 @@ from .metrics import (
 )
 
 logger = logging.getLogger(__name__)
+_SECURITY_WARNINGS_ONCE_FILE = "/tmp/ioc-service-security-warnings.once"
 
 SUPPORTED_FIELDS = {"value","type","confidence","tlp","tags","source"}
 # Database-native export formats (formats supported by ti.export_indicators SQL function)
@@ -95,11 +96,20 @@ def create_app() -> Flask:
     cfg = Config()
     setup_logging(cfg.LOG_LEVEL)
 
-    # Warn about permissive security defaults
-    if cfg.ALLOWED_HOSTS == "*":
-        logger.warning("security_permissive_allowed_hosts", extra={"value": cfg.ALLOWED_HOSTS, "recommendation": "Set ALLOWED_HOSTS to specific hosts in production"})
-    if cfg.CORS_ORIGINS == "*":
-        logger.warning("security_permissive_cors_origins", extra={"value": cfg.CORS_ORIGINS, "recommendation": "Set CORS_ORIGINS to specific origins in production"})
+    # Warn once per container start (avoid duplicate logs from multiple Gunicorn workers).
+    should_warn = True
+    try:
+        fd = os.open(_SECURITY_WARNINGS_ONCE_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        os.close(fd)
+    except FileExistsError:
+        should_warn = False
+    except Exception:
+        should_warn = True
+    if should_warn:
+        if cfg.ALLOWED_HOSTS == "*":
+            logger.warning("security_permissive_allowed_hosts", extra={"value": cfg.ALLOWED_HOSTS, "recommendation": "Set ALLOWED_HOSTS to specific hosts in production"})
+        if cfg.CORS_ORIGINS == "*":
+            logger.warning("security_permissive_cors_origins", extra={"value": cfg.CORS_ORIGINS, "recommendation": "Set CORS_ORIGINS to specific origins in production"})
 
     app = Flask(__name__)
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
@@ -354,7 +364,7 @@ def create_app() -> Flask:
             "malwarebazaar": {
                 "display_name": "MalwareBazaar",
                 "fields": [
-                    {"key": "api_key", "label": "MalwareBazaar auth key", "secret": True, "required": True, "env": "MALWAREBAZAAR_AUTH_KEY", "placeholder": "Leave blank to keep current"},
+                    {"key": "api_key", "label": "MalwareBazaar auth key (optional; falls back to ABUSECH_AUTH_KEY)", "secret": True, "required": False, "env": "MALWAREBAZAAR_AUTH_KEY", "placeholder": "Leave blank to keep current"},
                     {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "MALWAREBAZAAR_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                 ],
             },
@@ -609,9 +619,9 @@ def create_app() -> Flask:
             resp.raise_for_status()
             return True, "MISP connection OK."
         if source_type == "malwarebazaar":
-            api_key = field_values.get("api_key", "")
+            api_key = (field_values.get("api_key", "") or cfg.ABUSECH_AUTH_KEY).strip()
             if not api_key:
-                return False, "MalwareBazaar API key is required."
+                return False, "MalwareBazaar API key is required (set MALWAREBAZAAR_AUTH_KEY or ABUSECH_AUTH_KEY)."
             resp = requests.post(
                 cfg.MALWAREBAZAAR_API_URL,
                 headers={"Auth-Key": api_key, "User-Agent": "ioc-threat-platform/1.0"},
@@ -1424,11 +1434,13 @@ def create_app() -> Flask:
         tlp = (request.args.get("tlp") or "all").upper()
         source = (request.args.get("source") or "all").lower()
         try:
+            raw_min_conf = request.args.get("min_conf")
+            raw_max_conf = request.args.get("max_conf")
             min_conf = request.args.get("min_conf", type=int)
             max_conf = request.args.get("max_conf", type=int)
-            if request.args.get("min_conf") is not None and min_conf is None:
+            if raw_min_conf is not None and raw_min_conf.strip() != "" and min_conf is None:
                 raise ValueError("min_conf")
-            if request.args.get("max_conf") is not None and max_conf is None:
+            if raw_max_conf is not None and raw_max_conf.strip() != "" and max_conf is None:
                 raise ValueError("max_conf")
         except ValueError:
             return jsonify({"error": "min_conf/max_conf must be integers"}), 400
