@@ -17,6 +17,7 @@ from .services.abusech import update_abusech_indicators
 from .services.cleanup import cleanup_old_indicators, cleanup_export_files
 from .services.correlation_snapshot import refresh_correlation_snapshots
 from .services.deps import dep_health_refresh
+from .services.common import configure_requests_tls_verify_from_env
 from .db import get_session
 from .models import AppSetting
 
@@ -48,12 +49,13 @@ def _safe_job(name: str, fn):
 def _bootstrap_proxy_env_from_settings() -> None:
     db = get_session(read_only=False)
     try:
-        keys = {"proxy.http_url", "proxy.https_url", "proxy.no_proxy"}
+        keys = {"proxy.http_url", "proxy.https_url", "proxy.no_proxy", "proxy.skip_tls_verify"}
         rows = list(db.scalars(select(AppSetting).where(AppSetting.key.in_(keys))).all())
         settings = {str(r.key): str(r.value or "") for r in rows}
         proxy_http = settings.get("proxy.http_url", "").strip()
         proxy_https = settings.get("proxy.https_url", "").strip()
         proxy_no = settings.get("proxy.no_proxy", "").strip()
+        proxy_skip_tls_verify = settings.get("proxy.skip_tls_verify", "").strip()
 
         if proxy_http:
             os.environ["HTTP_PROXY"] = proxy_http
@@ -73,6 +75,11 @@ def _bootstrap_proxy_env_from_settings() -> None:
         else:
             os.environ.pop("NO_PROXY", None)
             os.environ.pop("no_proxy", None)
+        if proxy_skip_tls_verify.lower() in {"1", "true", "yes", "on"}:
+            os.environ["REQUESTS_SKIP_TLS_VERIFY"] = "true"
+        else:
+            os.environ.pop("REQUESTS_SKIP_TLS_VERIFY", None)
+        configure_requests_tls_verify_from_env()
     except Exception:
         logger.warning("worker_proxy_bootstrap_failed", exc_info=True)
     finally:

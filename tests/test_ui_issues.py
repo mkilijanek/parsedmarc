@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from app.models import SyncJob
+from app.models import AppSetting, SyncJob
 
 
 def test_indicators_formats_links_quote_url_values(client, sample_indicators):
@@ -43,6 +43,7 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Apply filters" in html
     assert "Problems only" in html
     assert "Danger Zone" in html
+    assert "Skip TLS certificate verification for outbound HTTP requests" in html
 
 
 def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):
@@ -185,6 +186,24 @@ def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(client, s
     html = response.get_data(as_text=True)
     assert "ABUSECH_AUTH_KEY" in html
     mocked_post.assert_not_called()
+
+
+def test_admin_settings_persist_proxy_skip_tls_verify(client, sample_indicators, test_db):
+    resp = client.post(
+        "/admin/global-config",
+        data={
+            "proxy_http_url": "http://proxy.local:8080",
+            "proxy_https_url": "http://proxy.local:8080",
+            "proxy_no_proxy": "localhost,127.0.0.1",
+            "proxy_skip_tls_verify": "1",
+            "trusted_proxy_count": "1",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    row = test_db.query(AppSetting).filter(AppSetting.key == "proxy.skip_tls_verify").one_or_none()
+    assert row is not None
+    assert str(row.value) == "1"
 
 
 def test_admin_logs_tab_and_api(client, sample_indicators):

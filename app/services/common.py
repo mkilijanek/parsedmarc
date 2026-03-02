@@ -7,6 +7,9 @@ import threading
 import time
 from collections import deque
 from typing import Callable, TypeVar
+import warnings
+import requests
+from urllib3.exceptions import InsecureRequestWarning
 from requests import HTTPError
 from requests.exceptions import ProxyError, SSLError, ConnectTimeout, ReadTimeout, ConnectionError as RequestsConnectionError
 
@@ -193,6 +196,38 @@ class DepStatusCache:
 
 # Shared dep status cache — updated by services, read by /deps endpoint
 _dep_status = DepStatusCache()
+
+_REQUESTS_PATCH_LOCK = threading.Lock()
+_REQUESTS_PATCHED = False
+_REQUESTS_ORIGINAL_REQUEST = None
+
+
+def configure_requests_tls_verify_from_env() -> None:
+    """Optionally force requests TLS verification off via env toggle.
+
+    Controlled by `REQUESTS_SKIP_TLS_VERIFY` (`true`/`false`).
+    """
+    global _REQUESTS_PATCHED, _REQUESTS_ORIGINAL_REQUEST
+    skip_verify = os.getenv("REQUESTS_SKIP_TLS_VERIFY", "false").strip().lower() in {"1", "true", "yes", "on"}
+    with _REQUESTS_PATCH_LOCK:
+        if skip_verify and not _REQUESTS_PATCHED:
+            _REQUESTS_ORIGINAL_REQUEST = requests.sessions.Session.request
+
+            def _patched_request(self, method, url, **kwargs):
+                kwargs.setdefault("verify", False)
+                return _REQUESTS_ORIGINAL_REQUEST(self, method, url, **kwargs)
+
+            requests.sessions.Session.request = _patched_request
+            warnings.filterwarnings("ignore", category=InsecureRequestWarning)
+            _REQUESTS_PATCHED = True
+            logger.warning("requests_tls_verify_disabled_by_env")
+            return
+        if (not skip_verify) and _REQUESTS_PATCHED and _REQUESTS_ORIGINAL_REQUEST is not None:
+            requests.sessions.Session.request = _REQUESTS_ORIGINAL_REQUEST
+            warnings.filterwarnings("default", category=InsecureRequestWarning)
+            _REQUESTS_PATCHED = False
+            _REQUESTS_ORIGINAL_REQUEST = None
+            logger.info("requests_tls_verify_restored")
 
 
 def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay: float = 1.0, max_delay: float = 30.0, jitter: float = 0.2) -> T:
