@@ -123,8 +123,6 @@ Headers:
 ```bash
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
 ABUSECH_AUTH_KEY=your-key
-# optional override:
-# MALWAREBAZAAR_AUTH_KEY=your-key
 MALWAREBAZAAR_SINCE_DATE=2025-01-01  # Optional
 MALWAREBAZAAR_TAGS=TrickBot,Emotet
 MALWAREBAZAAR_LIMIT=1000

@@ -368,7 +368,6 @@ def create_app() -> Flask:
             "malwarebazaar": {
                 "display_name": "MalwareBazaar",
                 "fields": [
-                    {"key": "api_key", "label": "MalwareBazaar auth key (optional; falls back to ABUSECH_AUTH_KEY)", "secret": True, "required": False, "env": "MALWAREBAZAAR_AUTH_KEY", "placeholder": "Leave blank to keep current"},
                     {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "MALWAREBAZAAR_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                 ],
             },
@@ -466,6 +465,10 @@ def create_app() -> Flask:
                     "env": str(field_def.get("env") or ""),
                 }
             )
+        if feed.source_type == "malwarebazaar":
+            shared_key = _get_setting(db, _feed_secret_key("abusech", "api_key"), "", secret=True)
+            if not (shared_key or cfg.ABUSECH_AUTH_KEY):
+                missing.append("abuse.ch auth key (ABUSECH_AUTH_KEY)")
         return {
             "source_id": feed.source_id,
             "source_type": feed.source_type,
@@ -623,9 +626,9 @@ def create_app() -> Flask:
             resp.raise_for_status()
             return True, "MISP connection OK."
         if source_type == "malwarebazaar":
-            api_key = (field_values.get("api_key", "") or cfg.ABUSECH_AUTH_KEY).strip()
+            api_key = (cfg.ABUSECH_AUTH_KEY or "").strip()
             if not api_key:
-                return False, "MalwareBazaar API key is required (set MALWAREBAZAAR_AUTH_KEY or ABUSECH_AUTH_KEY)."
+                return False, "ABUSECH_AUTH_KEY is required for MalwareBazaar connection test."
             resp = requests.post(
                 cfg.MALWAREBAZAAR_API_URL,
                 headers={"Auth-Key": api_key, "User-Agent": "ioc-threat-platform/1.0"},
@@ -1034,6 +1037,10 @@ def create_app() -> Flask:
             if feed.source_type == "mwdb":
                 updates["MWDB_ORGANIZATIONS"] = _get_setting(db, _feed_value_key(feed.source_id, "organizations"), "", secret=False)
                 updates["MWDB_MY_GROUP"] = _get_setting(db, _feed_value_key(feed.source_id, "my_group"), "", secret=False)
+            if feed.source_type == "malwarebazaar":
+                shared_key = _get_setting(db, _feed_secret_key("abusech", "api_key"), "", secret=True)
+                if shared_key:
+                    updates["ABUSECH_AUTH_KEY"] = shared_key
 
             previous = {k: os.environ.get(k) for k in updates.keys()}
             for k, v in updates.items():

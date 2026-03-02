@@ -84,7 +84,6 @@ class Config:
 
     MALWAREBAZAAR_SINCE_DATE: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_SINCE_DATE", ""))
     MALWAREBAZAAR_API_URL: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_API_URL", "https://mb-api.abuse.ch/api/v1/"))
-    MALWAREBAZAAR_AUTH_KEY: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_AUTH_KEY", _env_str("ABUSECH_AUTH_KEY", "")))
     MALWAREBAZAAR_TAGS: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_TAGS", ""))
     MALWAREBAZAAR_LIMIT: int = field(default_factory=lambda: _env_int("MALWAREBAZAAR_LIMIT", 1000))
     MWDB_URL: str = field(default_factory=lambda: _env_str("MWDB_URL", ""))

@@ -447,20 +447,10 @@ CROWDSEC_LISTS=list1,list2,list3
 
 **Type:** URL  
 **Default:** `https://mb-api.abuse.ch/api/v1/`  
-**Purpose:** MalwareBazaar API endpoint
+**Purpose:** MalwareBazaar API endpoint (authentication uses `ABUSECH_AUTH_KEY`)
 
 ```bash
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
-```
-
-#### MALWAREBAZAAR_AUTH_KEY
-
-**Type:** String (API key)  
-**Default:** Empty (optional)  
-**Purpose:** MalwareBazaar API authentication override. If empty, `ABUSECH_AUTH_KEY` is used.
-
-```bash
-MALWAREBAZAAR_AUTH_KEY=your-api-key
 ```
 
 #### MALWAREBAZAAR_SINCE_DATE
@@ -819,7 +809,6 @@ CROWDSEC_LISTS=list1,list2,list3
 
 # MalwareBazaar
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
-MALWAREBAZAAR_AUTH_KEY=your-key
 MALWAREBAZAAR_SINCE_DATE=2025-01-01
 MALWAREBAZAAR_TAGS=TrickBot,Emotet
 MALWAREBAZAAR_LIMIT=1000
