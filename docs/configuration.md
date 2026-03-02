@@ -624,6 +624,18 @@ FEED_REQUESTS_PER_MINUTE=55
 
 ## Worker Configuration
 
+### DEP_HEALTH_INTERVAL_S
+
+**Type:** Integer (seconds)
+**Default:** `60`
+**Purpose:** Interval for the dependency health refresh job that probes external services (MISP, …) and updates `/deps` independently of feed sync jobs.
+
+```bash
+DEP_HEALTH_INTERVAL_S=60
+```
+
+Set lower (e.g. `30`) for faster recovery detection; set higher to reduce probe frequency.
+
 ### ENABLE_BACKGROUND_JOBS
 
 **Type:** Boolean  

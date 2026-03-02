@@ -140,6 +140,7 @@ class Config:
     # Worker
     ENABLE_BACKGROUND_JOBS: bool = field(default_factory=lambda: _env_bool("ENABLE_BACKGROUND_JOBS", True))
     UPDATE_INTERVAL: int = field(default_factory=lambda: _env_int("UPDATE_INTERVAL", 600))
+    DEP_HEALTH_INTERVAL_S: int = field(default_factory=lambda: _env_int("DEP_HEALTH_INTERVAL_S", 60))
 
     # Security
     ALLOWED_HOSTS: str = field(default_factory=lambda: _env_str("ALLOWED_HOSTS", "*"))

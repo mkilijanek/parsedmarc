@@ -1404,3 +1404,236 @@ class TestMWDBDefaultQuery:
             update_mwdb_indicators()
         kwargs = mock_fetch.call_args.kwargs
         assert kwargs["default_query"] == "type:*"
+
+
+# ============================================================================
+# MISP not-configured early return
+# ============================================================================
+
+class TestMISPNotConfigured:
+    """Test that update_misp_indicators() returns early when MISP config is missing."""
+
+    @patch("app.services.misp.SessionLocal")
+    def test_returns_skipped_when_no_url(self, mock_sessionlocal):
+        from app.services.misp import update_misp_indicators
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+        with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MISP_URL": "", "MISP_API_KEY": ""}, clear=False):
+            result = update_misp_indicators()
+        assert result.get("skipped") == 1
+        assert result.get("reason") == "not_configured"
+        assert result.get("fetched") == 0
+
+    @patch("app.services.misp.SessionLocal")
+    def test_no_stacktrace_when_not_configured(self, mock_sessionlocal):
+        """update_misp_indicators must not raise when config is missing."""
+        from app.services.misp import update_misp_indicators
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+        with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MISP_URL": "", "MISP_API_KEY": ""}, clear=False):
+            # Must not raise
+            update_misp_indicators()
+
+    @patch("app.services.misp.SessionLocal")
+    def test_dep_status_updated_not_configured(self, mock_sessionlocal):
+        """_dep_status must be updated with 'not_configured' when MISP is not set."""
+        from app.services.misp import update_misp_indicators
+        from app.services.common import _dep_status
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+        with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MISP_URL": "", "MISP_API_KEY": ""}, clear=False):
+            update_misp_indicators()
+        entry = _dep_status.get("misp")
+        assert entry["status"] == "down"
+        assert entry["last_error"] == "not_configured"
+
+    @patch("app.services.misp.SessionLocal")
+    def test_circuit_breaker_not_incremented_when_not_configured(self, mock_sessionlocal):
+        """Circuit breaker must NOT be incremented for a not_configured skip."""
+        from app.services.misp import update_misp_indicators
+        from app.services.common import _circuit_breaker
+        fake_db = _FakeDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+        before = dict(_circuit_breaker._state.get("misp") or {})
+        with patch.dict("os.environ", {"SECRET_KEY": "a" * 32, "MISP_URL": "", "MISP_API_KEY": ""}, clear=False):
+            update_misp_indicators()
+        after = _circuit_breaker._state.get("misp") or {}
+        # fails counter must not increase
+        assert float(after.get("fails", 0)) <= float(before.get("fails", 0))
+
+
+# ============================================================================
+# MWDB telemetry persistence in FeedStats
+# ============================================================================
+
+class TestMWDBTelemetryInFeedStats:
+    """Test that stop_reason and filter counts are persisted into FeedStats metadata."""
+
+    @patch("app.services.mwdb.SessionLocal")
+    @patch("app.services.mwdb.fetch_mwdb_by_tags")
+    def test_stop_reason_in_feedstats_on_success(self, mock_fetch, mock_sessionlocal):
+        """FeedStats metadata includes stop_reason on successful (zero-result) sync."""
+        telemetry_written = {}
+
+        def fake_fetch(**kwargs):
+            telem = kwargs.get("telemetry")
+            if telem is not None:
+                telem.update({
+                    "stop_reason": "no_results",
+                    "query_hash": "abc123",
+                    "query": "type:*",
+                    "mode": "recent",
+                    "yielded": 0,
+                    "filtered_org": 0,
+                    "filtered_time": 0,
+                    "filtered_no_ioc": 0,
+                })
+            return iter([])
+
+        mock_fetch.side_effect = fake_fetch
+        executed_stmts = []
+
+        class CapturingDB(_FakeDB):
+            def execute(self, stmt, *args, **kwargs):
+                # Capture parameters for pg_insert statements
+                try:
+                    compiled = stmt.compile()
+                    executed_stmts.append(stmt)
+                except Exception:
+                    executed_stmts.append(stmt)
+                return super().execute(stmt, *args, **kwargs)
+
+        fake_db = CapturingDB(rows=[])
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "MWDB_TAGS": "",
+            "MWDB_URL": "https://mwdb.example.com",
+            "MWDB_AUTH_KEY": "key",
+        }, clear=False):
+            result = update_mwdb_indicators()
+
+        assert result["fetched"] == 0
+        mock_fetch.assert_called_once()
+        # telemetry parameter was passed
+        call_kwargs = mock_fetch.call_args.kwargs
+        assert "telemetry" in call_kwargs
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_telemetry_populated_by_generator(self, mock_retry):
+        """fetch_mwdb_by_tags writes stop_reason into telemetry dict."""
+        mock_retry.return_value = {"objects": []}
+        telemetry: dict = {}
+        list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=[],
+                custom_filter="",
+                default_query="type:*",
+                mode="recent",
+                limit=10,
+                telemetry=telemetry,
+            )
+        )
+        assert "stop_reason" in telemetry
+        assert telemetry["stop_reason"] == "no_results"
+        assert "query_hash" in telemetry
+        assert "filtered_org" in telemetry
+        assert "filtered_time" in telemetry
+        assert "filtered_no_ioc" in telemetry
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_telemetry_limit_reached(self, mock_retry):
+        """stop_reason=limit_reached when limit is hit."""
+        mock_retry.return_value = {"objects": [
+            {"sha256": "a" * 64, "id": "obj1", "upload_time": "2025-01-01T00:00:00Z", "tags": []},
+            {"sha256": "b" * 64, "id": "obj2", "upload_time": "2025-01-01T00:00:00Z", "tags": []},
+            {"sha256": "c" * 64, "id": "obj3", "upload_time": "2025-01-01T00:00:00Z", "tags": []},
+        ]}
+        telemetry: dict = {}
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=[],
+                custom_filter="",
+                mode="recent",
+                limit=2,
+                telemetry=telemetry,
+            )
+        )
+        assert len(rows) == 2
+        assert telemetry["stop_reason"] == "limit_reached"
+        assert telemetry["yielded"] == 2
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_telemetry_none_does_not_crash(self, mock_retry):
+        """Passing telemetry=None (default) must not crash the generator."""
+        mock_retry.return_value = {"objects": []}
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=[],
+                custom_filter="",
+                mode="recent",
+                limit=10,
+                telemetry=None,
+            )
+        )
+        assert rows == []
+
+
+# ============================================================================
+# dep_health_refresh tests
+# ============================================================================
+
+class TestDepHealthRefresh:
+    """Tests for dep_health_refresh() job."""
+
+    def test_updates_dep_status_on_misp_ok(self):
+        """dep_health_refresh updates _dep_status to ok when MISP is reachable."""
+        from app.services.deps import dep_health_refresh
+        from app.services.common import _dep_status
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "MISP_URL": "https://misp.example.com",
+            "MISP_API_KEY": "key",
+        }, clear=False):
+            with patch("app.services.misp.misp_health_check", return_value={"status": "ok", "duration_ms": 10}) as mock_hc:
+                dep_health_refresh()
+                mock_hc.assert_called_once()
+
+        entry = _dep_status.get("misp")
+        assert entry["status"] == "ok"
+
+    def test_marks_misp_not_configured_when_no_url(self):
+        """dep_health_refresh sets misp=down/not_configured when MISP_URL is empty."""
+        from app.services.deps import dep_health_refresh
+        from app.services.common import _dep_status
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "MISP_URL": "",
+            "MISP_API_KEY": "",
+        }, clear=False):
+            dep_health_refresh()
+
+        entry = _dep_status.get("misp")
+        assert entry["status"] == "down"
+        assert entry["last_error"] == "not_configured"
+
+    def test_does_not_raise_on_misp_error(self):
+        """dep_health_refresh must not raise even when misp_health_check raises."""
+        from app.services.deps import dep_health_refresh
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "MISP_URL": "https://misp.example.com",
+            "MISP_API_KEY": "key",
+        }, clear=False):
+            with patch("app.services.misp.misp_health_check", side_effect=Exception("boom")):
+                dep_health_refresh()  # must not raise

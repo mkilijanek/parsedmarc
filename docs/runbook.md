@@ -142,3 +142,6 @@ Configure F5 (or any L4/L7 load balancer) to use `/healthz`:
 - **Do NOT use `/health`** for liveness — it checks DB/Redis on every call.
 
 `/readyz` is appropriate for load-balancer readiness (removes node when DB/Redis are unreachable).
+
+For full F5 Send String configuration, SELinux setup, and Nginx upstream troubleshooting, see:
+[docs/troubleshooting/502-bad-gateway.md](troubleshooting/502-bad-gateway.md)

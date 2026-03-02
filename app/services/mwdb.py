@@ -237,6 +237,7 @@ def fetch_mwdb_by_tags(
     retry_attempts: int = 4,
     retry_base_delay_s: float = 1.0,
     chunk_size: int = 200,
+    telemetry: Optional[Dict[str, Any]] = None,
 ) -> Iterator[Dict[str, Any]]:
     """
     MWDB: uses GET /api/object with query=Lucene syntax.
@@ -272,6 +273,20 @@ def fetch_mwdb_by_tags(
     filtered_org = 0
     filtered_time = 0
     filtered_no_ioc = 0
+
+    def _write_telemetry(reason: str) -> None:
+        if telemetry is not None:
+            telemetry.update({
+                "stop_reason": reason,
+                "query_hash": q_hash,
+                "query": q,
+                "mode": mode,
+                "yielded": yielded,
+                "filtered_org": filtered_org,
+                "filtered_time": filtered_time,
+                "filtered_no_ioc": filtered_no_ioc,
+            })
+
     with requests.Session() as session:
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         while True:
@@ -315,6 +330,7 @@ def fetch_mwdb_by_tags(
                     "filtered_org": filtered_org, "filtered_time": filtered_time,
                     "filtered_no_ioc": filtered_no_ioc,
                 })
+                _write_telemetry("no_results")
                 return
 
             page_older_than = older_than
@@ -383,6 +399,7 @@ def fetch_mwdb_by_tags(
                         "query_hash": q_hash, "filtered_org": filtered_org,
                         "filtered_time": filtered_time, "filtered_no_ioc": filtered_no_ioc,
                     })
+                    _write_telemetry("limit_reached")
                     return
 
                 older_than = obj.get("id") or older_than
@@ -393,12 +410,14 @@ def fetch_mwdb_by_tags(
                     "mode": mode, "reason": "no_older_than", "yielded": yielded,
                     "query_hash": q_hash,
                 })
+                _write_telemetry("no_older_than")
                 return
             if older_than == page_older_than:
                 logger.info("mwdb_stop_reason", extra={
                     "mode": mode, "reason": "stuck_older_than", "yielded": yielded,
                     "query_hash": q_hash,
                 })
+                _write_telemetry("stuck_older_than")
                 return
 
 
@@ -431,6 +450,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
     since = None if cfg.MWDB_NO_TIME_LIMIT else (now - timedelta(days=max(1, int(cfg.MWDB_DAYS or 0)))) if int(cfg.MWDB_DAYS or 0) > 0 else None
     organizations = _parse_org_list(cfg.MWDB_ORGANIZATIONS)
     my_group = (cfg.MWDB_MY_GROUP or "").strip() or None
+    fetch_telemetry: Dict[str, Any] = {}
     raw_rows = list(
         fetch_mwdb_by_tags(
             base_url=cfg.MWDB_URL,
@@ -447,6 +467,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
             timeout_s=max(1, int(cfg.FEED_HTTP_TIMEOUT_S)),
             retry_attempts=max(1, int(cfg.FEED_RETRY_ATTEMPTS)),
             retry_base_delay_s=max(0.1, float(cfg.FEED_RETRY_BASE_DELAY_S)),
+            telemetry=fetch_telemetry,
         )
     )
     canonical_rows: List[Dict[str, Any]] = []
@@ -530,6 +551,14 @@ def update_mwdb_indicators() -> Dict[str, int]:
             )
             db.execute(stmt)
 
+        feed_meta = {
+            "fetched": len(rows),
+            "tags": tags,
+            "organizations": organizations,
+            "days": None if cfg.MWDB_NO_TIME_LIMIT else int(cfg.MWDB_DAYS or 0),
+            "mode": mode,
+            **fetch_telemetry,
+        }
         db.execute(
             pg_insert(FeedStats.__table__).values(
                 source="mwdb",
@@ -537,14 +566,14 @@ def update_mwdb_indicators() -> Dict[str, int]:
                 last_update=now,
                 last_fetch_status="success",
                 last_fetch_error=None,
-                metadata={"fetched": len(rows), "tags": tags, "mode": mode},
+                metadata=feed_meta,
             ).on_conflict_do_update(
                 index_elements=["source", "source_id"],
                 set_={
                     "last_update": now,
                     "last_fetch_status": "success",
                     "last_fetch_error": None,
-                    "metadata": {"fetched": len(rows), "tags": tags, "organizations": organizations, "days": None if cfg.MWDB_NO_TIME_LIMIT else int(cfg.MWDB_DAYS or 0), "mode": mode},
+                    "metadata": feed_meta,
                 },
             )
         )
@@ -561,6 +590,7 @@ def update_mwdb_indicators() -> Dict[str, int]:
             cooldown_s=max(1, int(cfg.MWDB_CIRCUIT_COOLDOWN_S)),
         )
         _dep_status.update("mwdb", "down", error=str(e))
+        error_meta: Dict[str, Any] = {"stop_reason": "api_error", **fetch_telemetry}
         try:
             db.execute(
                 pg_insert(FeedStats.__table__).values(
@@ -569,13 +599,14 @@ def update_mwdb_indicators() -> Dict[str, int]:
                     last_update=now,
                     last_fetch_status="error",
                     last_fetch_error=str(e),
-                    metadata={},
+                    metadata=error_meta,
                 ).on_conflict_do_update(
                     index_elements=["source", "source_id"],
                     set_={
                         "last_update": now,
                         "last_fetch_status": "error",
                         "last_fetch_error": str(e),
+                        "metadata": error_meta,
                     },
                 )
             )
