@@ -1,0 +1,162 @@
+@startuml IOC_Service_Domain_Model
+!theme cerulean-outline
+skinparam classAttributeIconSize 0
+skinparam class {
+    BackgroundColor White
+    ArrowColor Black
+    BorderColor Black
+}
+
+title IOC Threat Intelligence Service - Domain Model
+
+class Indicator {
+    +id: Integer <<PK>>
+    +value: String <<required>>
+    +type: String <<required>>
+    +source: String <<required>>
+    +source_id: String
+    +confidence: Integer = 50
+    +tlp: String = "WHITE"
+    +is_active: Boolean = true
+    +tags: List<String>
+    +metadata: JSONB
+    +first_seen: DateTime
+    +last_seen: DateTime
+    +created_at: DateTime
+    +updated_at: DateTime
+    --
+    +to_dict(): Dict
+    +is_expired(): Boolean
+}
+
+class SyncJob {
+    +id: Integer <<PK>>
+    +job_id: String <<unique>> <<required>>
+    +feed_source_id: String <<required>>
+    +trigger_type: String = "manual"
+    +idempotency_key: String
+    +status: String = "queued|running|success|failed|cancel_requested|cancelled"
+    +error: String
+    +result_json: JSONB
+    +created_at: DateTime
+    +started_at: DateTime
+    +finished_at: DateTime
+    --
+    +mark_running()
+    +mark_success(result: Dict)
+    +mark_failed(error: String)
+    +request_cancel()
+}
+
+class Feed {
+    +id: Integer <<PK>>
+    +source_id: String <<unique>> <<required>>
+    +source_type: String <<required>>
+    +display_name: String <<required>>
+    +base_url: String
+    +auth_type: String
+    +schedule_cron: String = "*/15 * * * *"
+    +enabled: Boolean = true
+    +deleted: Boolean = false
+    +created_at: DateTime
+    +updated_at: DateTime
+}
+
+class FeedStats {
+    +id: Integer <<PK>>
+    +source: String <<required>>
+    +source_id: String
+    +total_indicators: Integer = 0
+    +active_indicators: Integer = 0
+    +inactive_indicators: Integer = 0
+    +last_update: DateTime
+    +last_fetch_status: String
+    +last_fetch_error: String
+    +metadata: JSONB
+}
+
+class FeedRun {
+    +id: Integer <<PK>>
+    +feed_source_id: String <<required>>
+    +run_id: String <<unique>> <<required>>
+    +trigger_type: String = "manual"
+    +status: String = "running"
+    +error: String
+    +fetched_count: Integer = 0
+    +started_at: DateTime
+    +finished_at: DateTime
+}
+
+class AuditLog {
+    +id: Integer <<PK>>
+    +action: String <<required>>
+    +entity_type: String
+    +entity_id: Integer
+    +user_id: String
+    +ip_address: INET
+    +metadata: JSONB
+    +created_at: DateTime
+}
+
+class ExportJob {
+    +id: Integer <<PK>>
+    +job_id: String <<unique>> <<required>>
+    +fmt: String <<required>>
+    +status: String = "queued"
+    +result_path: String
+    +error: String
+    +query_json: JSONB
+    +created_at: DateTime
+    +updated_at: DateTime
+}
+
+class AppSetting {
+    +id: Integer <<PK>>
+    +key: String <<unique>> <<required>>
+    +value: String <<required>>
+    +is_secret: Boolean = false
+    +updated_at: DateTime
+    --
+    +encrypt_value()
+    +decrypt_value(): String
+}
+
+class AppLog {
+    +id: Integer <<PK>>
+    +level: String = "INFO"
+    +component: String = "app"
+    +message: String <<required>>
+    +feed_source_id: String
+    +run_id: String
+    +metadata: JSONB
+    +created_at: DateTime
+}
+
+' Relationships
+Feed "1" -- "0..*" SyncJob : generates >
+Feed "1" -- "0..1" FeedStats : tracks >
+Feed "1" -- "0..*" FeedRun : executes >
+Feed "1" -- "0..*" AppLog : logs >
+SyncJob "1" -- "0..*" AppLog : creates >
+
+note right of Indicator
+  Core entity representing
+  an IOC (Indicator of Compromise)
+  
+  Types: ip, domain, url, hash, email
+  TLP: WHITE, GREEN, AMBER, RED
+end note
+
+note right of SyncJob
+  Async job queue for feed
+  synchronization with
+  idempotency support
+end note
+
+note right of AppSetting
+  Encrypted storage for
+  feed credentials and
+  configuration
+end note
+
+@enduml

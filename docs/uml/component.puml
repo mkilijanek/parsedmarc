@@ -1,0 +1,101 @@
+@startuml IOC_Service_Component
+!theme cerulean-outline
+
+scale 1.2
+title IOC Service - Component Diagram
+
+package "Web Application" {
+    [API Layer] as API
+    [Web UI] as WebUI
+    [Security Layer] as Security
+    [Sync Job Admin\n(retry/cancel/details)] as JobAdmin
+}
+
+package "Feed Connectors" {
+    [CrowdSec Connector] as CrowdSec
+    [MISP Connector] as MISP
+    [MalwareBazaar Connector] as Bazaar
+    [MWDB Connector] as MWDB
+    [Abuse.ch Connector] as AbuseCh
+}
+
+package "Processing" {
+    [Query Engine] as QueryEngine
+    [Export Engine] as ExportEngine
+    [Correlation Engine] as Correlation
+    [Normalizer] as Normalizer
+}
+
+[Background Worker] as Worker
+
+cloud "External APIs" {
+    [CrowdSec API]
+    [MISP Instance]
+    [MalwareBazaar API]
+    [MWDB API]
+    [abuse.ch APIs]
+}
+
+database "PostgreSQL" as Postgres
+storage "Redis Cache" as Redis
+[Reverse Proxy\nNginx] as Nginx
+
+' Connections
+Nginx --> API : HTTP/HTTPS
+Nginx --> WebUI : HTTP/HTTPS
+API --> Security : uses
+API --> QueryEngine : queries
+API --> ExportEngine : exports
+API --> Correlation : analyzes
+API --> JobAdmin : manages sync jobs
+
+WebUI --> API : internal
+WebUI --> JobAdmin : admin actions
+
+Worker --> CrowdSec : triggers
+Worker --> MISP : triggers
+Worker --> Bazaar : triggers
+Worker --> MWDB : triggers
+Worker --> AbuseCh : triggers
+
+CrowdSec --> [CrowdSec API] : HTTPS
+MISP --> [MISP Instance] : HTTPS/JSON
+Bazaar --> [MalwareBazaar API] : HTTPS
+MWDB --> [MWDB API] : HTTPS
+AbuseCh --> [abuse.ch APIs] : HTTPS
+
+CrowdSec --> Normalizer : normalizes
+MISP --> Normalizer : normalizes
+Bazaar --> Normalizer : normalizes
+MWDB --> Normalizer : normalizes
+AbuseCh --> Normalizer : normalizes
+
+Normalizer --> Postgres : persists
+QueryEngine --> Postgres : SQL
+ExportEngine --> Postgres : SQL
+Correlation --> Postgres : SQL
+
+API --> Redis : caches
+QueryEngine --> Redis : caches
+ExportEngine --> Redis : caches
+
+note right of ExportEngine
+  17 export formats:
+  - Basic: txt, csv, json, xml
+  - Firewall: fortigate, checkpoint, paloalto
+  - SIEM: sentinel, arcsight, splunk
+  - Platforms: elasticsearch, cribl, fidelis
+end note
+
+note right of QueryEngine
+  Kibana-like query parser
+  with RPN evaluation
+end note
+
+note bottom of Worker
+  Scheduled by 'schedule' library
+  with idempotency support
+  and cancel_requested handling
+end note
+
+@enduml

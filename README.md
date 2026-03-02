@@ -182,6 +182,7 @@ Contribution and quality gate:
 - CI (`.github/workflows/ci.yml`) enforces tests on Python 3.11/3.12 for pushes and PRs.
 - Performance artifacts: `docs/performance.md`, `monitoring/alerts/m12-slo-alerts.yml`, `monitoring/grafana/m12-dashboard.json`.
 - Confluence package (pages/subpages for Confluence 9.2.13): `Confluence/README.md`, `Confluence/manifest.yaml`, `Confluence/pages/*.wiki`.
+- UML diagrams and generation guide: `docs/uml/README.md`.
 
 
 ## Configuration

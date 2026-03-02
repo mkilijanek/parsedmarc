@@ -1,0 +1,82 @@
+@startuml IOC_Service_Sync_Sequence
+!theme cerulean-outline
+
+title IOC Service - Feed Synchronization Sequence
+
+actor "Admin/API" as Client
+actor Scheduler
+participant "SyncJob\nTable" as SyncJob
+participant "FeedService" as Service
+participant "External API" as API
+database "PostgreSQL" as DB
+
+== Idempotency Check ==
+Client -> Scheduler : POST /admin/sync or /api/sync
+Scheduler -> SyncJob : enqueue_sync_job(feed_id, trigger)
+activate SyncJob
+SyncJob -> SyncJob : Check existing queued/running
+alt Job already exists
+    SyncJob --> Scheduler : Return existing job
+else New job
+    SyncJob -> SyncJob : Create job record
+    SyncJob --> Scheduler : Return new job
+end
+
+deactivate SyncJob
+
+== Execute Sync ==
+Scheduler -> Service : execute_sync_job(job)
+activate Service
+
+Service -> SyncJob : mark_running()
+Service -> DB : Create FeedRun record
+
+== Fetch from External API ==
+Service -> API : fetch_indicators(params)
+activate API
+API --> Service : indicators_json
+
+deactivate API
+
+== Process Indicators ==
+loop For each indicator
+    Service -> Service : Parse and normalize
+    Service -> Service : Apply TLP rules
+    Service -> DB : UPSERT indicator
+    activate DB
+    deactivate DB
+end
+
+== Update Stats ==
+Service -> DB : Update feed_stats
+activate DB
+DB --> Service : OK
+deactivate DB
+
+Service -> SyncJob : mark_success(result)
+Service -> DB : Update FeedRun status
+
+deactivate Service
+
+== Admin Controls ==
+Client -> Scheduler : POST /admin/sync-jobs/{job_id}/cancel
+alt status=queued
+  Scheduler -> SyncJob : set status=cancelled
+  Scheduler -> DB : update FeedRun(cancelled)
+else status=running
+  Scheduler -> SyncJob : set status=cancel_requested
+  Scheduler -> DB : mark run with cancel_requested note
+end
+
+Client -> Scheduler : POST /admin/sync-jobs/{job_id}/retry
+Scheduler -> SyncJob : create new job(trigger=retry)
+Scheduler --> Client : redirect with new job_id
+
+== Error Handling ==
+alt Fetch fails
+    Service ->x API : Timeout/Error
+    Service -> SyncJob : mark_failed(error)
+    Service -> DB : Log error in FeedRun
+end
+
+@enduml

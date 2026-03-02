@@ -1,0 +1,96 @@
+@startuml IOC_Service_Deployment
+!theme cerulean-outline
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+title IOC Threat Intelligence Service - Deployment Diagram
+
+node "Docker Host" as DockerHost {
+    
+    node "Nginx Edge" as Nginx <<container>> {
+        [TLS 1.2+/HTTP2\nRate Limiting\nSecurity Headers] as TLSEdge
+    }
+    
+    node "Flask App" as App <<container>> {
+        [Gunicorn WSGI] as Gunicorn
+        [Flask App + Admin UI] as Flask
+        [Sync Job Control\n(retry/cancel/details)] as JobCtrl
+        [Prometheus Metrics] as Metrics
+    }
+    
+    node "Background Worker" as Worker <<container>> {
+        [Schedule Service] as Scheduler
+        [Sync Queue Processor] as Processor
+        [Dep Health Refresh] as DepRefresh
+        [Correlation Snapshot Refresh] as CorrRefresh
+    }
+    
+    database "PostgreSQL 16" as Postgres <<container>> {
+        [Indicators DB] as IndicatorsDB
+        [pg_trgm extension] as Trgm
+        [JSONB columns] as JSONB
+    }
+    
+    storage "Redis 7" as Redis <<container>> {
+        [Rate Limit Cache] as RateLimit
+        [Query Cache] as QueryCache
+        [Export Cache] as ExportCache
+    }
+    
+    node "Migrate Service" as Migrate <<container>> {
+        [Alembic Migrations] as Alembic
+    }
+}
+
+cloud "External APIs" as External {
+    [CrowdSec API] as CrowdSec
+    [MISP Instance] as MISP
+    [MalwareBazaar] as Bazaar
+    [MWDB] as MWDB
+    [abuse.ch\nThreatFox, URLhaus, etc.] as AbuseCh
+}
+
+' Connections
+Nginx --> App : HTTP/HTTPS
+App --> Postgres : SQLAlchemy
+App --> Redis : redis-py
+Worker --> Postgres : SQLAlchemy
+Worker --> Redis : redis-py
+Worker --> External : HTTPS/JSON
+Migrate --> Postgres : DDL/DML
+
+' Notes
+note right of Nginx
+  * TLS 1.2+
+  * HTTP/2
+  * Security Headers
+  * Rate Limiting
+end note
+
+note right of Postgres
+  * JSONB for metadata
+  * pg_trgm for search
+  * Connection pooling
+end note
+
+note right of Worker
+  * Scheduled sync jobs
+  * Per-feed idempotency
+  * Retry with backoff
+  * cancel_requested support
+  * periodic dependency refresh
+end note
+
+note bottom of App
+  Docker Compose exposes service
+  on host port 7003 -> container 8080
+end note
+
+legend right
+  |= Color |= Meaning |
+  | <#LightBlue> | Container |
+  | <#LightGreen> | External Service |
+  | <#LightYellow> | Database |
+endlegend
+
+@enduml
