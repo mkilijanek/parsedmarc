@@ -73,9 +73,9 @@ architectural changes or major stack evolution
 
 ### Control & Retry
 
--   [ ] Add retry failed job button
--   [ ] Add cancel running job
--   [ ] Add job details page
+-   [x] Add retry failed job button
+-   [x] Add cancel running job
+-   [x] Add job details page
 
 ### Health
 
