@@ -13,7 +13,7 @@ from ..config import Config
 from ..db import SessionLocal
 from ..metrics import quality_normalized_total, quality_dropped_invalid_total, quality_dedup_merged_total
 from ..models import FeedStats, Indicator
-from .common import throttle_external_request, retry_with_backoff, _circuit_breaker, _dep_status
+from .common import throttle_external_request, retry_with_backoff, _circuit_breaker, _dep_status, standardized_update_result
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -475,7 +475,12 @@ def update_mwdb_indicators() -> Dict[str, int]:
 
     if _circuit_breaker.is_open("mwdb"):
         logger.warning("mwdb_circuit_open_skipping")
-        return {"skipped": 1, "fetched": 0}
+        return standardized_update_result(
+            fetched=0,
+            deactivated=0,
+            errors=0,
+            details={"skipped": 1, "reason": "circuit_open"},
+        )
 
     tags = _parse_tag_list(cfg.MWDB_TAGS)
     mode = "tags" if tags else "recent"
@@ -614,7 +619,16 @@ def update_mwdb_indicators() -> Dict[str, int]:
         _circuit_breaker.record_success("mwdb")
         _dep_status.update("mwdb", "ok")
         logger.info("mwdb_updated", extra={"fetched": len(rows), "tags": len(tags), "mode": mode})
-        return {"fetched": len(rows)}
+        return standardized_update_result(
+            fetched=len(rows),
+            deactivated=0,
+            errors=0,
+            details={
+                "tags": tags,
+                "mode": mode,
+                "telemetry": fetch_telemetry,
+            },
+        )
     except Exception as e:
         db.rollback()
         _circuit_breaker.record_failure(

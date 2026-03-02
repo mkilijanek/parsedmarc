@@ -25,7 +25,7 @@ from ..metrics import (
     quality_dedup_merged_total,
 )
 from ..models import FeedStats, Indicator
-from .common import retry_with_backoff, throttle_external_request, _circuit_breaker
+from .common import retry_with_backoff, throttle_external_request, _circuit_breaker, standardized_update_result
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -643,7 +643,12 @@ def _upsert_source_rows(
             },
         )
     )
-    return {"fetched": len(rows)}
+    return standardized_update_result(
+        fetched=len(rows),
+        deactivated=0,
+        errors=0,
+        details={"source": source},
+    )
 
 
 def _quality_prepare_rows(source: str, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -696,13 +701,13 @@ def _validate_abusech_config(cfg: Config) -> None:
             raise RuntimeError("YARAIFY_ENABLED=true requires YARAIFY_IDENTIFIER or YARAIFY_LOOKUP_HASHES")
 
 
-def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
+def update_abusech_indicators() -> Dict[str, Any]:
     cfg = Config()
     now = datetime.now(tz=timezone.utc)
     _validate_abusech_config(cfg)
 
     auth_key = cfg.ABUSECH_AUTH_KEY
-    results: Dict[str, Dict[str, int]] = {}
+    results: Dict[str, Dict[str, Any]] = {}
 
     def _source_specs() -> List[tuple[str, bool, Any]]:
         retry_attempts = max(1, int(cfg.ABUSECH_RETRY_ATTEMPTS))
@@ -804,6 +809,15 @@ def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
         ))
         return specs
 
+    def _legacy_aliases(stats: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(stats)
+        if int(out.get("errors", 0) or 0) > 0:
+            out["error"] = int(out.get("errors", 0) or 0)
+        details_obj = out.get("details") or {}
+        if isinstance(details_obj, dict) and int(details_obj.get("skipped", 0) or 0) > 0:
+            out["skipped"] = int(details_obj.get("skipped", 0) or 0)
+        return out
+
     db = SessionLocal()
     try:
         for source, enabled, fetch_fn in _source_specs():
@@ -812,7 +826,12 @@ def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
             with feed_update_duration_seconds.labels(source=source).time():
                 if _circuit_breaker.is_open(source):
                     feed_fetch_total.labels(source=source, status="circuit_open").inc()
-                    results[source] = {"skipped": 1, "fetched": 0}
+                    results[source] = _legacy_aliases(standardized_update_result(
+                        fetched=0,
+                        deactivated=0,
+                        errors=0,
+                        details={"skipped": 1, "reason": "circuit_open"},
+                    ))
                     continue
                 try:
                     rows = fetch_fn()
@@ -844,7 +863,23 @@ def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
                     except Exception:
                         db.rollback()
                     logger.error("abusech_source_update_failed", extra={"source": source, "error": str(e)}, exc_info=True)
-                    results[source] = {"error": 1, "fetched": 0}
-        return results
+                    results[source] = _legacy_aliases(standardized_update_result(
+                        fetched=0,
+                        deactivated=0,
+                        errors=1,
+                        details={"error": str(e)},
+                    ))
+        fetched = sum(int(v.get("fetched", 0) or 0) for v in results.values())
+        deactivated = sum(int(v.get("deactivated", 0) or 0) for v in results.values())
+        errors = sum(int(v.get("errors", 0) or 0) for v in results.values())
+        out = standardized_update_result(
+            fetched=fetched,
+            deactivated=deactivated,
+            errors=errors,
+            details={"sources": results},
+        )
+        # Backward-compat: expose per-source stats at top-level for existing callers/tests.
+        out.update(results)
+        return out
     finally:
         db.close()

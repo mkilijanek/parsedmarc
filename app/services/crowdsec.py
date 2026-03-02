@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ..config import Config
 from ..db import SessionLocal
 from ..models import Indicator, FeedStats
-from .common import retry_with_backoff, throttle_external_request
+from .common import retry_with_backoff, throttle_external_request, standardized_update_result
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,12 @@ def update_crowdsec_list(list_id: str) -> Dict[str, int]:
         )
         db.commit()
 
-        return {"fetched": len(incoming)}
+        return standardized_update_result(
+            fetched=len(incoming),
+            deactivated=0,
+            errors=0,
+            details={"list_id": list_id},
+        )
     except Exception as e:
         db.rollback()
         try:
@@ -168,5 +173,26 @@ def update_all_crowdsec_lists() -> Dict[str, Dict[str, int]]:
             results[lid] = res
         except Exception as e:
             logger.error("crowdsec_list_update_failed", extra={"list_id": lid, "error": str(e)}, exc_info=True)
-            results[lid] = {"error": 1}
+            results[lid] = standardized_update_result(fetched=0, deactivated=0, errors=1, details={"list_id": lid, "error": str(e)})
     return results
+
+
+def update_crowdsec_indicators() -> Dict[str, int]:
+    """Compatibility wrapper used by scheduler.
+
+    Returns a standardized aggregate shape with per-list details.
+    """
+    per_list = update_all_crowdsec_lists()
+    fetched = 0
+    deactivated = 0
+    errors = 0
+    for value in per_list.values():
+        fetched += int(value.get("fetched", 0) or 0)
+        deactivated += int(value.get("deactivated", 0) or 0)
+        errors += int(value.get("errors", 0) or 0)
+    return standardized_update_result(
+        fetched=fetched,
+        deactivated=deactivated,
+        errors=errors,
+        details={"lists": per_list},
+    )

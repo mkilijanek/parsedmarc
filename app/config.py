@@ -135,6 +135,16 @@ class Config:
     ABUSECH_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("ABUSECH_CIRCUIT_FAIL_THRESHOLD", 3))
     ABUSECH_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("ABUSECH_CIRCUIT_COOLDOWN_S", 300))
 
+    AZURE_SENTINEL_TENANT_ID: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_TENANT_ID", ""))
+    AZURE_SENTINEL_CLIENT_ID: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_CLIENT_ID", ""))
+    AZURE_SENTINEL_AUTH_MODE: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_AUTH_MODE", "client_secret"))
+    AZURE_SENTINEL_CLIENT_SECRET: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_CLIENT_SECRET", ""))
+    AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM", ""))
+    AZURE_SENTINEL_CERT_THUMBPRINT: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_CERT_THUMBPRINT", ""))
+    AZURE_SENTINEL_SCOPE: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_SCOPE", "https://graph.microsoft.com/.default"))
+    AZURE_SENTINEL_ENDPOINT_URL: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_ENDPOINT_URL", "https://graph.microsoft.com/beta/security/tiIndicators/submitTiIndicators"))
+    AZURE_SENTINEL_CHUNK_SIZE: int = field(default_factory=lambda: _env_int("AZURE_SENTINEL_CHUNK_SIZE", 100))
+
 
     # Worker
     ENABLE_BACKGROUND_JOBS: bool = field(default_factory=lambda: _env_bool("ENABLE_BACKGROUND_JOBS", True))

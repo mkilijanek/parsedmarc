@@ -6,7 +6,7 @@ import random
 import threading
 import time
 from collections import deque
-from typing import Callable, TypeVar
+from typing import Any, Callable, TypeVar
 import warnings
 import requests
 from urllib3.exceptions import InsecureRequestWarning
@@ -267,3 +267,64 @@ def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay
                 extra["network_hint"] = "connection_error"
             logger.warning("retry_backoff", extra=extra)
             time.sleep(sleep)
+
+
+def standardized_update_result(
+    *,
+    fetched: int = 0,
+    deactivated: int = 0,
+    errors: int = 0,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "fetched": max(0, int(fetched or 0)),
+        "deactivated": max(0, int(deactivated or 0)),
+        "errors": max(0, int(errors or 0)),
+        "details": details or {},
+    }
+
+
+def sum_update_result(data: Any) -> dict[str, Any]:
+    fetched = 0
+    deactivated = 0
+    errors = 0
+
+    def _walk(node: Any) -> None:
+        nonlocal fetched, deactivated, errors
+        if isinstance(node, dict):
+            got_any = False
+            if "fetched" in node:
+                got_any = True
+                try:
+                    fetched_val = int(node.get("fetched", 0) or 0)
+                    if fetched_val > 0:
+                        fetched += fetched_val
+                except Exception:
+                    pass
+            if "deactivated" in node:
+                got_any = True
+                try:
+                    deactivated_val = int(node.get("deactivated", 0) or 0)
+                    if deactivated_val > 0:
+                        deactivated += deactivated_val
+                except Exception:
+                    pass
+            if "errors" in node:
+                got_any = True
+                try:
+                    err_val = int(node.get("errors", 0) or 0)
+                    if err_val > 0:
+                        errors += err_val
+                except Exception:
+                    pass
+            if got_any:
+                return
+            for value in node.values():
+                _walk(value)
+            return
+        if isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(data)
+    return standardized_update_result(fetched=fetched, deactivated=deactivated, errors=errors, details={})

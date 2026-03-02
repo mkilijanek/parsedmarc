@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ..config import Config
 from ..db import SessionLocal
 from ..models import Indicator, FeedStats
-from .common import retry_with_backoff, _circuit_breaker, _dep_status
+from .common import retry_with_backoff, _circuit_breaker, _dep_status, standardized_update_result
 
 logger = logging.getLogger(__name__)
 
@@ -178,11 +178,26 @@ def update_misp_indicators() -> Dict[str, int]:
             db.rollback()
         finally:
             db.close()
-        return {"skipped": 1, "fetched": 0, "reason": "not_configured"}
+        out = standardized_update_result(
+            fetched=0,
+            deactivated=0,
+            errors=0,
+            details={"skipped": 1, "reason": "not_configured"},
+        )
+        out["skipped"] = 1
+        out["reason"] = "not_configured"
+        return out
 
     if _circuit_breaker.is_open("misp"):
         logger.warning("misp_circuit_open_skipping")
-        return {"skipped": 1, "fetched": 0}
+        out = standardized_update_result(
+            fetched=0,
+            deactivated=0,
+            errors=0,
+            details={"skipped": 1, "reason": "circuit_open"},
+        )
+        out["skipped"] = 1
+        return out
 
     attrs = _fetch_misp_attributes(cfg)
 
@@ -325,7 +340,15 @@ def update_misp_indicators() -> Dict[str, int]:
             "tlp_skipped": tlp_skipped,
             "max_tlp": max_tlp,
         })
-        return {"fetched": len(attrs), "events": len(incoming_by_event), "tlp_skipped": tlp_skipped}
+        out = standardized_update_result(
+            fetched=len(attrs),
+            deactivated=0,
+            errors=0,
+            details={"events": len(incoming_by_event), "tlp_skipped": tlp_skipped},
+        )
+        out["events"] = len(incoming_by_event)
+        out["tlp_skipped"] = tlp_skipped
+        return out
     except Exception as e:
         db.rollback()
         _circuit_breaker.record_failure(

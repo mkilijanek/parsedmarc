@@ -49,7 +49,8 @@ from .security import validate_search_query, enforce_allowed_hosts, get_client_i
 from .query_parser import parse_kibana_query, Term, Token
 from .formatters import FORMATTERS
 from .services.correlation import query_correlations
-from .services.common import configure_requests_tls_verify_from_env
+from .services.common import configure_requests_tls_verify_from_env, standardized_update_result, sum_update_result
+from .routes import register_health_blueprint
 
 from .metrics import (
     request_count,
@@ -83,27 +84,7 @@ class SyncJobRef:
 
 
 def _aggregate_fetched_count(result_data: Any) -> int:
-    total = 0
-
-    def _walk(node: Any) -> None:
-        nonlocal total
-        if isinstance(node, dict):
-            if "fetched" in node:
-                try:
-                    fetched = int(node.get("fetched", 0) or 0)
-                    if fetched > 0:
-                        total += fetched
-                        return
-                except Exception:
-                    pass
-            for value in node.values():
-                _walk(value)
-        elif isinstance(node, list):
-            for item in node:
-                _walk(item)
-
-    _walk(result_data)
-    return max(0, total)
+    return int(sum_update_result(result_data).get("fetched", 0) or 0)
 
 def create_app() -> Flask:
     cfg = Config()
@@ -879,14 +860,35 @@ def create_app() -> Flask:
                 params.get("type_filter"),
                 params.get("tlp"),
                 params.get("source"),
-                None,
-                None,
+                int(params.get("min_conf")) if params.get("min_conf") is not None else None,
+                int(params.get("max_conf")) if params.get("max_conf") is not None else None,
                 limit=int(params.get("limit", 100000)),
                 offset=int(params.get("offset", 0)),
             )
-            body, _ = _render_export_body(fmt, rows)
-            out_path = out_dir / f"{job_id}.{fmt}"
-            out_path.write_text(body, encoding="utf-8")
+            out_path: Path
+            if fmt == "sentinel_graph":
+                from .services.sentinel_graph import push_indicators_to_graph
+
+                auth_mode = str(params.get("auth_mode") or _get_setting(db, "sentinel.auth_mode", cfg.AZURE_SENTINEL_AUTH_MODE)).strip() or "client_secret"
+                result = push_indicators_to_graph(
+                    indicators=rows,
+                    tenant_id=str(params.get("tenant_id") or _get_setting(db, "sentinel.tenant_id", cfg.AZURE_SENTINEL_TENANT_ID)),
+                    client_id=str(params.get("client_id") or _get_setting(db, "sentinel.client_id", cfg.AZURE_SENTINEL_CLIENT_ID)),
+                    scope=str(params.get("scope") or _get_setting(db, "sentinel.scope", cfg.AZURE_SENTINEL_SCOPE)),
+                    auth_mode=auth_mode,
+                    client_secret=str(_get_setting(db, "sentinel.client_secret", cfg.AZURE_SENTINEL_CLIENT_SECRET, secret=True)),
+                    cert_private_key_pem=str(_get_setting(db, "sentinel.cert_private_key_pem", cfg.AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM, secret=True)),
+                    cert_thumbprint=str(params.get("cert_thumbprint") or _get_setting(db, "sentinel.cert_thumbprint", cfg.AZURE_SENTINEL_CERT_THUMBPRINT)),
+                    endpoint_url=str(params.get("endpoint_url") or _get_setting(db, "sentinel.endpoint_url", cfg.AZURE_SENTINEL_ENDPOINT_URL)),
+                    chunk_size=int(params.get("chunk_size") or _get_setting(db, "sentinel.chunk_size", str(cfg.AZURE_SENTINEL_CHUNK_SIZE)) or cfg.AZURE_SENTINEL_CHUNK_SIZE),
+                    timeout_s=max(1, int(cfg.FEED_HTTP_TIMEOUT_S)),
+                )
+                out_path = out_dir / f"{job_id}.json"
+                out_path.write_text(json.dumps(result, separators=(",", ":")), encoding="utf-8")
+            else:
+                body, _ = _render_export_body(fmt, rows)
+                out_path = out_dir / f"{job_id}.{fmt}"
+                out_path.write_text(body, encoding="utf-8")
             job.status = "completed"
             job.result_path = str(out_path)
             job.error = None
@@ -912,6 +914,14 @@ def create_app() -> Flask:
 
     scheduler_lock = Lock()
     scheduler_state: Dict[str, Any] = {"active_run_id": None, "active_job_id": None, "last_minute": {}}
+
+    register_health_blueprint(
+        app,
+        limiter=limiter,
+        cfg=cfg,
+        db_factory=_db,
+        cache_key_fn=_cache_key,
+    )
 
     def _app_log(
         level: str,
@@ -1216,11 +1226,21 @@ def create_app() -> Flask:
             return {"source": feed.source_id, "result": update_mwdb_indicators()}
         if source_type == "abusech":
             from .services.abusech import update_abusech_indicators
-            result: Dict[str, Any] = {"abusech": update_abusech_indicators()}
+            base_result: Dict[str, Any] = dict(update_abusech_indicators() or {})
             if str(os.getenv("ABUSECH_BAZAAR_ENABLED", "0")).strip().lower() in {"1", "true", "yes", "on"}:
                 from .services.malwarebazaar import update_malwarebazaar_indicators
-                result["bazaar"] = update_malwarebazaar_indicators()
-            return {"source": feed.source_id, "result": result}
+                bazaar_result = update_malwarebazaar_indicators()
+                rolled = sum_update_result([base_result, bazaar_result])
+                details = dict(rolled.get("details") or {})
+                details["abusech"] = base_result
+                details["malwarebazaar"] = bazaar_result
+                base_result = standardized_update_result(
+                    fetched=int(rolled.get("fetched", 0) or 0),
+                    deactivated=int(rolled.get("deactivated", 0) or 0),
+                    errors=int(rolled.get("errors", 0) or 0),
+                    details=details,
+                )
+            return {"source": feed.source_id, "result": base_result}
         raise ValueError(f"Unknown source_type: {source_type}")
 
     def _enqueue_sync_job(feed: Feed, *, trigger_type: str, db: Session | None = None) -> tuple[SyncJob, bool]:
@@ -1582,146 +1602,6 @@ def create_app() -> Flask:
         _refresh_job_backlog_metrics()
         return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
-    @app.get("/healthz")
-    @limiter.limit("120 per minute")
-    def healthz():
-        """Liveness probe — self-checks only, no external network calls.
-
-        Safe for F5/Nginx/Kubernetes liveness monitors. Always fast (< 50 ms).
-        Returns 200 as long as the process is alive and accepting requests.
-        """
-        return Response(
-            json.dumps({"status": "ok"}, separators=(",", ":")),
-            status=200,
-            mimetype="application/json",
-        )
-
-    @app.get("/health")
-    @limiter.limit("60 per minute")
-    def health():
-        """Legacy combined health endpoint (DB + Redis + cached dep status).
-
-        Kept for backward compatibility. Does NOT make live external calls to MISP/MWDB;
-        uses the DepStatusCache populated by background worker runs instead.
-        For liveness monitoring use /healthz; for readiness use /readyz.
-        """
-        from .services.common import _dep_status
-
-        health_cache_key = _cache_key("health", deep=True)
-        try:
-            r = get_redis()
-            cached = r.get(health_cache_key)
-            if isinstance(cached, (str, bytes, bytearray)) and len(cached) > 0:
-                cache_access_total.labels(endpoint="health", status="hit").inc()
-                return Response(cached, mimetype="application/json")
-            cache_access_total.labels(endpoint="health", status="miss").inc()
-        except Exception:
-            cache_access_total.labels(endpoint="health", status="error").inc()
-            r = None
-
-        checks: dict[str, bool] = {"database": False, "redis": False}
-        # DB check
-        try:
-            db = _db(read_only=True)
-            db.execute(select(func.now()))
-            checks["database"] = True
-        except Exception:
-            checks["database"] = False
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-        # Redis check
-        try:
-            r2 = get_redis()
-            r2.ping()
-            checks["redis"] = True
-        except Exception:
-            checks["redis"] = False
-
-        # Dependency checks: read from in-process cache (no live network calls)
-        dep_all = _dep_status.get_all()
-        if cfg.MISP_URL and cfg.MISP_API_KEY:
-            misp_entry = dep_all.get("misp") or {}
-            checks["misp"] = misp_entry.get("status") == "ok"
-        else:
-            checks["misp"] = False  # not configured
-        checks["crowdsec"] = bool(cfg.CROWDSEC_API_KEY)
-
-        # Overall status: infra (DB+Redis) must be ok; external deps are advisory
-        infra_ok = checks["database"] and checks["redis"]
-        status = "healthy" if infra_ok else "degraded"
-        payload = {"status": status, "checks": checks}
-        body = json.dumps(payload, separators=(",", ":"))
-        if r is not None:
-            try:
-                r.setex(health_cache_key, max(1, cfg.HEALTH_CACHE_TTL), body)
-            except Exception:
-                cache_access_total.labels(endpoint="health", status="error").inc()
-        return Response(body, mimetype="application/json")
-
-    @app.get("/deps")
-    @limiter.limit("30 per minute")
-    def deps():
-        """Dependency status snapshot.
-
-        Returns the last known status for each external dependency populated
-        by background worker runs and health-check functions. No live network
-        calls are made — this endpoint is always fast.
-
-        Response shape::
-
-            {
-              "misp": {
-                "status": "ok" | "degraded" | "down" | "unknown",
-                "last_ok_ts": <epoch float> | null,
-                "last_check_ts": <epoch float> | null,
-                "last_error": <str> | null,
-                "last_duration_ms": <int> | null
-              },
-              ...
-            }
-        """
-        from .services.common import _dep_status
-        payload = _dep_status.get_all()
-        return Response(json.dumps(payload, separators=(",", ":")), status=200, mimetype="application/json")
-
-    @app.get("/readyz")
-    @limiter.limit("120 per minute")
-    def readyz():
-        """Readiness probe — DB and Redis must be reachable.
-
-        Returns 503 when DB or Redis are unavailable so that load balancers
-        can stop routing traffic to this instance. Does NOT check external
-        feeds (MISP/MWDB); feed outages must not affect readiness.
-        """
-        checks = {"database": False, "redis": False}
-        # DB check
-        try:
-            db = _db(read_only=True)
-            db.execute(select(func.now()))
-            checks["database"] = True
-        except Exception:
-            checks["database"] = False
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-        # Redis check
-        try:
-            r = get_redis()
-            r.ping()
-            checks["redis"] = True
-        except Exception:
-            checks["redis"] = False
-
-        status = "ready" if all(checks.values()) else "not_ready"
-        payload = {"status": status, "checks": checks}
-        code = 200 if status == "ready" else 503
-        return Response(json.dumps(payload, separators=(",", ":")), status=code, mimetype="application/json")
-
     @app.get("/")
     def index():
         db = _db(read_only=True)
@@ -2042,6 +1922,54 @@ def create_app() -> Flask:
         finally:
             db.close()
 
+    @app.post("/api/sentinel/export")
+    @limiter.limit("20 per minute")
+    def sentinel_graph_export():
+        q = request.args.get("q", "").strip() or None
+        type_filter = (request.args.get("type") or "all").lower()
+        tlp = (request.args.get("tlp") or "all").upper()
+        source = (request.args.get("source") or "all").lower()
+        min_conf = request.args.get("min_conf", type=int)
+        max_conf = request.args.get("max_conf", type=int)
+        limit, offset = _parse_limit_offset(default_limit=10000, max_limit=max(1, cfg.EXPORT_RESULT_LIMIT_MAX))
+        if limit is None or offset is None:
+            return jsonify({"error": "limit/offset must be integers"}), 400
+
+        auth_mode = (request.args.get("auth_mode") or "").strip().lower()
+        if auth_mode and auth_mode not in {"client_secret", "certificate"}:
+            return jsonify({"error": "auth_mode must be client_secret or certificate"}), 400
+
+        job_id = uuid.uuid4().hex
+        params = {
+            "q": q,
+            "type_filter": type_filter,
+            "tlp": tlp,
+            "source": source,
+            "min_conf": min_conf,
+            "max_conf": max_conf,
+            "limit": limit,
+            "offset": offset,
+            "auth_mode": auth_mode or None,
+            "tenant_id": (request.args.get("tenant_id") or "").strip() or None,
+            "client_id": (request.args.get("client_id") or "").strip() or None,
+            "scope": (request.args.get("scope") or "").strip() or None,
+            "endpoint_url": (request.args.get("endpoint_url") or "").strip() or None,
+            "cert_thumbprint": (request.args.get("cert_thumbprint") or "").strip() or None,
+            "chunk_size": request.args.get("chunk_size", type=int),
+        }
+        _persist_export_job(job_id, "sentinel_graph", params)
+        _spawn_export_job(job_id)
+        return (
+            jsonify(
+                {
+                    "job_id": job_id,
+                    "status_url": url_for("export_job_status", job_id=job_id, _external=False),
+                    "download_url": url_for("export_job_download", job_id=job_id, _external=False),
+                }
+            ),
+            202,
+        )
+
     @app.get("/export-jobs/<job_id>/download")
     @limiter.limit("30 per minute")
     def export_job_download(job_id: str):
@@ -2168,6 +2096,15 @@ def create_app() -> Flask:
                 "proxy_ca_bundle_path": _get_setting(db, "proxy.ca_bundle_path", os.getenv("REQUESTS_CA_BUNDLE", "")),
                 "proxy_skip_tls_verify": _get_setting(db, "proxy.skip_tls_verify", os.getenv("REQUESTS_SKIP_TLS_VERIFY", "0")),
                 "trusted_proxy_count": _get_setting(db, "proxy.trusted_proxy_count", os.getenv("TRUSTED_PROXY_COUNT", "0")),
+                "sentinel_tenant_id": _get_setting(db, "sentinel.tenant_id", cfg.AZURE_SENTINEL_TENANT_ID),
+                "sentinel_client_id": _get_setting(db, "sentinel.client_id", cfg.AZURE_SENTINEL_CLIENT_ID),
+                "sentinel_auth_mode": _get_setting(db, "sentinel.auth_mode", cfg.AZURE_SENTINEL_AUTH_MODE),
+                "sentinel_scope": _get_setting(db, "sentinel.scope", cfg.AZURE_SENTINEL_SCOPE),
+                "sentinel_endpoint_url": _get_setting(db, "sentinel.endpoint_url", cfg.AZURE_SENTINEL_ENDPOINT_URL),
+                "sentinel_chunk_size": _get_setting(db, "sentinel.chunk_size", str(cfg.AZURE_SENTINEL_CHUNK_SIZE)),
+                "sentinel_cert_thumbprint": _get_setting(db, "sentinel.cert_thumbprint", cfg.AZURE_SENTINEL_CERT_THUMBPRINT),
+                "sentinel_client_secret_masked": _mask_secret(_get_setting(db, "sentinel.client_secret", cfg.AZURE_SENTINEL_CLIENT_SECRET, secret=True)),
+                "sentinel_cert_private_key_masked": _mask_secret(_get_setting(db, "sentinel.cert_private_key_pem", cfg.AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM, secret=True)),
             }
             scheduler_heartbeat = _get_setting(db, "scheduler.heartbeat", "")
             recent_sync_jobs = list(
@@ -2439,8 +2376,26 @@ def create_app() -> Flask:
       <p><label>Organization CA bundle path <input type="text" name="proxy_ca_bundle_path" value="{_esc(proxy_conf['proxy_ca_bundle_path'])}" placeholder="/etc/ssl/certs/org-ca.pem"/></label></p>
       <p><label><input type="checkbox" name="proxy_skip_tls_verify" value="1" {"checked" if str(proxy_conf['proxy_skip_tls_verify']).strip().lower() in {"1","true","yes","on"} else ""}/> Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)</label></p>
       <p><label>Trusted proxy count <input type="text" name="trusted_proxy_count" value="{_esc(proxy_conf['trusted_proxy_count'])}" placeholder="0"/></label></p>
+      <h3>Azure Sentinel (Microsoft Graph)</h3>
+      <p><label>Tenant ID <input type="text" name="sentinel_tenant_id" value="{_esc(proxy_conf['sentinel_tenant_id'])}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></label></p>
+      <p><label>Client ID <input type="text" name="sentinel_client_id" value="{_esc(proxy_conf['sentinel_client_id'])}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></label></p>
+      <p><label>Auth mode
+        <select name="sentinel_auth_mode">
+          <option value="client_secret" {"selected" if str(proxy_conf['sentinel_auth_mode']).strip().lower() != "certificate" else ""}>client_secret</option>
+          <option value="certificate" {"selected" if str(proxy_conf['sentinel_auth_mode']).strip().lower() == "certificate" else ""}>certificate</option>
+        </select>
+      </label></p>
+      <p><label>Client secret (leave blank to keep current: {_esc(proxy_conf['sentinel_client_secret_masked'])}) <input type="password" name="sentinel_client_secret" value="" placeholder="Leave blank to keep current"/></label></p>
+      <p><label>Certificate private key PEM (leave blank to keep current: {_esc(proxy_conf['sentinel_cert_private_key_masked'])}) <input type="password" name="sentinel_cert_private_key_pem" value="" placeholder="-----BEGIN PRIVATE KEY-----"/></label></p>
+      <p><label>Certificate thumbprint <input type="text" name="sentinel_cert_thumbprint" value="{_esc(proxy_conf['sentinel_cert_thumbprint'])}" placeholder="hex thumbprint"/></label></p>
+      <p><label>Graph scope <input type="text" name="sentinel_scope" value="{_esc(proxy_conf['sentinel_scope'])}" placeholder="https://graph.microsoft.com/.default"/></label></p>
+      <p><label>Graph endpoint URL <input type="text" name="sentinel_endpoint_url" value="{_esc(proxy_conf['sentinel_endpoint_url'])}" placeholder="https://graph.microsoft.com/beta/security/tiIndicators/submitTiIndicators"/></label></p>
+      <p><label>Chunk size <input type="text" name="sentinel_chunk_size" value="{_esc(proxy_conf['sentinel_chunk_size'])}" placeholder="100"/></label></p>
       <button type="submit">Save configuration</button>
     </form>
+    <p><strong>Sentinel quick export:</strong>
+      <code>curl -X POST /api/sentinel/export?q=source:mwdb&amp;type=all&amp;tlp=all</code>
+    </p>
   </div>
 
   <div class="card">
@@ -2536,6 +2491,19 @@ def create_app() -> Flask:
                 "1" if (request.form.get("proxy_skip_tls_verify") or "").strip().lower() in {"1", "true", "yes", "on"} else "0",
             )
             _set_setting(db, "proxy.trusted_proxy_count", (request.form.get("trusted_proxy_count") or "0").strip())
+            _set_setting(db, "sentinel.tenant_id", (request.form.get("sentinel_tenant_id") or "").strip())
+            _set_setting(db, "sentinel.client_id", (request.form.get("sentinel_client_id") or "").strip())
+            _set_setting(db, "sentinel.auth_mode", (request.form.get("sentinel_auth_mode") or "client_secret").strip().lower())
+            _set_setting(db, "sentinel.scope", (request.form.get("sentinel_scope") or "").strip())
+            _set_setting(db, "sentinel.endpoint_url", (request.form.get("sentinel_endpoint_url") or "").strip())
+            _set_setting(db, "sentinel.chunk_size", (request.form.get("sentinel_chunk_size") or str(cfg.AZURE_SENTINEL_CHUNK_SIZE)).strip())
+            _set_setting(db, "sentinel.cert_thumbprint", (request.form.get("sentinel_cert_thumbprint") or "").strip())
+            sentinel_client_secret = (request.form.get("sentinel_client_secret") or "").strip()
+            if sentinel_client_secret:
+                _set_setting(db, "sentinel.client_secret", sentinel_client_secret, secret=True)
+            sentinel_cert_private_key_pem = (request.form.get("sentinel_cert_private_key_pem") or "").strip()
+            if sentinel_cert_private_key_pem:
+                _set_setting(db, "sentinel.cert_private_key_pem", sentinel_cert_private_key_pem, secret=True)
 
             db.commit()
             _write_proxy_env(db)

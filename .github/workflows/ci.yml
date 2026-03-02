@@ -83,14 +83,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Initialize DB schema
+      - name: Run Alembic migrations
         run: |
-          python - <<'PY'
-          from app.db import Base, engine
-          from app import models  # noqa: F401
-          Base.metadata.create_all(bind=engine)
-          print("CI schema initialized")
-          PY
+          alembic upgrade head
 
       - name: Start app
         run: |
