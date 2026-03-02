@@ -40,6 +40,8 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Recent Sync Jobs" in html
     assert "href='/admin/feed/misp/configure'" in html
     assert "Add New Feed" in html
+    assert "Apply filters" in html
+    assert "Problems only" in html
 
 
 def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):

@@ -130,6 +130,28 @@ class TestMetricsEndpoint:
         assert "db_query_duration_seconds" in text
 
 
+class TestFeedsApiEndpoint:
+    def test_api_feeds_returns_paginated_items(self, client, sample_indicators, sample_feed_stats):
+        response = client.get("/api/feeds?limit=25&offset=0")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert isinstance(data.get("items"), list)
+        assert isinstance(data.get("total"), int)
+        assert data.get("limit") == 25
+        assert data.get("offset") == 0
+        assert data["total"] >= len(data["items"])
+
+    def test_api_feeds_filters_sort_and_problems_only(self, client, sample_indicators, sample_feed_stats):
+        response = client.get(
+            "/api/feeds?status=warning&configured=all&datasource=all&sort=status&order=desc&problems_only=1"
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "items" in data
+        for item in data["items"]:
+            assert item["status"] in {"ERROR", "WARNING"}
+
+
 # ============================================================================
 # Index/Dashboard Endpoint
 # ============================================================================

@@ -912,6 +912,194 @@ def create_app() -> Flask:
         _ensure_default_feeds(db)
         return list(db.scalars(select(Feed).where(Feed.deleted == False).order_by(Feed.source_id.asc())).all())  # noqa: E712
 
+    def _latest_runs_map(db: Session, source_ids: List[str]) -> Dict[str, FeedRun]:
+        if not source_ids:
+            return {}
+        from .db import engine as _engine
+        if _engine.dialect.name == "postgresql":
+            rows = db.scalars(
+                select(FeedRun)
+                .where(FeedRun.feed_source_id.in_(source_ids))
+                .order_by(FeedRun.feed_source_id, FeedRun.started_at.desc())
+                .distinct(FeedRun.feed_source_id)
+            ).all()
+            return {r.feed_source_id: r for r in rows}
+        rows: List[FeedRun] = []
+        for sid in source_ids:
+            row = db.scalar(
+                select(FeedRun)
+                .where(FeedRun.feed_source_id == sid)
+                .order_by(FeedRun.started_at.desc())
+                .limit(1)
+            )
+            if row is not None:
+                rows.append(row)
+        return {r.feed_source_id: r for r in rows}
+
+    def _feed_operational_status(*, enabled: bool, ready: bool, latest_run: FeedRun | None) -> str:
+        if not enabled:
+            return "DISABLED"
+        if not ready:
+            return "NOT_CONFIGURED"
+        status = str(getattr(latest_run, "status", "") or "").lower()
+        if status in {"success"}:
+            return "OK"
+        if status in {"failed", "cancelled"}:
+            return "ERROR"
+        if status in {"queued", "running", "cancel_requested"}:
+            return "WARNING"
+        return "WARNING"
+
+    def _feed_last_error_at(latest_run: FeedRun | None, feed_stats_row: FeedStats | None) -> datetime | None:
+        if latest_run is not None and str(latest_run.status or "").lower() in {"failed", "cancelled"}:
+            return latest_run.finished_at or latest_run.started_at
+        if feed_stats_row is not None and feed_stats_row.last_fetch_error:
+            return feed_stats_row.last_update
+        return None
+
+    def _build_feed_items(db: Session) -> List[Dict[str, Any]]:
+        feeds = _read_feed_rows(db)
+        source_ids = [f.source_id for f in feeds]
+        latest_runs = _latest_runs_map(db, source_ids)
+        stats_rows = list(db.scalars(select(FeedStats).where(FeedStats.source_id.in_(source_ids))).all())
+        stats_map = {str(s.source_id or s.source): s for s in stats_rows}
+        items: List[Dict[str, Any]] = []
+        for feed in feeds:
+            state = _read_feed_config_state(db, feed)
+            latest = latest_runs.get(feed.source_id)
+            stats_row = stats_map.get(feed.source_id)
+            status = _feed_operational_status(enabled=bool(state["enabled"]), ready=bool(state["ready"]), latest_run=latest)
+            last_error_at = _feed_last_error_at(latest, stats_row)
+            fetched_count = int(getattr(latest, "fetched_count", 0) or 0)
+            row = {
+                "source_id": feed.source_id,
+                "display_name": feed.display_name,
+                "source_type": feed.source_type,
+                "enabled": bool(state["enabled"]),
+                "schedule_cron": str(feed.schedule_cron or ""),
+                "ready": bool(state["ready"]),
+                "missing": list(state.get("missing") or []),
+                "status": status,
+                "last_run_status": str(getattr(latest, "status", "never")),
+                "last_run_at": latest.started_at if latest is not None else None,
+                "last_error_at": last_error_at,
+                "fetched_count": fetched_count,
+            }
+            items.append(row)
+        return items
+
+    def _apply_feed_filters_and_sort(
+        items: List[Dict[str, Any]],
+        *,
+        status_filter: str,
+        datasource: str,
+        configured: str,
+        query_text: str,
+        problems_only: bool,
+        sort_by: str,
+        sort_order: str,
+    ) -> List[Dict[str, Any]]:
+        source_types = {str(item["source_type"]) for item in items}
+        status_filter = (status_filter or "").strip().upper()
+        datasource = (datasource or "").strip().lower()
+        configured = (configured or "").strip().lower()
+        query_text = (query_text or "").strip().lower()
+        problems_only = bool(problems_only)
+
+        filtered = items
+        if status_filter and status_filter != "ALL":
+            filtered = [item for item in filtered if str(item["status"]) == status_filter]
+        if datasource and datasource not in {"all", ""} and datasource in source_types:
+            filtered = [item for item in filtered if str(item["source_type"]).lower() == datasource]
+        if configured == "configured":
+            filtered = [item for item in filtered if bool(item["ready"])]
+        elif configured == "not_configured":
+            filtered = [item for item in filtered if not bool(item["ready"])]
+        if query_text:
+            filtered = [
+                item
+                for item in filtered
+                if query_text in str(item["display_name"]).lower()
+                or query_text in str(item["source_id"]).lower()
+                or query_text in str(item["source_type"]).lower()
+            ]
+        if problems_only:
+            filtered = [item for item in filtered if str(item["status"]) in {"ERROR", "WARNING"}]
+
+        def _sort_dt_key(value: Any) -> float:
+            if isinstance(value, datetime):
+                return value.timestamp()
+            return 0.0
+
+        status_rank = {"ERROR": 5, "WARNING": 4, "NOT_CONFIGURED": 3, "DISABLED": 2, "OK": 1}
+        sort_by = (sort_by or "source").strip().lower()
+        if sort_by not in {"status", "last_run_at", "last_error_at", "fetched_count", "source"}:
+            sort_by = "source"
+        reverse = (sort_order or "asc").strip().lower() == "desc"
+        if sort_by == "status":
+            filtered = sorted(
+                filtered,
+                key=lambda item: (
+                    status_rank.get(str(item["status"]), 0),
+                    str(item["source_id"]).lower(),
+                ),
+                reverse=reverse,
+            )
+        elif sort_by == "last_run_at":
+            filtered = sorted(
+                filtered,
+                key=lambda item: (
+                    _sort_dt_key(item.get("last_run_at")),
+                    str(item["source_id"]).lower(),
+                ),
+                reverse=reverse,
+            )
+        elif sort_by == "last_error_at":
+            filtered = sorted(
+                filtered,
+                key=lambda item: (
+                    _sort_dt_key(item.get("last_error_at")),
+                    str(item["source_id"]).lower(),
+                ),
+                reverse=reverse,
+            )
+        elif sort_by == "fetched_count":
+            filtered = sorted(
+                filtered,
+                key=lambda item: (
+                    int(item.get("fetched_count", 0)),
+                    str(item["source_id"]).lower(),
+                ),
+                reverse=reverse,
+            )
+        else:
+            filtered = sorted(
+                filtered,
+                key=lambda item: (str(item["source_id"]).lower(),),
+                reverse=reverse,
+            )
+        return filtered
+
+    def _parse_feed_table_params() -> Dict[str, Any]:
+        def _int_arg(name: str, default: int, minimum: int, maximum: int) -> int:
+            try:
+                value = int(request.args.get(name, str(default)))
+            except ValueError:
+                value = default
+            return max(minimum, min(maximum, value))
+
+        return {
+            "limit": _int_arg("feeds_limit", 25, 1, 100),
+            "offset": _int_arg("feeds_offset", 0, 0, 1000000),
+            "sort": (request.args.get("feeds_sort", "source") or "source").strip().lower(),
+            "order": (request.args.get("feeds_order", "asc") or "asc").strip().lower(),
+            "status": (request.args.get("feeds_status", "all") or "all").strip().upper(),
+            "datasource": (request.args.get("feeds_datasource", "all") or "all").strip().lower(),
+            "configured": (request.args.get("feeds_configured", "all") or "all").strip().lower(),
+            "q": (request.args.get("feeds_q", "") or "").strip(),
+            "problems_only": (request.args.get("feeds_problems_only", "0") or "0").strip().lower() in {"1", "true", "yes", "on"},
+        }
+
     def _db_try_advisory_lock(db: Session, lock_id: int) -> bool:
         bind = db.get_bind()
         if not bind or bind.dialect.name != "postgresql":
@@ -1857,10 +2045,28 @@ def create_app() -> Flask:
     @app.get("/admin")
     @limiter.limit("30 per minute")
     def admin_panel():
+        table_params = _parse_feed_table_params()
         db = _db()
         try:
             _ensure_default_feeds(db)
-            feeds = _read_feed_rows(db)
+            all_feed_items = _build_feed_items(db)
+            filtered_items = _apply_feed_filters_and_sort(
+                all_feed_items,
+                status_filter=str(table_params["status"]),
+                datasource=str(table_params["datasource"]),
+                configured=str(table_params["configured"]),
+                query_text=str(table_params["q"]),
+                problems_only=bool(table_params["problems_only"]),
+                sort_by=str(table_params["sort"]),
+                sort_order=str(table_params["order"]),
+            )
+            total_feeds = len(filtered_items)
+            limit = int(table_params["limit"])
+            offset = int(table_params["offset"])
+            if offset >= total_feeds and total_feeds > 0:
+                offset = max(0, ((total_feeds - 1) // max(1, limit)) * max(1, limit))
+            page_feed_items = filtered_items[offset : offset + limit]
+            datasource_options = sorted({str(item["source_type"]) for item in all_feed_items})
             feed_rows = db.scalars(select(FeedStats).order_by(FeedStats.source.asc(), FeedStats.source_id.asc())).all()
             settings_count = int(db.scalar(select(func.count()).select_from(AppSetting)) or 0)
             proxy_conf = {
@@ -1869,34 +2075,6 @@ def create_app() -> Flask:
                 "proxy_no_proxy": _get_setting(db, "proxy.no_proxy", os.getenv("NO_PROXY", "")),
                 "trusted_proxy_count": _get_setting(db, "proxy.trusted_proxy_count", os.getenv("TRUSTED_PROXY_COUNT", "0")),
             }
-            feed_states = {f.source_id: _read_feed_config_state(db, f) for f in feeds}
-            # Fetch latest run per feed in a single query
-            if feeds:
-                source_ids = [f.source_id for f in feeds]
-                from .db import engine as _engine
-                if _engine.dialect.name == "postgresql":
-                    # DISTINCT ON is PostgreSQL-specific but very efficient
-                    latest_run_rows = db.scalars(
-                        select(FeedRun)
-                        .where(FeedRun.feed_source_id.in_(source_ids))
-                        .order_by(FeedRun.feed_source_id, FeedRun.started_at.desc())
-                        .distinct(FeedRun.feed_source_id)
-                    ).all()
-                else:
-                    # Fallback for SQLite (tests): one query per feed
-                    latest_run_rows = [
-                        db.scalar(
-                            select(FeedRun)
-                            .where(FeedRun.feed_source_id == sid)
-                            .order_by(FeedRun.started_at.desc())
-                            .limit(1)
-                        )
-                        for sid in source_ids
-                    ]
-                    latest_run_rows = [r for r in latest_run_rows if r is not None]
-                latest_runs = {r.feed_source_id: r for r in latest_run_rows}
-            else:
-                latest_runs = {}
             scheduler_heartbeat = _get_setting(db, "scheduler.heartbeat", "")
             recent_sync_jobs = list(
                 db.scalars(
@@ -1924,34 +2102,126 @@ def create_app() -> Flask:
         if not feed_rows_html:
             feed_rows_html = "<tr><td colspan='5'>No feed statistics yet.</td></tr>"
 
+        def _admin_query(**kwargs: Any) -> str:
+            q = {
+                "feeds_limit": int(table_params["limit"]),
+                "feeds_offset": int(offset),
+                "feeds_sort": str(table_params["sort"]),
+                "feeds_order": str(table_params["order"]),
+                "feeds_status": str(table_params["status"]).lower(),
+                "feeds_datasource": str(table_params["datasource"]),
+                "feeds_configured": str(table_params["configured"]),
+                "feeds_q": str(table_params["q"]),
+                "feeds_problems_only": "1" if bool(table_params["problems_only"]) else "0",
+            }
+            for k, v in kwargs.items():
+                q[str(k)] = v
+            return urlencode(q)
+
         source_ctrl_html = "".join(
             [
                 (
                     "<tr>"
-                    f"<td><code>{_esc(f.source_id)}</code><br/>{_esc(f.display_name)}<br/><small>{_esc(f.source_type)}</small></td>"
-                    f"<td>{'enabled' if feed_states[f.source_id]['enabled'] else 'disabled'}</td>"
-                    f"<td>{_esc(f.schedule_cron)}</td>"
-                    f"<td>{'OK' if feed_states[f.source_id]['ready'] else 'Incomplete: ' + _esc(', '.join(feed_states[f.source_id]['missing']))}</td>"
-                    f"<td>{_esc(str(getattr(latest_runs.get(f.source_id), 'status', 'never')))}</td>"
-                    f"<td>{_esc(str(getattr(latest_runs.get(f.source_id), 'started_at', 'n/a')))}</td>"
+                    f"<td><code>{_esc(item['source_id'])}</code><br/>{_esc(item['display_name'])}<br/><small>{_esc(item['source_type'])}</small></td>"
+                    f"<td>{'enabled' if item['enabled'] else 'disabled'}</td>"
+                    f"<td>{_esc(item['schedule_cron'])}</td>"
+                    f"<td>{'OK' if item['ready'] else 'Incomplete: ' + _esc(', '.join(item['missing']))}</td>"
+                    f"<td>{_esc(item['last_run_status'])}</td>"
+                    f"<td>{_esc(str(item['last_run_at'] or 'n/a'))}</td>"
                     f"<td><form method='post' action='/admin/feed-toggle' style='display:inline'>"
-                    f"<input type='hidden' name='source' value='{_esc(f.source_id)}'/>"
-                    f"<input type='hidden' name='enabled' value='{'0' if feed_states[f.source_id]['enabled'] else '1'}'/>"
-                    f"<button type='submit'>{'Disable' if feed_states[f.source_id]['enabled'] else 'Enable'}</button>"
+                    f"<input type='hidden' name='source' value='{_esc(item['source_id'])}'/>"
+                    f"<input type='hidden' name='enabled' value='{'0' if item['enabled'] else '1'}'/>"
+                    f"<button type='submit'>{'Disable' if item['enabled'] else 'Enable'}</button>"
                     "</form> "
-                    f"<a href='/admin/feed/{_esc(f.source_id)}/configure'>Configure</a> "
+                    f"<a href='/admin/feed/{_esc(item['source_id'])}/configure'>Configure</a> "
                     f"<form method='post' action='/admin/sync' style='display:inline'>"
-                    f"<input type='hidden' name='source' value='{_esc(f.source_id)}'/>"
-                    f"<button type='submit' {'disabled' if not feed_states[f.source_id]['ready'] else ''}>Sync now</button>"
+                    f"<input type='hidden' name='source' value='{_esc(item['source_id'])}'/>"
+                    f"<button type='submit' {'disabled' if not item['ready'] else ''}>Sync now</button>"
                     "</form> "
-                    f"<form method='post' action='/admin/feed/{_esc(f.source_id)}/delete' style='display:inline' onsubmit='return confirm(\"Delete feed {_esc(f.source_id)}?\")'>"
+                    f"<form method='post' action='/admin/feed/{_esc(item['source_id'])}/delete' style='display:inline' onsubmit='return confirm(\"Delete feed {_esc(item['source_id'])}?\")'>"
                     "<button type='submit'>Delete</button>"
                     "</form></td>"
                     "</tr>"
                 )
-                for f in feeds
+                for item in page_feed_items
             ]
         )
+        if not source_ctrl_html:
+            source_ctrl_html = "<tr><td colspan='7'>No feeds match current filters.</td></tr>"
+
+        prev_offset = max(0, int(offset) - int(table_params["limit"]))
+        next_offset = int(offset) + int(table_params["limit"])
+        has_prev = int(offset) > 0
+        has_next = next_offset < total_feeds
+        page_start = (int(offset) + 1) if total_feeds > 0 else 0
+        page_end = min(int(offset) + int(table_params["limit"]), total_feeds)
+
+        feed_filter_controls = f"""
+        <form method='get' action='/admin' style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;align-items:end;margin:.7rem 0 1rem'>
+          <label>Status
+            <select name='feeds_status'>
+              <option value='all' {'selected' if str(table_params['status']) == 'ALL' else ''}>all</option>
+              <option value='ok' {'selected' if str(table_params['status']) == 'OK' else ''}>OK</option>
+              <option value='warning' {'selected' if str(table_params['status']) == 'WARNING' else ''}>WARNING</option>
+              <option value='error' {'selected' if str(table_params['status']) == 'ERROR' else ''}>ERROR</option>
+              <option value='disabled' {'selected' if str(table_params['status']) == 'DISABLED' else ''}>DISABLED</option>
+              <option value='not_configured' {'selected' if str(table_params['status']) == 'NOT_CONFIGURED' else ''}>NOT_CONFIGURED</option>
+            </select>
+          </label>
+          <label>Datasource
+            <select name='feeds_datasource'>
+              <option value='all' {'selected' if str(table_params['datasource']) in {'', 'all'} else ''}>all</option>
+              {''.join([f"<option value='{_esc(src)}' {'selected' if str(table_params['datasource']) == src else ''}>{_esc(src)}</option>" for src in datasource_options])}
+            </select>
+          </label>
+          <label>Configured
+            <select name='feeds_configured'>
+              <option value='all' {'selected' if str(table_params['configured']) == 'all' else ''}>all</option>
+              <option value='configured' {'selected' if str(table_params['configured']) == 'configured' else ''}>configured</option>
+              <option value='not_configured' {'selected' if str(table_params['configured']) == 'not_configured' else ''}>not configured</option>
+            </select>
+          </label>
+          <label>Search
+            <input type='text' name='feeds_q' value='{_esc(str(table_params['q']))}' placeholder='feed name / source id'/>
+          </label>
+          <label>Sort
+            <select name='feeds_sort'>
+              <option value='source' {'selected' if str(table_params['sort']) == 'source' else ''}>source</option>
+              <option value='status' {'selected' if str(table_params['sort']) == 'status' else ''}>status</option>
+              <option value='last_run_at' {'selected' if str(table_params['sort']) == 'last_run_at' else ''}>last_run_at</option>
+              <option value='last_error_at' {'selected' if str(table_params['sort']) == 'last_error_at' else ''}>last_error_at</option>
+              <option value='fetched_count' {'selected' if str(table_params['sort']) == 'fetched_count' else ''}>fetched_count</option>
+            </select>
+          </label>
+          <label>Order
+            <select name='feeds_order'>
+              <option value='asc' {'selected' if str(table_params['order']) == 'asc' else ''}>asc</option>
+              <option value='desc' {'selected' if str(table_params['order']) == 'desc' else ''}>desc</option>
+            </select>
+          </label>
+          <label>Per page
+            <select name='feeds_limit'>
+              <option value='25' {'selected' if int(table_params['limit']) == 25 else ''}>25</option>
+              <option value='50' {'selected' if int(table_params['limit']) == 50 else ''}>50</option>
+              <option value='100' {'selected' if int(table_params['limit']) == 100 else ''}>100</option>
+            </select>
+          </label>
+          <label style='display:flex;align-items:center;gap:.5rem'>
+            <input type='checkbox' name='feeds_problems_only' value='1' {'checked' if bool(table_params['problems_only']) else ''}/> Problems only
+          </label>
+          <input type='hidden' name='feeds_offset' value='0'/>
+          <div style='display:flex;gap:.5rem'>
+            <button type='submit'>Apply filters</button>
+            <a href='/admin'>Clear</a>
+          </div>
+        </form>
+        <p><strong>Feeds:</strong> showing {page_start}-{page_end} of {total_feeds} (server-side)</p>
+        <p>
+          {'<a href=\"/admin?' + _admin_query(feeds_offset=prev_offset) + '\">Previous</a>' if has_prev else 'Previous'} |
+          {'<a href=\"/admin?' + _admin_query(feeds_offset=next_offset) + '\">Next</a>' if has_next else 'Next'}
+        </p>
+        """
+
         recent_jobs_html = "".join(
             [
                 (
@@ -2003,7 +2273,7 @@ def create_app() -> Flask:
     .card {{ border: 1px solid var(--line); border-radius: 16px; padding: 1rem; margin-bottom: 1rem; background: var(--card); }}
     table {{ width: 100%; border-collapse: collapse; }}
     th, td {{ border-bottom: 1px solid var(--line); padding: .5rem; text-align: left; vertical-align: top; }}
-    input[type=text], input[type=password] {{ width: 100%; padding: .45rem; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }}
+    input[type=text], input[type=password], select {{ width: 100%; padding: .45rem; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }}
     button {{ padding: .5rem .8rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }}
     fieldset {{ border: 1px solid var(--line); border-radius: 12px; margin: .75rem 0; padding: .75rem; }}
     .toast {{ border:1px solid var(--line); border-radius:10px; padding:.55rem .7rem; margin:.5rem 0 1rem; background:var(--card); }}
@@ -2053,6 +2323,7 @@ def create_app() -> Flask:
       <input type="hidden" name="source" value="all"/>
       <button type="submit">Sync all enabled sources</button>
     </form>
+    {feed_filter_controls}
     <table>
       <thead><tr><th>Source</th><th>Enabled</th><th>Schedule</th><th>Config Readiness</th><th>Last Run Status</th><th>Last Run At</th><th>Actions</th></tr></thead>
       <tbody>{source_ctrl_html}</tbody>
@@ -2693,6 +2964,70 @@ if (form) {{
             if source_name != "all" and not queued:
                 return jsonify({"error": "Configuration incomplete", "source": source_name, "blocked": blocked}), 400
             return jsonify({"source": source_name, "jobs": queued, "blocked": blocked}), 202
+        finally:
+            db.close()
+
+    @app.get("/api/feeds")
+    @limiter.limit("60 per minute")
+    def api_feeds():
+        def _int_arg(name: str, default: int, minimum: int, maximum: int) -> int:
+            try:
+                value = int(request.args.get(name, str(default)))
+            except ValueError:
+                value = default
+            return max(minimum, min(maximum, value))
+
+        limit = _int_arg("limit", 25, 1, 100)
+        offset = _int_arg("offset", 0, 0, 1000000)
+        sort_by = (request.args.get("sort", "source") or "source").strip().lower()
+        sort_order = (request.args.get("order", "asc") or "asc").strip().lower()
+        status_filter = (request.args.get("status", "all") or "all").strip().upper()
+        datasource = (request.args.get("datasource", "all") or "all").strip().lower()
+        configured = (request.args.get("configured", "all") or "all").strip().lower()
+        query_text = (request.args.get("q", "") or "").strip()
+        problems_only = (request.args.get("problems_only", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+
+        db = _db(read_only=True)
+        try:
+            all_items = _build_feed_items(db)
+            filtered = _apply_feed_filters_and_sort(
+                all_items,
+                status_filter=status_filter,
+                datasource=datasource,
+                configured=configured,
+                query_text=query_text,
+                problems_only=problems_only,
+                sort_by=sort_by,
+                sort_order=sort_order,
+            )
+            total = len(filtered)
+            if offset >= total and total > 0:
+                offset = max(0, ((total - 1) // max(1, limit)) * max(1, limit))
+            page = filtered[offset : offset + limit]
+            return jsonify(
+                {
+                    "items": [
+                        {
+                            **item,
+                            "last_run_at": item["last_run_at"].isoformat() if isinstance(item.get("last_run_at"), datetime) else None,
+                            "last_error_at": item["last_error_at"].isoformat() if isinstance(item.get("last_error_at"), datetime) else None,
+                        }
+                        for item in page
+                    ],
+                    "total": total,
+                    "limit": limit,
+                    "offset": offset,
+                    "sort": sort_by,
+                    "order": sort_order,
+                    "filters": {
+                        "status": status_filter,
+                        "datasource": datasource,
+                        "configured": configured,
+                        "q": query_text,
+                        "problems_only": problems_only,
+                    },
+                }
+            )
         finally:
             db.close()
 
