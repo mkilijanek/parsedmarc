@@ -1,0 +1,186 @@
+@startuml IOC_Service_ER_Diagram
+!theme cerulean-outline
+
+scale 0.9
+title IOC Threat Intelligence Service - Database Schema (PostgreSQL)
+
+entity "indicators" as Indicators {
+    * id : INTEGER <<PK>>
+    --
+    * uuid : UUID <<unique>>
+    * value : TEXT
+    * type : VARCHAR(50)
+    * source : VARCHAR(100)
+    source_id : TEXT
+    * confidence : INTEGER = 50
+    * tlp : VARCHAR(20) = 'WHITE'
+    * is_active : BOOLEAN = true
+    * tags : TEXT[]
+    * metadata : JSONB
+    * first_seen : TIMESTAMP
+    * last_seen : TIMESTAMP
+    * created_at : TIMESTAMP
+    * updated_at : TIMESTAMP
+    --
+    Indexes:
+    - idx_indicators_value_type_active
+    - idx_indicators_active_last_seen
+    - idx_indicators_active_type_last_seen
+    - idx_indicators_active_source_last_seen
+    - idx_indicators_active_tlp_conf_last_seen
+}
+
+entity "sync_jobs" as SyncJobs {
+    * id : INTEGER <<PK>>
+    --
+    * job_id : VARCHAR(64) <<unique>>
+    * feed_source_id : VARCHAR(120)
+    * trigger_type : VARCHAR(32) = 'manual'
+    idempotency_key : VARCHAR(200)
+    * status : VARCHAR(32) = 'queued'
+    error : TEXT
+    * result_json : JSONB
+    * created_at : TIMESTAMP
+    started_at : TIMESTAMP
+    finished_at : TIMESTAMP
+    --
+    Indexes:
+    - idx_sync_jobs_feed_status
+    - idx_sync_jobs_status_created
+    - idx_sync_jobs_trigger_status
+}
+
+entity "feeds" as Feeds {
+    * id : INTEGER <<PK>>
+    --
+    * source_id : VARCHAR(120) <<unique>>
+    * source_type : VARCHAR(80)
+    * display_name : VARCHAR(200)
+    base_url : TEXT
+    auth_type : VARCHAR(50)
+    * schedule_cron : VARCHAR(64) = '*/15 * * * *'
+    * enabled : BOOLEAN = true
+    * deleted : BOOLEAN = false
+    * created_at : TIMESTAMP
+    * updated_at : TIMESTAMP
+}
+
+entity "feed_stats" as FeedStats {
+    * id : INTEGER <<PK>>
+    --
+    * source : VARCHAR(100)
+    source_id : TEXT
+    * total_indicators : INTEGER = 0
+    * active_indicators : INTEGER = 0
+    * inactive_indicators : INTEGER = 0
+    * last_update : TIMESTAMP
+    last_fetch_status : VARCHAR(50)
+    last_fetch_error : TEXT
+    * metadata : JSONB
+    --
+    Constraints:
+    - UNIQUE(source, source_id)
+}
+
+entity "feed_runs" as FeedRuns {
+    * id : INTEGER <<PK>>
+    --
+    * feed_source_id : VARCHAR(120)
+    * run_id : VARCHAR(64) <<unique>>
+    * trigger_type : VARCHAR(32) = 'manual'
+    * status : VARCHAR(32) = 'running'
+    error : TEXT
+    * fetched_count : INTEGER = 0
+    * started_at : TIMESTAMP
+    finished_at : TIMESTAMP
+    --
+    Indexes:
+    - idx_feed_runs_feed_started
+    - idx_feed_runs_status_started
+}
+
+entity "audit_log" as AuditLog {
+    * id : INTEGER <<PK>>
+    --
+    * action : VARCHAR(50)
+    entity_type : VARCHAR(50)
+    entity_id : INTEGER
+    user_id : VARCHAR(100)
+    ip_address : INET
+    * metadata : JSONB
+    * created_at : TIMESTAMP
+}
+
+entity "app_logs" as AppLogs {
+    * id : INTEGER <<PK>>
+    --
+    * level : VARCHAR(16) = 'INFO'
+    * component : VARCHAR(64) = 'app'
+    * message : TEXT
+    feed_source_id : VARCHAR(120)
+    run_id : VARCHAR(64)
+    * metadata : JSONB
+    * created_at : TIMESTAMP
+    --
+    Indexes:
+    - idx_app_logs_created
+    - idx_app_logs_feed_created
+}
+
+entity "export_jobs" as ExportJobs {
+    * id : INTEGER <<PK>>
+    --
+    * job_id : VARCHAR(64) <<unique>>
+    * fmt : VARCHAR(32)
+    * status : VARCHAR(32) = 'queued'
+    result_path : TEXT
+    error : TEXT
+    * query_json : JSONB
+    * created_at : TIMESTAMP
+    * updated_at : TIMESTAMP
+}
+
+entity "app_settings" as AppSettings {
+    * id : INTEGER <<PK>>
+    --
+    * key : VARCHAR(120) <<unique>>
+    * value : TEXT
+    * is_secret : BOOLEAN = false
+    * updated_at : TIMESTAMP
+}
+
+' Relationships
+Feeds ||--o{ SyncJobs : "generates"
+Feeds ||--o| FeedStats : "tracks"
+Feeds ||--o{ FeedRuns : "executes"
+Feeds ||--o{ AppLogs : "logs"
+SyncJobs ||--o{ AppLogs : "creates"
+
+note right of Indicators
+  Core IOC storage with
+  PostgreSQL-specific features:
+  - JSONB for metadata
+  - Array for tags
+  - Multiple indexes for performance
+end note
+
+note right of SyncJobs
+  Job queue with idempotency
+  support for reliable
+  background processing
+end note
+
+note right of AppSettings
+  Encrypted storage for
+  credentials and secrets
+  using AES-GCM
+end note
+
+legend bottom
+  |= Symbol |= Meaning |
+  | * | NOT NULL |
+  | <<PK>> | Primary Key |
+  | <<unique>> | Unique Constraint |
+endlegend
+
+@enduml

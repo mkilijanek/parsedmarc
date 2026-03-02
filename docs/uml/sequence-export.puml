@@ -1,0 +1,90 @@
+@startuml IOC_Service_Export_Sequence
+!theme cerulean-outline
+
+title IOC Service - Indicator Export Sequence
+
+actor Client
+participant "FlaskApp\n/main.py" as Flask
+participant "Security\n/security.py" as Security
+participant "QueryParser\n/query_parser.py" as Parser
+participant "Formatter\n/formatters.py" as Formatter
+database "PostgreSQL" as DB
+participant "Redis\nCache" as Cache
+
+== Request Validation ==
+Client -> Flask : GET /indicators/<fmt>?q=...
+activate Flask
+
+Flask -> Security : validate_search_query(q)
+activate Security
+
+alt Invalid query
+    Security --> Flask : False
+    Flask --> Client : 400 Bad Request
+else Valid query
+    Security --> Flask : True
+end
+deactivate Security
+
+== Rate Limit Check ==
+Flask -> Cache : Check global RPS
+activate Cache
+alt Rate exceeded
+    Cache --> Flask : Exceeded
+    Flask --> Client : 429 Too Many Requests
+end
+Cache --> Flask : OK
+deactivate Cache
+
+== Query Parsing ==
+Flask -> Parser : parse_kibana_query(q)
+activate Parser
+Parser --> Flask : rpn_tokens
+deactivate Parser
+
+== Cache Check ==
+Flask -> Cache : Check cached result
+activate Cache
+alt Cache hit
+    Cache --> Flask : cached_data
+    Flask --> Client : Return cached response
+end
+Cache --> Flask : Miss
+deactivate Cache
+
+== Database Query ==
+Flask -> DB : query_indicators(rpn, filters)
+activate DB
+DB --> Flask : indicators[]
+deactivate DB
+
+== Result Size Check ==
+alt Large result (>5000)
+    Flask -> Flask : Create async ExportJob
+    Flask --> Client : 202 Accepted + job_id
+else Small result
+    Flask -> Formatter : format_export(fmt, indicators)
+    activate Formatter
+    Formatter --> Flask : formatted_data
+    deactivate Formatter
+    
+    Flask -> Cache : Store in cache
+    Flask --> Client : 200 OK + formatted_data
+end
+
+deactivate Flask
+
+== Async Export Completion ==
+participant "ExportJob\nWorker" as Worker
+participant "File\nSystem" as FS
+
+Flask -> Worker : Spawn export job
+activate Worker
+Worker -> DB : Query full result set
+Worker -> Formatter : format_export
+Worker -> FS : Write to file
+Worker -> DB : Update job status = completed
+Worker --> Flask : Notify completion
+deactivate Worker
+
+@enduml

@@ -97,9 +97,9 @@ Documentation and runbooks for RHEL deployments, SELinux, Nginx, and F5 monitors
 - [x] Include F5 SNI/Host header monitor notes
 - [x] Include minimal `ss/curl` triage flow
 - [x] Link runbook from `DEPLOYMENT.md`
-- [ ] Update `docs/uml/*.puml` to match current architecture and APIs
-- [ ] Regenerate UML rendered outputs (PNG/SVG where applicable) from current `.puml` sources
-- [ ] Link UML docs from `docs/README.md` and release notes as 1.2.x documentation scope
+- [x] Update `docs/uml/*.puml` to match current architecture and APIs
+- [x] Regenerate UML rendered outputs (PNG/SVG where applicable) from current `.puml` sources
+- [x] Link UML docs from `docs/README.md` and release notes as 1.2.x documentation scope
 
 **Definition of Done**
 - Documented fix paths for:

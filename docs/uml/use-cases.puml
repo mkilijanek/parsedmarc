@@ -1,0 +1,88 @@
+@startuml IOC_Service_Use_Cases
+!theme cerulean-outline
+
+title IOC Threat Intelligence Service - Use Case Diagram
+
+left to right direction
+
+actor "Security Analyst" as Analyst
+actor "Administrator" as Admin
+actor "External System" as External <<automated>>
+
+rectangle "IOC Service" {
+    
+    package "Core Functions" {
+        usecase "Search Indicators" as UC1
+        usecase "Export IOCs" as UC2
+        usecase "View Correlations" as UC3
+        usecase "View Dashboard" as UC4
+    }
+    
+    package "Feed Management" {
+        usecase "Configure Feeds" as UC5
+        usecase "Trigger Sync" as UC6
+        usecase "View Logs" as UC7
+        usecase "Test Connection" as UC8
+        usecase "Add Feed" as UC9
+        usecase "Edit Feed" as UC10
+        usecase "Disable Feed" as UC11
+        usecase "Configure Schedule" as UC12
+    }
+    
+    package "Integration" {
+        usecase "Ingest via API" as UC13
+        usecase "Monitor Metrics" as UC14
+        usecase "API Export" as UC15
+        usecase "Auto-sync Feeds" as UC16
+    }
+}
+
+' Analyst relationships
+Analyst --> UC1
+Analyst --> UC2
+Analyst --> UC3
+Analyst --> UC4
+
+' Admin relationships  
+Admin --> UC5
+Admin --> UC6
+Admin --> UC7
+Admin --> UC8
+Admin --> UC9
+Admin --> UC10
+Admin --> UC11
+
+' External System relationships
+External --> UC13
+External --> UC14
+External --> UC15
+External --> UC16
+
+' Include relationships
+UC9 ..> UC8 : <<include>>
+UC10 ..> UC8 : <<extend>>
+UC6 ..> UC16 : <<include>>
+
+' Note
+note right of UC2
+  17 export formats:
+  - TXT, CSV, JSON, XML
+  - FortiGate, Palo Alto, Checkpoint
+  - Sentinel, ArcSight, Splunk
+  - Elasticsearch, Fidelis, Cribl
+end note
+
+note right of UC1
+  Kibana-like search:
+  - Field:value syntax
+  - AND/OR/NOT operators
+  - Wildcard support
+end note
+
+note bottom of UC16
+  Background worker runs
+  scheduled sync jobs
+  with idempotency
+end note
+
+@enduml

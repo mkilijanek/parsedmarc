@@ -1,0 +1,87 @@
+@startuml IOC_Service_Ingestion_Activity
+!theme cerulean-outline
+
+title IOC Service - Indicator Ingestion Workflow
+
+start
+
+:Scheduler triggers sync;
+
+:Check idempotency key;
+
+if (Job exists?) then (Yes)
+    :Skip duplicate;
+    stop
+else (No)
+endif
+
+:Create SyncJob record;
+:Mark job as running;
+
+:Acquire advisory lock;
+
+partition "External API Fetch" {
+    :Fetch from external API;
+    
+    if (Fetch successful?) then (Yes)
+    else (No)
+        :Log error;
+        :Mark job as failed;
+        :Release advisory lock;
+        stop
+    endif
+}
+
+partition "Processing" {
+    :Parse JSON response;
+    
+    while (For each indicator) is (more)
+        :Normalize value;
+        :Determine type (ip/domain/url/hash/email);
+        
+        :Apply TLP rules;
+        note right
+            CrowdSec always TLP:AMBER
+        end note
+        
+        :Calculate confidence;
+        
+        :Apply tags;
+        
+        partition "Database Upsert" {
+            :UPSERT indicator;
+            note right
+                ON CONFLICT (value, source, source_id)
+                DO UPDATE SET
+                  last_seen = NOW(),
+                  is_active = TRUE
+            end note
+        }
+    endwhile (done)
+}
+
+partition "Cleanup" {
+    :Deactivate missing indicators;
+    note right
+        Set is_active=FALSE
+        for indicators not in
+        current fetch
+    end note
+}
+
+partition "Statistics" {
+    :Update feed_stats;
+    note right
+        Update counts,
+        last_fetch_status,
+        metadata
+    end note
+}
+
+:Mark job as success;
+:Release advisory lock;
+:Log completion;
+
+stop
+
+@enduml

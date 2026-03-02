@@ -1,0 +1,766 @@
+{
+  "_type": "Project",
+  "_id": "AAAAAAFF+h6SjaM2Hec=",
+  "name": "IOC Threat Intelligence Service - System Architecture",
+  "ownedElements": [
+    {
+      "_type": "UMLModel",
+      "_id": "AAAAAAGVkKjxQhYf3Gc=",
+      "_parent": "AAAAAAFF+h6SjaM2Hec=",
+      "name": "Deployment Diagram",
+      "ownedElements": [
+        {
+          "_type": "UMLDeploymentDiagram",
+          "_id": "AAAAAAGVkKk+MhYgBqc=",
+          "_parent": "AAAAAAGVkKjxQhYf3Gc=",
+          "name": "Production Deployment",
+          "ownedViews": [
+            {
+              "_type": "UMLNodeView",
+              "_id": "AAAAAAGVkKlekhYhHcI=",
+              "_parent": "AAAAAAGVkKk+MhYgBqc=",
+              "model": "AAAAAAGVkKlekhYiGHs=",
+              "subViews": [
+                {
+                  "_type": "UMLNameCompartmentView",
+                  "_id": "AAAAAAGVkKlekhYjJRo=",
+                  "_parent": "AAAAAAGVkKlekhYhHcI=",
+                  "model": "AAAAAAGVkKlekhYiGHs=",
+                  "name": "«device»\nDocker Host",
+                  "font": "Arial;13;0"
+                }
+              ],
+              "containedViews": [
+                {
+                  "_type": "UMLNodeView",
+                  "_id": "AAAAAAGVkKoGchYkPiQ=",
+                  "_parent": "AAAAAAGVkKlekhYhHcI=",
+                  "model": "AAAAAAGVkKoGchYlMjw=",
+                  "subViews": [
+                    {
+                      "_type": "UMLNameCompartmentView",
+                      "_id": "AAAAAAGVkKoGchYmcpY=",
+                      "_parent": "AAAAAAGVkKoGchYkPiQ=",
+                      "model": "AAAAAAGVkKoGchYlMjw=",
+                      "name": "«container»\nnginx:1.27-alpine",
+                      "font": "Arial;11;0"
+                    }
+                  ],
+                  "name": "Nginx Edge",
+                  "stereotype": "container"
+                },
+                {
+                  "_type": "UMLNodeView",
+                  "_id": "AAAAAAGVkKpPchYnLgQ=",
+                  "_parent": "AAAAAAGVkKlekhYhHcI=",
+                  "model": "AAAAAAGVkKpPchYoTyE=",
+                  "subViews": [
+                    {
+                      "_type": "UMLNameCompartmentView",
+                      "_id": "AAAAAAGVkKpPchYpU+8=",
+                      "_parent": "AAAAAAGVkKpPchYnLgQ=",
+                      "model": "AAAAAAGVkKpPchYoTyE=",
+                      "name": "«container»\nFlask App (Gunicorn)",
+                      "font": "Arial;11;0"
+                    }
+                  ],
+                  "name": "App Service",
+                  "stereotype": "container"
+                },
+                {
+                  "_type": "UMLNodeView",
+                  "_id": "AAAAAAGVkKqAchYqRMI=",
+                  "_parent": "AAAAAAGVkKlekhYhHcI=",
+                  "model": "AAAAAAGVkKqAchYrXZ4=",
+                  "subViews": [
+                    {
+                      "_type": "UMLNameCompartmentView",
+                      "_id": "AAAAAAGVkKqAchYsdns=",
+                      "_parent": "AAAAAAGVkKqAchYqRMI=",
+                      "model": "AAAAAAGVkKqAchYrXZ4=",
+                      "name": "«container»\nBackground Worker",
+                      "font": "Arial;11;0"
+                    }
+                  ],
+                  "name": "Worker Service",
+                  "stereotype": "container"
+                },
+                {
+                  "_type": "UMLNodeView",
+                  "_id": "AAAAAAGVkKqpchYtCbo=",
+                  "_parent": "AAAAAAGVkKlekhYhHcI=",
+                  "model": "AAAAAAGVkKqpchYuKos=",
+                  "subViews": [
+                    {
+                      "_type": "UMLNameCompartmentView",
+                      "_id": "AAAAAAGVkKqpchYvNZc=",
+                      "_parent": "AAAAAAGVkKqpchYtCbo=",
+                      "model": "AAAAAAGVkKqpchYuKos=",
+                      "name": "«container»\npostgres:16-alpine",
+                      "font": "Arial;11;0"
+                    }
+                  ],
+                  "name": "PostgreSQL",
+                  "stereotype": "database"
+                },
+                {
+                  "_type": "UMLNodeView",
+                  "_id": "AAAAAAGVkKrHchYwQzs=",
+                  "_parent": "AAAAAAGVkKlekhYhHcI=",
+                  "model": "AAAAAAGVkKrHchYxWxg=",
+                  "subViews": [
+                    {
+                      "_type": "UMLNameCompartmentView",
+                      "_id": "AAAAAAGVkKrHchYyfcY=",
+                      "_parent": "AAAAAAGVkKrHchYwQzs=",
+                      "model": "AAAAAAGVkKrHchYxWxg=",
+                      "name": "«container»\nredis:7-alpine",
+                      "font": "Arial;11;0"
+                    }
+                  ],
+                  "name": "Redis Cache",
+                  "stereotype": "cache"
+                }
+              ]
+            },
+            {
+              "_type": "UMLNodeView",
+              "_id": "AAAAAAGVkKsAchYzNXo=",
+              "_parent": "AAAAAAGVkKk+MhYgBqc=",
+              "model": "AAAAAAGVkKsAchY0X1c=",
+              "subViews": [
+                {
+                  "_type": "UMLNameCompartmentView",
+                  "_id": "AAAAAAGVkKsAchY1gMo=",
+                  "_parent": "AAAAAAGVkKsAchYzNXo=",
+                  "model": "AAAAAAGVkKsAchY0X1c=",
+                  "name": "«external»\nCrowdSec API",
+                  "font": "Arial;13;0"
+                }
+              ],
+              "name": "CrowdSec",
+              "stereotype": "external"
+            },
+            {
+              "_type": "UMLNodeView",
+              "_id": "AAAAAAGVkKshchY2xGw=",
+              "_parent": "AAAAAAGVkKk+MhYgBqc=",
+              "model": "AAAAAAGVkKshchY37R0=",
+              "subViews": [
+                {
+                  "_type": "UMLNameCompartmentView",
+                  "_id": "AAAAAAGVkKshchY4+xs=",
+                  "_parent": "AAAAAAGVkKshchY2xGw=",
+                  "model": "AAAAAAGVkKshchY37R0=",
+                  "name": "«external»\nMISP Instance",
+                  "font": "Arial;13;0"
+                }
+              ],
+              "name": "MISP",
+              "stereotype": "external"
+            },
+            {
+              "_type": "UMLNodeView",
+              "_id": "AAAAAAGVkKtCchY5jhY=",
+              "_parent": "AAAAAAGVkKk+MhYgBqc=",
+              "model": "AAAAAAGVkKtCchY6sEo=",
+              "subViews": [
+                {
+                  "_type": "UMLNameCompartmentView",
+                  "_id": "AAAAAAGVkKtCchY70jM=",
+                  "_parent": "AAAAAAGVkKtCchY5jhY=",
+                  "model": "AAAAAAGVkKtCchY6sEo=",
+                  "name": "«external»\nabuse.ch Services",
+                  "font": "Arial;13;0"
+                }
+              ],
+              "name": "abuse.ch",
+              "stereotype": "external"
+            },
+            {
+              "_type": "UMLNodeView",
+              "_id": "AAAAAAGVkKtZchY8w0s=",
+              "_parent": "AAAAAAGVkKk+MhYgBqc=",
+              "model": "AAAAAAGVkKtZchY94cs=",
+              "subViews": [
+                {
+                  "_type": "UMLNameCompartmentView",
+                  "_id": "AAAAAAGVkKtZchY+BTw=",
+                  "_parent": "AAAAAAGVkKtZchY8w0s=",
+                  "model": "AAAAAAGVkKtZchY94cs=",
+                  "name": "«external»\nMWDB Instance",
+                  "font": "Arial;13;0"
+                }
+              ],
+              "name": "MWDB",
+              "stereotype": "external"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_type": "UMLModel",
+      "_id": "AAAAAAGVkKuwchY/FzI=",
+      "_parent": "AAAAAAFF+h6SjaM2Hec=",
+      "name": "Class Diagrams",
+      "ownedElements": [
+        {
+          "_type": "UMLClassDiagram",
+          "_id": "AAAAAAGVkKvRchZAsjs=",
+          "_parent": "AAAAAAGVkKuwchY/FzI=",
+          "name": "Domain Model",
+          "ownedViews": [
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkKwHchZBFEo=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkKwHchZCrUI=",
+              "name": "Indicator",
+              "attributes": [
+                "id: Integer {PK}",
+                "uuid: UUID {unique}",
+                "value: String {required}",
+                "type: String {required}",
+                "source: String {required}",
+                "source_id: String",
+                "confidence: Integer {default: 50}",
+                "tlp: String {default: 'WHITE'}",
+                "is_active: Boolean {default: True}",
+                "tags: List[String]",
+                "metadata: JSONB",
+                "first_seen: DateTime",
+                "last_seen: DateTime",
+                "created_at: DateTime",
+                "updated_at: DateTime"
+              ],
+              "operations": [
+                "__init__()",
+                "to_dict() -> Dict",
+                "is_expired() -> Boolean"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkKxfchZD4KA=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkKxfchZE+Z0=",
+              "name": "FeedStats",
+              "attributes": [
+                "id: Integer {PK}",
+                "source: String {required}",
+                "source_id: String",
+                "total_indicators: Integer",
+                "active_indicators: Integer",
+                "inactive_indicators: Integer",
+                "last_update: DateTime",
+                "last_fetch_status: String",
+                "last_fetch_error: String",
+                "metadata: JSONB"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkKyGchZGZpA=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkKyGchZHhPM=",
+              "name": "SyncJob",
+              "attributes": [
+                "id: Integer {PK}",
+                "job_id: String {unique, required}",
+                "feed_source_id: String {required}",
+                "trigger_type: String {default: 'manual'}",
+                "idempotency_key: String",
+                "status: String {default: 'queued'}",
+                "error: String",
+                "result_json: JSONB",
+                "created_at: DateTime",
+                "started_at: DateTime",
+                "finished_at: DateTime"
+              ],
+              "operations": [
+                "mark_running()",
+                "mark_success(result: Dict)",
+                "mark_failed(error: String)"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkKy/chZI0Jg=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkKy/chZJ8Fw=",
+              "name": "Feed",
+              "attributes": [
+                "id: Integer {PK}",
+                "source_id: String {unique, required}",
+                "source_type: String {required}",
+                "display_name: String {required}",
+                "base_url: String",
+                "auth_type: String",
+                "schedule_cron: String {default: '*/15 * * * *'}",
+                "enabled: Boolean {default: True}",
+                "deleted: Boolean {default: False}",
+                "created_at: DateTime",
+                "updated_at: DateTime"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkKzSchZLQUQ=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkKzSchZMaNs=",
+              "name": "AuditLog",
+              "attributes": [
+                "id: Integer {PK}",
+                "action: String {required}",
+                "entity_type: String",
+                "entity_id: Integer",
+                "user_id: String",
+                "ip_address: String",
+                "metadata: JSONB",
+                "created_at: DateTime"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkKzrshZNj4w=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkKzrshZOsxA=",
+              "name": "ExportJob",
+              "attributes": [
+                "id: Integer {PK}",
+                "job_id: String {unique, required}",
+                "fmt: String {required}",
+                "status: String {default: 'queued'}",
+                "result_path: String",
+                "error: String",
+                "query_json: JSONB",
+                "created_at: DateTime",
+                "updated_at: DateTime"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK0LshZPydA=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkK0LshZQ8WM=",
+              "name": "AppSetting",
+              "attributes": [
+                "id: Integer {PK}",
+                "key: String {unique, required}",
+                "value: String {required}",
+                "is_secret: Boolean {default: False}",
+                "updated_at: DateTime"
+              ],
+              "operations": [
+                "encrypt_value()",
+                "decrypt_value() -> String"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK0nshZR4Ao=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkK0nshZSBPI=",
+              "name": "FeedRun",
+              "attributes": [
+                "id: Integer {PK}",
+                "feed_source_id: String {required}",
+                "run_id: String {unique, required}",
+                "trigger_type: String {default: 'manual'}",
+                "status: String {default: 'running'}",
+                "error: String",
+                "fetched_count: Integer {default: 0}",
+                "started_at: DateTime",
+                "finished_at: DateTime"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK1AchZTQbg=",
+              "_parent": "AAAAAAGVkKvRchZAsjs=",
+              "model": "AAAAAAGVkK1AchZUXg0=",
+              "name": "AppLog",
+              "attributes": [
+                "id: Integer {PK}",
+                "level: String {default: 'INFO'}",
+                "component: String {default: 'app'}",
+                "message: String {required}",
+                "feed_source_id: String",
+                "run_id: String",
+                "metadata: JSONB",
+                "created_at: DateTime"
+              ]
+            }
+          ]
+        },
+        {
+          "_type": "UMLClassDiagram",
+          "_id": "AAAAAAGVkK1schZV7Ns=",
+          "_parent": "AAAAAAGVkKuwchY/FzI=",
+          "name": "Service Layer",
+          "ownedViews": [
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK2RchZW8cM=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK2RchZXF0A=",
+              "name": "BaseService",
+              "isAbstract": true,
+              "attributes": [
+                "config: Config",
+                "logger: Logger"
+              ],
+              "operations": [
+                "+__init__(config: Config)",
+                "+update_indicators() -> Dict",
+                "+test_connection() -> Tuple[bool, str]"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK3DchZYMY0=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK3DchZZWqc=",
+              "name": "CrowdSecService",
+              "operations": [
+                "+update_crowdsec_list(list_id: str) -> Dict",
+                "+update_all_crowdsec_lists() -> Dict",
+                "+_fetch_list(api_key, list_id) -> List[str]"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK3echZalbc=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK3echZbvOA=",
+              "name": "MISPService",
+              "operations": [
+                "+update_misp_indicators() -> Dict",
+                "+_search_misp(days: int) -> List",
+                "+_normalize_event(event) -> Indicator"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK4FchZc1ts=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK4FchZd9g8=",
+              "name": "MalwareBazaarService",
+              "operations": [
+                "+update_malwarebazaar_indicators() -> Dict",
+                "+_fetch_by_tags(tags: List[str]) -> List"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK4ZchZe1Dk=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK4ZchZf+9Y=",
+              "name": "MWDBService",
+              "operations": [
+                "+update_mwdb_indicators() -> Dict",
+                "+fetch_mwdb_organizations() -> List[Dict]",
+                "+test_mwdb_connection() -> Dict"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK4ychZgj/w=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK4ychZhsgQ=",
+              "name": "AbuseChService",
+              "operations": [
+                "+update_abusech_indicators() -> Dict",
+                "+fetch_threatfox(days: int) -> List",
+                "+fetch_urlhaus() -> List",
+                "+fetch_feodotracker() -> List",
+                "+fetch_yaraify() -> List"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK5QchZiIZA=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK5QchZjQXc=",
+              "name": "CorrelationService",
+              "operations": [
+                "+query_correlations(limit: int) -> List[CorrelationGroup]",
+                "+refresh_correlation_snapshots()",
+                "+find_cross_source_matches() -> List"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK5nchZkLeA=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK5nchZlUiI=",
+              "name": "ExportService",
+              "operations": [
+                "+export_txt(indicators: List) -> String",
+                "+export_csv(indicators: List) -> String",
+                "+export_json(indicators: List) -> String",
+                "+export_stix(indicators: List) -> String",
+                "+export_cef(indicators: List) -> String",
+                "+get_formatter(fmt: str) -> Callable"
+              ]
+            },
+            {
+              "_type": "UMLClassView",
+              "_id": "AAAAAAGVkK6AchZmOxE=",
+              "_parent": "AAAAAAGVkK1schZV7Ns=",
+              "model": "AAAAAAGVkK6AchZnXzE=",
+              "name": "QueryParser",
+              "operations": [
+                "+parse_kibana_query(query: str) -> List[Token]",
+                "+parse_term(field, op, value) -> Term",
+                "+tokenize(input: str) -> List[str]"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_type": "UMLModel",
+      "_id": "AAAAAAGVkK6ichZoT/U=",
+      "_parent": "AAAAAAFF+h6SjaM2Hec=",
+      "name": "Sequence Diagrams",
+      "ownedElements": [
+        {
+          "_type": "UMLSequenceDiagram",
+          "_id": "AAAAAAGVkK7KchZpUZc=",
+          "_parent": "AAAAAAGVkK6ichZoT/U=",
+          "name": "Feed Sync Workflow",
+          "ownedViews": [
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkK8BchZqjlg=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "model": "AAAAAAGVkK8BchZrksE=",
+              "name": "Scheduler",
+              "type": "UMLSeqLifeline"
+            },
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkK8kchZsXAM=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "model": "AAAAAAGVkK8kchZtfj4=",
+              "name": "SyncJob",
+              "type": "UMLSeqLifeline"
+            },
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkK9CchZuLSE=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "model": "AAAAAAGVkK9CchZvTmI=",
+              "name": "FeedService",
+              "type": "UMLSeqLifeline"
+            },
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkK9kchZwHA0=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "model": "AAAAAAGVkK9kchZxK00=",
+              "name": "ExternalAPI",
+              "type": "UMLSeqLifeline"
+            },
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkK+AchyAWMM=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "model": "AAAAAAGVkK+AchyBZNI=",
+              "name": "Database",
+              "type": "UMLSeqLifeline"
+            }
+          ],
+          "messages": [
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkK+ychyCCHg=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "name": "enqueue_sync_job()",
+              "source": "AAAAAAGVkK8BchZrksE=",
+              "target": "AAAAAAGVkK8kchZtfj4="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkK/ichyDMkc=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "name": "execute_sync_job()",
+              "source": "AAAAAAGVkK8kchZtfj4=",
+              "target": "AAAAAAGVkK9CchZvTmI="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkK//chyEGl8=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "name": "fetch_indicators()",
+              "source": "AAAAAAGVkK9CchZvTmI=",
+              "target": "AAAAAAGVkK9kchZxK00="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLAgchyFChA=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "name": "indicators_json",
+              "source": "AAAAAAGVkK9kchZxK00=",
+              "target": "AAAAAAGVkK9CchZvTmI=",
+              "messageSort": "reply"
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLA8chyGfX8=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "name": "upsert_indicators()",
+              "source": "AAAAAAGVkK9CchZvTmI=",
+              "target": "AAAAAAGVkK+AchyBZNI="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLBkchyHXco=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "name": "update_feed_stats()",
+              "source": "AAAAAAGVkK9CchZvTmI=",
+              "target": "AAAAAAGVkK+AchyBZNI="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLCGchyIoA0=",
+              "_parent": "AAAAAAGVkK7KchZpUZc=",
+              "name": "mark_success()",
+              "source": "AAAAAAGVkK9CchZvTmI=",
+              "target": "AAAAAAGVkK8kchZtfj4="
+            }
+          ]
+        },
+        {
+          "_type": "UMLSequenceDiagram",
+          "_id": "AAAAAAGVkLCychyJMDI=",
+          "_parent": "AAAAAAGVkK6ichZoT/U=",
+          "name": "Indicator Export Workflow",
+          "ownedViews": [
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkLDachyKSSQ=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "model": "AAAAAAGVkLDachyLSB0=",
+              "name": "Client",
+              "type": "UMLSeqLifeline"
+            },
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkLD+chyMQ7U=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "model": "AAAAAAGVkLD+chyNd4E=",
+              "name": "FlaskApp",
+              "type": "UMLSeqLifeline"
+            },
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkLEkchyOJIg=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "model": "AAAAAAGVkLEkchyPTjY=",
+              "name": "QueryParser",
+              "type": "UMLSeqLifeline"
+            },
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkLFChhyQApU=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "model": "AAAAAAGVkLFChhyRLWI=",
+              "name": "Database",
+              "type": "UMLSeqLifeline"
+            },
+            {
+              "_type": "UMLSeqLifelineView",
+              "_id": "AAAAAAGVkLFkchySUgE=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "model": "AAAAAAGVkLFkchyTdRk=",
+              "name": "Formatter",
+              "type": "UMLSeqLifeline"
+            }
+          ],
+          "messages": [
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLGachyUU3M=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "GET /indicators/<fmt>?q=...",
+              "source": "AAAAAAGVkLDachyLSB0=",
+              "target": "AAAAAAGVkLD+chyNd4E="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLGychyVSLU=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "validate_search_query()",
+              "source": "AAAAAAGVkLD+chyNd4E=",
+              "target": "AAAAAAGVkLD+chyNd4E="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLHVchyWLT4=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "parse_kibana_query()",
+              "source": "AAAAAAGVkLD+chyNd4E=",
+              "target": "AAAAAAGVkLEkchyPTjY="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLH3chyXIVA=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "rpn_tokens",
+              "source": "AAAAAAGVkLEkchyPTjY=",
+              "target": "AAAAAAGVkLD+chyNd4E=",
+              "messageSort": "reply"
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLIkchyYINw=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "query_indicators(rpn, filters)",
+              "source": "AAAAAAGVkLD+chyNd4E=",
+              "target": "AAAAAAGVkLFChhyRLWI="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLJCchyZDPE=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "indicators[]",
+              "source": "AAAAAAGVkLFChhyRLWI=",
+              "target": "AAAAAAGVkLD+chyNd4E=",
+              "messageSort": "reply"
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLJkchyaOWk=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "format_export(fmt, indicators)",
+              "source": "AAAAAAGVkLD+chyNd4E=",
+              "target": "AAAAAAGVkLFkchyTdRk="
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLKCchybSSo=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "formatted_data",
+              "source": "AAAAAAGVkLFkchyTdRk=",
+              "target": "AAAAAAGVkLD+chyNd4E=",
+              "messageSort": "reply"
+            },
+            {
+              "_type": "UMLMessage",
+              "_id": "AAAAAAGVkLKkchycTgg=",
+              "_parent": "AAAAAAGVkLCychyJMDI=",
+              "name": "HTTP 200 + formatted response",
+              "source": "AAAAAAGVkLD+chyNd4E=",
+              "target": "AAAAAAGVkLDachyLSB0=",
+              "messageSort": "reply"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

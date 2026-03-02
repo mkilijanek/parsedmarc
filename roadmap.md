@@ -81,7 +81,7 @@ architectural changes or major stack evolution
 
 -   [x] Add /healthz endpoint (`/health` endpoint implemented)
 -   [x] Add /readyz endpoint (`/readyz` endpoint implemented)
--   [ ] Refresh `docs/uml/` diagrams for current architecture and include them in 1.2.x release documentation scope
+-   [x] Refresh `docs/uml/` diagrams for current architecture and include them in 1.2.x release documentation scope
 
 ------------------------------------------------------------------------
 
