@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock, call
 
 import pytest
+import requests
 
 from app.services.misp import (
     extract_tlp_from_tags,
@@ -424,6 +425,30 @@ class TestRetryLogic:
         # Should have some delay due to backoff (0.1 + 0.2 = 0.3s minimum)
         assert duration >= 0.3
         assert result == "success"
+
+    def test_retry_does_not_retry_non_retriable_http_4xx(self):
+        """HTTP 4xx (except transient statuses) should fail fast without retries."""
+        response = requests.Response()
+        response.status_code = 400
+        response.url = "https://mwdb.example/api/object"
+        err = requests.HTTPError("400 Client Error", response=response)
+        func = MagicMock(side_effect=err)
+
+        with pytest.raises(requests.HTTPError):
+            retry_with_backoff(func, max_attempts=5, base_delay=0.01)
+
+        assert func.call_count == 1
+
+    def test_retry_retries_http_429(self):
+        """HTTP 429 should still be retried with backoff."""
+        response = requests.Response()
+        response.status_code = 429
+        response.url = "https://api.example/rate-limited"
+        err = requests.HTTPError("429 Too Many Requests", response=response)
+        func = MagicMock(side_effect=[err, "ok"])
+
+        assert retry_with_backoff(func, max_attempts=2, base_delay=0.01) == "ok"
+        assert func.call_count == 2
 
 
 class TestExternalFeedRateLimiter:
@@ -1371,6 +1396,36 @@ class TestMWDBDefaultQuery:
         # custom_filter should be sent, not default_query
         # The closure is called by retry_with_backoff — verify it was invoked
         assert mock_retry.called
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    @patch("app.services.mwdb.logger")
+    def test_fallback_to_empty_query_when_default_query_is_rejected(self, mock_logger, mock_retry):
+        """When default query returns HTTP 400, code retries once without query."""
+        bad_resp = requests.Response()
+        bad_resp.status_code = 400
+        bad_resp.url = "https://mwdb.example.com/api/object?count=200&query=type%3A%2A"
+        bad_err = requests.HTTPError("400 Client Error", response=bad_resp)
+        mock_retry.side_effect = [bad_err, {"objects": []}]
+
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=[],
+                custom_filter="",
+                default_query="type:*",
+                mode="recent",
+                limit=10,
+            )
+        )
+
+        assert rows == []
+        assert mock_retry.call_count == 2
+        warn_calls = [
+            c for c in mock_logger.warning.call_args_list
+            if c.args and c.args[0] == "mwdb_default_query_rejected_fallback"
+        ]
+        assert warn_calls
 
     @patch("app.services.mwdb.fetch_mwdb_by_tags")
     @patch("app.services.mwdb.SessionLocal")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 
 def test_indicators_formats_links_quote_url_values(client, sample_indicators):
@@ -148,6 +149,15 @@ def test_abusech_configure_shows_service_selectors(client, sample_indicators):
 def test_feed_test_connection_endpoint_redirects(client, sample_indicators):
     response = client.post("/admin/feed/abusech/test", data={"api_key": ""}, follow_redirects=False)
     assert response.status_code in {301, 302}
+
+
+def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(client, sample_indicators):
+    with patch("app.main.requests.post") as mocked_post:
+        response = client.post("/admin/feed/malwarebazaar/test", data={"api_key": ""}, follow_redirects=True)
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "ABUSECH_AUTH_KEY" in html
+    mocked_post.assert_not_called()
 
 
 def test_admin_logs_tab_and_api(client, sample_indicators):

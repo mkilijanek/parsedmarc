@@ -197,6 +197,12 @@ class TestIndicatorsViewEndpoint:
         data = response.get_json()
         assert "error" in data
 
+    def test_indicators_view_empty_confidence_values_are_allowed(self, client, sample_indicators):
+        """Empty min_conf/max_conf query params should be treated as no filter."""
+        response = client.get("/indicators?type=all&tlp=RED&source=all&min_conf=&max_conf=")
+        assert response.status_code == 200
+        assert "text/html" in response.content_type
+
     def test_indicators_view_caching(self, client, sample_indicators, fake_redis):
         """Test indicators view uses caching."""
         with patch("app.main.get_redis", return_value=fake_redis):
