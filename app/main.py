@@ -2430,7 +2430,7 @@ def create_app() -> Flask:
       <p><label>HTTP proxy <input type="text" name="proxy_http_url" value="{_esc(proxy_conf['proxy_http_url'])}" placeholder="http://proxy:8080"/></label></p>
       <p><label>HTTPS proxy <input type="text" name="proxy_https_url" value="{_esc(proxy_conf['proxy_https_url'])}" placeholder="http://proxy:8080"/></label></p>
       <p><label>No proxy list <input type="text" name="proxy_no_proxy" value="{_esc(proxy_conf['proxy_no_proxy'])}" placeholder="localhost,127.0.0.1,.internal"/></label></p>
-      <p><label><input type="checkbox" name="proxy_skip_tls_verify" value="1" {"checked" if str(proxy_conf['proxy_skip_tls_verify']).strip().lower() in {"1","true","yes","on"} else ""}/> Skip TLS certificate verification for outbound HTTP requests (insecure)</label></p>
+      <p><label><input type="checkbox" name="proxy_skip_tls_verify" value="1" {"checked" if str(proxy_conf['proxy_skip_tls_verify']).strip().lower() in {"1","true","yes","on"} else ""}/> Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)</label></p>
       <p><label>Trusted proxy count <input type="text" name="trusted_proxy_count" value="{_esc(proxy_conf['trusted_proxy_count'])}" placeholder="0"/></label></p>
       <button type="submit">Save configuration</button>
     </form>

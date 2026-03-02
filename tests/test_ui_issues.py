@@ -44,6 +44,7 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Problems only" in html
     assert "Danger Zone" in html
     assert "Skip TLS certificate verification for outbound HTTP requests" in html
+    assert "curl -k equivalent" in html
 
 
 def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):
