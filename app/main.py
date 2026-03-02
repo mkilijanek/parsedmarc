@@ -2825,8 +2825,10 @@ if (form) {{
   <label>Until <input name="until" placeholder="2026-02-26T23:59:59Z" /></label>
   <label><input type="checkbox" id="autorefresh" checked/> auto-refresh</label>
   <button type="submit">Apply</button>
-  <button type="button" id="copyBtn">Copy visible logs</button>
+  <button type="button" id="copyBtn">Copy all visible logs</button>
+  <button type="button" id="downloadBtn">Download visible .log</button>
 </form>
+<p id="copyStatus" role="status" aria-live="polite"></p>
 <pre id="out"></pre>
 </div>
 <script>
@@ -2847,10 +2849,92 @@ if (themeToggle) {
     localStorage.setItem(themeKey, next);
   });
 }
+let visibleRows = [];
+function setCopyStatus(message, kind){
+  const el = document.getElementById('copyStatus');
+  if (!el) return;
+  el.textContent = message || '';
+  el.style.color = kind === 'error' ? '#b91c1c' : '#047857';
+}
 function buildQuery(){const fd=new FormData(document.getElementById('filters'));const p=new URLSearchParams();for(const [k,v] of fd.entries()){if((v||'').trim())p.set(k,v);}p.set('limit','200');return p.toString();}
-async function refreshLogs(){const q=buildQuery();const r=await fetch('/api/logs?'+q);const d=await r.json();const lines=(d.items||[]).map(x=>`[${x.created_at}] ${x.level} ${x.component} ${x.feed_source_id||'-'} ${x.run_id||'-'} ${x.message} ${JSON.stringify(x.metadata||{})}`);document.getElementById('out').textContent=lines.length ? lines.join('\\n') : 'No logs found for current filters.';}
+function formatLine(x){return `[${x.created_at}] ${x.level} ${x.component} ${x.feed_source_id||'-'} ${x.run_id||'-'} ${x.message} ${JSON.stringify(x.metadata||{})}`;}
+function buildVisibleText(){
+  const lines = (visibleRows || []).map(formatLine);
+  return lines.join('\\n');
+}
+function fallbackCopyText(payload){
+  const ta = document.createElement('textarea');
+  ta.value = payload;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '-9999px';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+async function copyVisibleLogs(){
+  const payload = buildVisibleText();
+  const lineCount = payload ? payload.split('\\n').length : 0;
+  if (!payload) {
+    setCopyStatus('No visible logs to copy.', 'error');
+    return;
+  }
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(payload);
+      setCopyStatus(`Copied ${lineCount} lines.`, 'ok');
+      return;
+    }
+  } catch (err) {
+    // continue to fallback
+  }
+  const copied = fallbackCopyText(payload);
+  if (copied) {
+    setCopyStatus(`Copied ${lineCount} lines (fallback).`, 'ok');
+  } else {
+    setCopyStatus('Copy failed. Use HTTPS/focused tab or copy manually.', 'error');
+  }
+}
+function downloadVisibleLogs(){
+  const payload = buildVisibleText();
+  if (!payload) {
+    setCopyStatus('No visible logs to download.', 'error');
+    return;
+  }
+  const blob = new Blob([payload + '\\n'], {type: 'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:]/g, '-');
+  a.href = url;
+  a.download = `visible-logs-${ts}.log`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setCopyStatus(`Downloaded ${(visibleRows || []).length} lines.`, 'ok');
+}
+async function refreshLogs(){
+  const q=buildQuery();
+  try {
+    const r=await fetch('/api/logs?'+q);
+    const d=await r.json();
+    visibleRows = d.items || [];
+    const lines=visibleRows.map(formatLine);
+    document.getElementById('out').textContent=lines.length ? lines.join('\\n') : 'No logs found for current filters.';
+  } catch (err) {
+    visibleRows = [];
+    document.getElementById('out').textContent='Failed to load logs.';
+    setCopyStatus('Failed to refresh logs.', 'error');
+  }
+}
 document.getElementById('filters').addEventListener('submit',(e)=>{e.preventDefault();refreshLogs();});
-document.getElementById('copyBtn').addEventListener('click',async()=>{await navigator.clipboard.writeText(document.getElementById('out').textContent||'');});
+document.getElementById('copyBtn').addEventListener('click',copyVisibleLogs);
+document.getElementById('downloadBtn').addEventListener('click',downloadVisibleLogs);
 setInterval(()=>{if(document.getElementById('autorefresh').checked)refreshLogs();},5000);refreshLogs();
 </script></body></html>"""
 
