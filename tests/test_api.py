@@ -156,8 +156,13 @@ class TestFeedsApiEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data["hours"] == 24
+        assert data["window"] == "24h"
+        assert data["bucket"] == "hour"
         assert "items" in data
+        assert "timeseries" in data
         assert "summary" in data
+        assert "duration_p50_ms" in data["summary"]
+        assert "duration_p95_ms" in data["summary"]
         assert isinstance(data["items"], list)
 
     def test_api_feeds_metrics_datasource_filter(self, client, sample_indicators, sample_feed_stats):
@@ -166,6 +171,14 @@ class TestFeedsApiEndpoint:
         data = response.get_json()
         for item in data["items"]:
             assert item["source_type"] == "mwdb"
+
+    def test_api_feeds_metrics_supports_window_param(self, client, sample_indicators, sample_feed_stats):
+        response = client.get("/api/feeds/metrics?window=7d")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["window"] == "7d"
+        assert data["hours"] == 168
+        assert data["bucket"] == "day"
 
 
 # ============================================================================

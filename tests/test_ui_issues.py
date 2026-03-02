@@ -42,6 +42,7 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Add New Feed" in html
     assert "Apply filters" in html
     assert "Problems only" in html
+    assert "Danger Zone" in html
 
 
 def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):
@@ -155,6 +156,17 @@ def test_abusech_configure_shows_service_selectors(client, sample_indicators):
 def test_feed_test_connection_endpoint_redirects(client, sample_indicators):
     response = client.post("/admin/feed/abusech/test", data={"api_key": ""}, follow_redirects=False)
     assert response.status_code in {301, 302}
+
+
+def test_dangerous_ops_disabled_by_default(client, sample_indicators):
+    response = client.post(
+        "/admin/danger/wipe",
+        data={"operation": "soft", "admin_token": "x", "confirm_phrase": "WIPE", "confirm_instance": "ioc-service"},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Dangerous operations are disabled" in html
 
 
 def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(client, sample_indicators):

@@ -24,7 +24,7 @@ from flask import Flask, Response, jsonify, request, make_response, redirect, ur
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.exceptions import HTTPException
-from sqlalchemy import select, func, and_, or_, text
+from sqlalchemy import select, func, and_, or_, text, delete
 from sqlalchemy.orm import Session
 
 from .config import Config
@@ -1099,6 +1099,55 @@ def create_app() -> Flask:
             "q": (request.args.get("feeds_q", "") or "").strip(),
             "problems_only": (request.args.get("feeds_problems_only", "0") or "0").strip().lower() in {"1", "true", "yes", "on"},
         }
+
+    def _resolve_metrics_window_hours() -> tuple[int, str]:
+        window = (request.args.get("window") or "").strip().lower()
+        if window in {"24h", "24"}:
+            return 24, "24h"
+        if window in {"7d", "168h", "168"}:
+            return 24 * 7, "7d"
+        if window in {"30d", "720h", "720"}:
+            return 24 * 30, "30d"
+        try:
+            hours = int(request.args.get("hours", "24"))
+        except ValueError:
+            hours = 24
+        hours = max(1, min(24 * 30, hours))
+        if hours == 24:
+            return 24, "24h"
+        if hours == 24 * 7:
+            return 24 * 7, "7d"
+        if hours == 24 * 30:
+            return 24 * 30, "30d"
+        return hours, f"{hours}h"
+
+    def _percentile(values: List[int], p: float) -> float | None:
+        if not values:
+            return None
+        vals = sorted(values)
+        if len(vals) == 1:
+            return float(vals[0])
+        rank = (max(0.0, min(100.0, p)) / 100.0) * (len(vals) - 1)
+        low = int(rank)
+        high = min(len(vals) - 1, low + 1)
+        if low == high:
+            return float(vals[low])
+        weight = rank - low
+        return round((vals[low] * (1.0 - weight)) + (vals[high] * weight), 2)
+
+    def _admin_dangerous_ops_enabled() -> bool:
+        return bool(cfg.ADMIN_DANGEROUS_OPS)
+
+    def _admin_token_authorized() -> bool:
+        expected = (cfg.ADMIN_API_TOKEN or "").strip()
+        if not expected:
+            return False
+        token = (
+            (request.headers.get("X-Admin-Token") or "").strip()
+            or (request.form.get("admin_token") or "").strip()
+            or (request.args.get("admin_token") or "").strip()
+        )
+        return bool(token) and hmac.compare_digest(token, expected)
 
     def _db_try_advisory_lock(db: Session, lock_id: int) -> bool:
         bind = db.get_bind()
@@ -2258,6 +2307,45 @@ def create_app() -> Flask:
         if not recent_jobs_html:
             recent_jobs_html = "<tr><td colspan='8'>No sync jobs yet.</td></tr>"
 
+        if _admin_dangerous_ops_enabled():
+            danger_zone_html = f"""
+  <div class="card">
+    <h2>Danger Zone</h2>
+    <p>High-risk operations. Requires admin token, confirmation phrase and instance name.</p>
+    <form method="post" action="/admin/danger/wipe">
+      <p><label>Operation
+        <select name="operation">
+          <option value="soft">Soft reset (indicators, runs, logs, stats, jobs, cache)</option>
+          <option value="factory">Factory reset (all dynamic + feeds/settings)</option>
+          <option value="selected">Selected tables</option>
+        </select>
+      </label></p>
+      <fieldset>
+        <legend>Selected tables (used when operation=selected)</legend>
+        <label><input type="checkbox" name="tables" value="indicators"/> indicators</label>
+        <label><input type="checkbox" name="tables" value="feed_stats"/> feed_stats</label>
+        <label><input type="checkbox" name="tables" value="feed_runs"/> feed_runs</label>
+        <label><input type="checkbox" name="tables" value="sync_jobs"/> sync_jobs</label>
+        <label><input type="checkbox" name="tables" value="app_logs"/> app_logs</label>
+        <label><input type="checkbox" name="tables" value="export_jobs"/> export_jobs</label>
+        <label><input type="checkbox" name="tables" value="feeds"/> feeds</label>
+        <label><input type="checkbox" name="tables" value="app_settings"/> app_settings</label>
+      </fieldset>
+      <p><label>Admin token <input type="password" name="admin_token" placeholder="ADMIN_API_TOKEN" required/></label></p>
+      <p><label>Type confirmation <input type="text" name="confirm_phrase" placeholder="WIPE" required/></label></p>
+      <p><label>Instance name <input type="text" name="confirm_instance" placeholder="{_esc(cfg.INSTANCE_NAME)}" required/></label></p>
+      <button type="submit">Execute wipe</button>
+    </form>
+  </div>
+            """
+        else:
+            danger_zone_html = """
+  <div class="card">
+    <h2>Danger Zone</h2>
+    <p>Disabled. Set <code>ADMIN_DANGEROUS_OPS=true</code> and configure <code>ADMIN_API_TOKEN</code> to enable controlled wipe operations.</p>
+  </div>
+            """
+
         return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -2350,6 +2438,7 @@ def create_app() -> Flask:
     <h2>Logs</h2>
     <p><a href="/logs">Open logs tab</a></p>
   </div>
+  {danger_zone_html}
   <script>
     const themeKey = 'ioc-theme';
     const preferredTheme = localStorage.getItem(themeKey);
@@ -2402,6 +2491,86 @@ def create_app() -> Flask:
         except Exception as e:
             db.rollback()
             return redirect(url_for("admin_panel", msg=f"Configuration save failed: {e}"))
+        finally:
+            db.close()
+
+    @app.post("/admin/danger/wipe")
+    @limiter.limit("5 per minute")
+    def admin_danger_wipe():
+        if not _admin_dangerous_ops_enabled():
+            return redirect(url_for("admin_panel", msg="Dangerous operations are disabled."))
+        if not _admin_token_authorized():
+            return redirect(url_for("admin_panel", msg="Dangerous operation denied: invalid admin token."))
+        confirm_phrase = (request.form.get("confirm_phrase") or "").strip().upper()
+        confirm_instance = (request.form.get("confirm_instance") or "").strip()
+        if confirm_phrase != "WIPE":
+            return redirect(url_for("admin_panel", msg="Dangerous operation denied: confirmation phrase mismatch."))
+        if confirm_instance != cfg.INSTANCE_NAME:
+            return redirect(url_for("admin_panel", msg="Dangerous operation denied: instance name mismatch."))
+
+        operation = (request.form.get("operation") or "soft").strip().lower()
+        selected = [str(v).strip().lower() for v in request.form.getlist("tables") if str(v).strip()]
+        table_models: Dict[str, Any] = {
+            "indicators": Indicator,
+            "feed_stats": FeedStats,
+            "feed_runs": FeedRun,
+            "sync_jobs": SyncJob,
+            "app_logs": AppLog,
+            "export_jobs": ExportJob,
+            "feeds": Feed,
+            "app_settings": AppSetting,
+        }
+        soft_tables = ["indicators", "feed_stats", "feed_runs", "sync_jobs", "app_logs", "export_jobs"]
+        factory_tables = soft_tables + ["feeds", "app_settings"]
+        if operation == "soft":
+            target_tables = soft_tables
+        elif operation == "factory":
+            target_tables = factory_tables
+        elif operation == "selected":
+            target_tables = [t for t in selected if t in table_models]
+            if not target_tables:
+                return redirect(url_for("admin_panel", msg="Dangerous operation denied: no valid tables selected."))
+        else:
+            return redirect(url_for("admin_panel", msg="Dangerous operation denied: invalid operation."))
+
+        db = _db()
+        deleted: Dict[str, int] = {}
+        cache_flushed = False
+        try:
+            for table_name in target_tables:
+                model = table_models[table_name]
+                count_stmt = select(func.count()).select_from(model)
+                before_count = int(db.scalar(count_stmt) or 0)
+                db.execute(delete(model))
+                deleted[table_name] = before_count
+            db.commit()
+            try:
+                r = get_redis()
+                r.flushdb()
+                cache_flushed = True
+            except Exception:
+                cache_flushed = False
+            _audit(
+                "admin_wipe",
+                "system",
+                None,
+                {
+                    "operation": operation,
+                    "instance": cfg.INSTANCE_NAME,
+                    "deleted": deleted,
+                    "cache_flushed": cache_flushed,
+                },
+            )
+            return redirect(
+                url_for(
+                    "admin_panel",
+                    msg=f"Dangerous operation completed ({operation}). Deleted tables: {', '.join(sorted(deleted.keys()))}.",
+                )
+            )
+        except Exception as e:
+            db.rollback()
+            logger.exception("admin_danger_wipe_failed")
+            return redirect(url_for("admin_panel", msg=f"Dangerous operation failed: {e}"))
         finally:
             db.close()
 
@@ -3036,16 +3205,10 @@ if (form) {{
     @app.get("/api/feeds/metrics")
     @limiter.limit("60 per minute")
     def api_feeds_metrics():
-        def _int_arg(name: str, default: int, minimum: int, maximum: int) -> int:
-            try:
-                value = int(request.args.get(name, str(default)))
-            except ValueError:
-                value = default
-            return max(minimum, min(maximum, value))
-
-        hours = _int_arg("hours", 24, 1, 168)
+        hours, window = _resolve_metrics_window_hours()
         datasource = (request.args.get("datasource") or "all").strip().lower()
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        bucket_granularity = "hour" if hours <= 24 else "day"
 
         db = _db(read_only=True)
         try:
@@ -3055,13 +3218,24 @@ if (form) {{
 
             source_ids = [str(item["source_id"]) for item in feed_items]
             if not source_ids:
-                return jsonify({"hours": hours, "datasource": datasource, "total_feeds": 0, "items": [], "summary": {}})
+                return jsonify(
+                    {
+                        "window": window,
+                        "hours": hours,
+                        "bucket": bucket_granularity,
+                        "datasource": datasource,
+                        "total_feeds": 0,
+                        "items": [],
+                        "timeseries": [],
+                        "summary": {},
+                    }
+                )
 
             runs = list(
                 db.scalars(
                     select(FeedRun)
                     .where(FeedRun.feed_source_id.in_(source_ids), FeedRun.started_at >= cutoff)
-                    .order_by(FeedRun.feed_source_id.asc(), FeedRun.started_at.desc())
+                    .order_by(FeedRun.feed_source_id.asc(), FeedRun.started_at.asc())
                 ).all()
             )
             by_feed: Dict[str, List[FeedRun]] = {sid: [] for sid in source_ids}
@@ -3075,6 +3249,13 @@ if (form) {{
             aggregate_fetched = 0
             aggregate_duration_total_ms = 0
             aggregate_duration_count = 0
+            all_durations: List[int] = []
+            all_buckets: Dict[str, Dict[str, Any]] = {}
+
+            def _bucket_key(ts: datetime) -> str:
+                if bucket_granularity == "hour":
+                    return ts.replace(minute=0, second=0, microsecond=0).isoformat()
+                return ts.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
             for item in feed_items:
                 sid = str(item["source_id"])
@@ -3085,6 +3266,8 @@ if (form) {{
                 total_fetched = 0
                 duration_ms_total = 0
                 duration_ms_count = 0
+                durations: List[int] = []
+                run_points: List[Dict[str, Any]] = []
                 for run in feed_runs:
                     status = str(run.status or "").lower()
                     if status == "success":
@@ -3092,9 +3275,48 @@ if (form) {{
                     if status in {"failed", "cancelled"}:
                         error_runs += 1
                     total_fetched += int(run.fetched_count or 0)
+                    duration_ms = None
                     if run.finished_at is not None and run.started_at is not None:
-                        duration_ms_total += max(0, int((run.finished_at - run.started_at).total_seconds() * 1000))
+                        duration_ms = max(0, int((run.finished_at - run.started_at).total_seconds() * 1000))
+                        duration_ms_total += duration_ms
                         duration_ms_count += 1
+                        durations.append(duration_ms)
+                        all_durations.append(duration_ms)
+                    if run.started_at is not None:
+                        bk = _bucket_key(run.started_at)
+                        point = all_buckets.setdefault(
+                            bk,
+                            {
+                                "ts": bk,
+                                "runs": 0,
+                                "success_runs": 0,
+                                "error_runs": 0,
+                                "fetched_total": 0,
+                                "duration_ms_total": 0,
+                                "duration_ms_count": 0,
+                            },
+                        )
+                        point["runs"] += 1
+                        if status == "success":
+                            point["success_runs"] += 1
+                        if status in {"failed", "cancelled"}:
+                            point["error_runs"] += 1
+                        point["fetched_total"] += int(run.fetched_count or 0)
+                        if duration_ms is not None:
+                            point["duration_ms_total"] += int(duration_ms)
+                            point["duration_ms_count"] += 1
+                    run_points.append(
+                        {
+                            "run_id": run.run_id,
+                            "status": run.status,
+                            "started_at": run.started_at.isoformat() if run.started_at else None,
+                            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+                            "fetched_count": int(run.fetched_count or 0),
+                            "duration_ms": duration_ms,
+                            "details_url": f"/admin/sync-jobs/{run.run_id}",
+                            "logs_url": f"/api/logs?run_id={run.run_id}&limit=200",
+                        }
+                    )
                 availability = round((success_runs / total_runs) * 100, 2) if total_runs else None
                 error_rate = round((error_runs / total_runs) * 100, 2) if total_runs else None
                 avg_duration_ms = round(duration_ms_total / duration_ms_count, 2) if duration_ms_count else None
@@ -3121,7 +3343,28 @@ if (form) {{
                         "fetched_total": total_fetched,
                         "fetched_avg_per_run": avg_fetched,
                         "duration_avg_ms": avg_duration_ms,
+                        "duration_p50_ms": _percentile(durations, 50.0),
+                        "duration_p95_ms": _percentile(durations, 95.0),
                         "window_hours": hours,
+                        "runs_timeseries": run_points[-200:],
+                    }
+                )
+
+            timeseries = []
+            for ts in sorted(all_buckets.keys()):
+                bucket = all_buckets[ts]
+                timeseries.append(
+                    {
+                        "ts": ts,
+                        "runs": int(bucket["runs"]),
+                        "success_runs": int(bucket["success_runs"]),
+                        "error_runs": int(bucket["error_runs"]),
+                        "fetched_total": int(bucket["fetched_total"]),
+                        "duration_avg_ms": (
+                            round(float(bucket["duration_ms_total"]) / float(bucket["duration_ms_count"]), 2)
+                            if int(bucket["duration_ms_count"]) > 0
+                            else None
+                        ),
                     }
                 )
 
@@ -3132,13 +3375,18 @@ if (form) {{
                 "fetched_total": aggregate_fetched,
                 "fetched_avg_per_run": round((aggregate_fetched / aggregate_runs), 2) if aggregate_runs else None,
                 "duration_avg_ms": round((aggregate_duration_total_ms / aggregate_duration_count), 2) if aggregate_duration_count else None,
+                "duration_p50_ms": _percentile(all_durations, 50.0),
+                "duration_p95_ms": _percentile(all_durations, 95.0),
             }
             return jsonify(
                 {
+                    "window": window,
                     "hours": hours,
+                    "bucket": bucket_granularity,
                     "datasource": datasource,
                     "total_feeds": len(metric_items),
                     "items": metric_items,
+                    "timeseries": timeseries,
                     "summary": summary,
                 }
             )
