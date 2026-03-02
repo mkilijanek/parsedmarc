@@ -222,8 +222,7 @@ Supported keys:
 - `MALWAREBAZAAR_API_URL`
 - `MWDB_URL`
 - `MWDB_AUTH_KEY`
-- `ABUSECH_AUTH_KEY` (preferred shared key for abuse.ch services)
-- `MALWAREBAZAAR_AUTH_KEY` (optional override)
+- `ABUSECH_AUTH_KEY` (shared key for abuse.ch services, including MalwareBazaar)
 
 Precedence:
 - CLI flags override values from `--config-file`.

@@ -113,8 +113,6 @@ SINCE=2025-01-01
 UNTIL=2025-01-31
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
 ABUSECH_AUTH_KEY=your-key
-# optional override for MalwareBazaar only:
-# MALWAREBAZAAR_AUTH_KEY=your-key
 MWDB_URL=https://mwdb.cert.pl
 MWDB_AUTH_KEY=your-key
 ```
@@ -126,8 +124,7 @@ MWDB_AUTH_KEY=your-key
 - `SINCE` - Start date (YYYY-MM-DD or ISO)
 - `UNTIL` - End date (YYYY-MM-DD or ISO)
 - `MALWAREBAZAAR_API_URL` - MalwareBazaar API endpoint
-- `ABUSECH_AUTH_KEY` - Shared abuse.ch API key (preferred)
-- `MALWAREBAZAAR_AUTH_KEY` - MalwareBazaar-only override key (optional)
+- `ABUSECH_AUTH_KEY` - Shared abuse.ch API key (used by MalwareBazaar too)
 - `MWDB_URL` - MWDB instance URL
 - `MWDB_AUTH_KEY` - MWDB API key
 

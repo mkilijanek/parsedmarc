@@ -974,7 +974,7 @@ class TestMalwareBazaarAutoUpdate:
         with patch.dict("os.environ", {
             "SECRET_KEY": "a" * 32,
             "MALWAREBAZAAR_TAGS": "trickbot",
-            "MALWAREBAZAAR_AUTH_KEY": "test-key",
+            "ABUSECH_AUTH_KEY": "test-key",
             "MALWAREBAZAAR_LIMIT": "5",
         }, clear=False):
             result = update_malwarebazaar_indicators()
@@ -995,7 +995,6 @@ class TestMalwareBazaarAutoUpdate:
         with patch.dict("os.environ", {
             "SECRET_KEY": "a" * 32,
             "MALWAREBAZAAR_TAGS": "trickbot",
-            "MALWAREBAZAAR_AUTH_KEY": "",
             "ABUSECH_AUTH_KEY": "shared-key",
         }, clear=False):
             update_malwarebazaar_indicators()
