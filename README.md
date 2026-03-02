@@ -1,6 +1,6 @@
 # Threat Intelligence Feed Aggregator
 
-Updated for release line `1.1.x` (2026-03-01).
+Updated for release line `1.2.x` (2026-03-02).
 
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
@@ -15,7 +15,7 @@ Production-ready threat feed aggregation and export service:
 - Unified light/dark theme across overview, indicators, admin, logs, and feed forms
 - MISP integration is disabled by default and can be enabled from Admin feed controls
 
-## Release Highlights (1.1.x)
+## Release Highlights (1.2.x)
 
 - Runtime schema creation removed from app startup.
 - Alembic migrations introduced (`scripts/db-migrate.sh`, `migrate` compose service).

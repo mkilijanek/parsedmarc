@@ -9,6 +9,7 @@ import hmac
 import secrets
 import time
 import uuid
+from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import requests
 from collections import deque
@@ -71,6 +72,13 @@ _SECURITY_WARNINGS_ONCE_FILE = "/tmp/ioc-service-security-warnings.once"
 SUPPORTED_FIELDS = {"value","type","confidence","tlp","tags","source"}
 # Database-native export formats (formats supported by ti.export_indicators SQL function)
 DB_SUPPORTED_FORMATS = {"txt", "csv", "json"}
+
+@dataclass(frozen=True)
+class SyncJobRef:
+    id: int
+    job_id: str
+    feed_source_id: str
+    trigger_type: str
 
 
 def _aggregate_fetched_count(result_data: Any) -> int:
@@ -1243,7 +1251,7 @@ def create_app() -> Flask:
             if own_session:
                 db.close()
 
-    def _execute_sync_job(job: SyncJob) -> Dict[str, Any]:
+    def _execute_sync_job(job: SyncJobRef) -> Dict[str, Any]:
         run_id = job.job_id
         feed_source_id = str(job.feed_source_id or "")
         scheduler_state["active_job_id"] = job.job_id
@@ -1405,7 +1413,7 @@ def create_app() -> Flask:
             scheduler_state["active_job_id"] = None
             db.close()
 
-    def _dequeue_next_sync_job() -> SyncJob | None:
+    def _dequeue_next_sync_job() -> SyncJobRef | None:
         db = _db()
         try:
             stmt = select(SyncJob).where(SyncJob.status == "queued").order_by(SyncJob.created_at.asc()).limit(1)
@@ -1420,7 +1428,12 @@ def create_app() -> Flask:
             job.started_at = datetime.now(timezone.utc)
             db.commit()
             db.refresh(job)
-            return job
+            return SyncJobRef(
+                id=int(job.id),
+                job_id=str(job.job_id),
+                feed_source_id=str(job.feed_source_id),
+                trigger_type=str(job.trigger_type),
+            )
         except Exception:
             db.rollback()
             return None
