@@ -1597,6 +1597,9 @@ class TestMWDBTelemetryInFeedStats:
         assert "filtered_org" in telemetry
         assert "filtered_time" in telemetry
         assert "filtered_no_ioc" in telemetry
+        assert "parse_failures" in telemetry
+        assert "request_params" in telemetry
+        assert telemetry["request_params"]["count"] == "200"
 
     @patch("app.services.mwdb.retry_with_backoff")
     def test_telemetry_limit_reached(self, mock_retry):
@@ -1663,6 +1666,30 @@ class TestMWDBTimeWindowRegression:
         )
         assert len(rows) == 1
         assert rows[0]["ioc_value"] == "d" * 64
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_invalid_upload_time_increments_parse_failures_telemetry(self, mock_retry):
+        """Timestamp parse failures should be reflected in telemetry counters."""
+        mock_retry.side_effect = [
+            {"objects": [{"id": "obj-x", "sha256": "f" * 64, "upload_time": "broken-ts", "tags": []}]},
+            {"objects": []},
+        ]
+
+        telemetry: dict = {}
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=[],
+                custom_filter="",
+                mode="recent",
+                limit=10,
+                telemetry=telemetry,
+            )
+        )
+        assert len(rows) == 1
+        assert int(telemetry.get("parse_failures", 0)) >= 1
+        assert isinstance(telemetry.get("request_params"), dict)
 
     @patch("app.services.mwdb.retry_with_backoff")
     def test_since_filter_excludes_older_rows_and_reports_no_results(self, mock_retry):

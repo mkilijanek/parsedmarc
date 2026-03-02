@@ -58,14 +58,14 @@ Telemetry, scheduler stats consistency, MWDB default semantics and robustness.
 - NEW-ISSUE: Persist `stop_reason` + request params + filter counters in `FeedStats.details`
 
 **Checklist**
-- [ ] `FeedStats.details` (JSON) includes:
-  - [ ] `stop_reason`
-  - [ ] sanitized request params (query/count/older_than)
-  - [ ] filter counters (time/org/type/parse_failures)
-- [ ] Manual and scheduled sync use identical stats schema
-- [ ] MWDB default 30-day time window deterministic
+- [x] `FeedStats.details` (JSON) includes:
+  - [x] `stop_reason`
+  - [x] sanitized request params (query/count/older_than)
+  - [x] filter counters (time/org/type/parse_failures)
+- [x] Manual and scheduled sync use identical stats schema
+- [x] MWDB default 30-day time window deterministic
 - [x] Default query semantics enforced (no empty query ambiguity)
-- [ ] Unit/regression tests cover early-break + parse failures
+- [x] Unit/regression tests cover early-break + parse failures
 
 **Definition of Done**
 - Operator can answer "why 0 fetched?" from DB/logs without guessing

@@ -275,6 +275,13 @@ def fetch_mwdb_by_tags(
     filtered_org = 0
     filtered_time = 0
     filtered_no_ioc = 0
+    parse_failures = 0
+    last_request_params: Dict[str, Any] = {
+        "count": str(min(chunk_size, 1000)),
+        "query_hash": q_hash,
+        "query_sent": query_sent,
+        "older_than": None,
+    }
 
     def _write_telemetry(reason: str) -> None:
         if telemetry is not None:
@@ -287,6 +294,8 @@ def fetch_mwdb_by_tags(
                 "filtered_org": filtered_org,
                 "filtered_time": filtered_time,
                 "filtered_no_ioc": filtered_no_ioc,
+                "parse_failures": parse_failures,
+                "request_params": dict(last_request_params),
             })
 
     with requests.Session() as session:
@@ -297,6 +306,12 @@ def fetch_mwdb_by_tags(
                 params["query"] = q
             if older_than:
                 params["older_than"] = older_than
+            last_request_params = {
+                "count": params.get("count"),
+                "query_hash": q_hash,
+                "query_sent": query_sent,
+                "older_than": params.get("older_than"),
+            }
             logger.info(
                 "mwdb_fetch_page",
                 extra={
@@ -364,6 +379,8 @@ def fetch_mwdb_by_tags(
                 # time filtering
                 ts = obj.get("upload_time") or obj.get("first_seen") or obj.get("created_at") or ""
                 dt = _parse_dt(ts)
+                if ts and dt is None:
+                    parse_failures += 1
                 # If timestamp parsing fails, dt=None: skip time filtering for this object
                 # (do not early-break, as response may not be sorted deterministically)
                 if dt is not None:
