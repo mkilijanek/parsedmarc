@@ -11,3 +11,6 @@ build/
 .idea/
 AGENTS.md
 app.log
+
+# Local UML tooling artifacts
+docs/uml/plantuml-*.jar
