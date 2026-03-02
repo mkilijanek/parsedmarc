@@ -151,6 +151,22 @@ class TestFeedsApiEndpoint:
         for item in data["items"]:
             assert item["status"] in {"ERROR", "WARNING"}
 
+    def test_api_feeds_metrics_returns_summary(self, client, sample_indicators, sample_feed_stats):
+        response = client.get("/api/feeds/metrics?hours=24")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["hours"] == 24
+        assert "items" in data
+        assert "summary" in data
+        assert isinstance(data["items"], list)
+
+    def test_api_feeds_metrics_datasource_filter(self, client, sample_indicators, sample_feed_stats):
+        response = client.get("/api/feeds/metrics?hours=24&datasource=mwdb")
+        assert response.status_code == 200
+        data = response.get_json()
+        for item in data["items"]:
+            assert item["source_type"] == "mwdb"
+
 
 # ============================================================================
 # Index/Dashboard Endpoint

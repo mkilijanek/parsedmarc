@@ -12,7 +12,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import requests
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from threading import Lock
 from pathlib import Path
 from threading import Thread
@@ -2155,6 +2155,8 @@ def create_app() -> Flask:
         has_next = next_offset < total_feeds
         page_start = (int(offset) + 1) if total_feeds > 0 else 0
         page_end = min(int(offset) + int(table_params["limit"]), total_feeds)
+        prev_link_html = f"<a href='/admin?{_admin_query(feeds_offset=prev_offset)}'>Previous</a>" if has_prev else "Previous"
+        next_link_html = f"<a href='/admin?{_admin_query(feeds_offset=next_offset)}'>Next</a>" if has_next else "Next"
 
         feed_filter_controls = f"""
         <form method='get' action='/admin' style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;align-items:end;margin:.7rem 0 1rem'>
@@ -2217,8 +2219,8 @@ def create_app() -> Flask:
         </form>
         <p><strong>Feeds:</strong> showing {page_start}-{page_end} of {total_feeds} (server-side)</p>
         <p>
-          {'<a href=\"/admin?' + _admin_query(feeds_offset=prev_offset) + '\">Previous</a>' if has_prev else 'Previous'} |
-          {'<a href=\"/admin?' + _admin_query(feeds_offset=next_offset) + '\">Next</a>' if has_next else 'Next'}
+          {prev_link_html} |
+          {next_link_html}
         </p>
         """
 
@@ -3026,6 +3028,118 @@ if (form) {{
                         "q": query_text,
                         "problems_only": problems_only,
                     },
+                }
+            )
+        finally:
+            db.close()
+
+    @app.get("/api/feeds/metrics")
+    @limiter.limit("60 per minute")
+    def api_feeds_metrics():
+        def _int_arg(name: str, default: int, minimum: int, maximum: int) -> int:
+            try:
+                value = int(request.args.get(name, str(default)))
+            except ValueError:
+                value = default
+            return max(minimum, min(maximum, value))
+
+        hours = _int_arg("hours", 24, 1, 168)
+        datasource = (request.args.get("datasource") or "all").strip().lower()
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+        db = _db(read_only=True)
+        try:
+            feed_items = _build_feed_items(db)
+            if datasource not in {"", "all"}:
+                feed_items = [item for item in feed_items if str(item.get("source_type", "")).lower() == datasource]
+
+            source_ids = [str(item["source_id"]) for item in feed_items]
+            if not source_ids:
+                return jsonify({"hours": hours, "datasource": datasource, "total_feeds": 0, "items": [], "summary": {}})
+
+            runs = list(
+                db.scalars(
+                    select(FeedRun)
+                    .where(FeedRun.feed_source_id.in_(source_ids), FeedRun.started_at >= cutoff)
+                    .order_by(FeedRun.feed_source_id.asc(), FeedRun.started_at.desc())
+                ).all()
+            )
+            by_feed: Dict[str, List[FeedRun]] = {sid: [] for sid in source_ids}
+            for run in runs:
+                by_feed.setdefault(str(run.feed_source_id), []).append(run)
+
+            metric_items: List[Dict[str, Any]] = []
+            aggregate_runs = 0
+            aggregate_success = 0
+            aggregate_errors = 0
+            aggregate_fetched = 0
+            aggregate_duration_total_ms = 0
+            aggregate_duration_count = 0
+
+            for item in feed_items:
+                sid = str(item["source_id"])
+                feed_runs = by_feed.get(sid, [])
+                total_runs = len(feed_runs)
+                success_runs = 0
+                error_runs = 0
+                total_fetched = 0
+                duration_ms_total = 0
+                duration_ms_count = 0
+                for run in feed_runs:
+                    status = str(run.status or "").lower()
+                    if status == "success":
+                        success_runs += 1
+                    if status in {"failed", "cancelled"}:
+                        error_runs += 1
+                    total_fetched += int(run.fetched_count or 0)
+                    if run.finished_at is not None and run.started_at is not None:
+                        duration_ms_total += max(0, int((run.finished_at - run.started_at).total_seconds() * 1000))
+                        duration_ms_count += 1
+                availability = round((success_runs / total_runs) * 100, 2) if total_runs else None
+                error_rate = round((error_runs / total_runs) * 100, 2) if total_runs else None
+                avg_duration_ms = round(duration_ms_total / duration_ms_count, 2) if duration_ms_count else None
+                avg_fetched = round(total_fetched / total_runs, 2) if total_runs else None
+
+                aggregate_runs += total_runs
+                aggregate_success += success_runs
+                aggregate_errors += error_runs
+                aggregate_fetched += total_fetched
+                aggregate_duration_total_ms += duration_ms_total
+                aggregate_duration_count += duration_ms_count
+
+                metric_items.append(
+                    {
+                        "source_id": sid,
+                        "display_name": item["display_name"],
+                        "source_type": item["source_type"],
+                        "status": item["status"],
+                        "runs": total_runs,
+                        "success_runs": success_runs,
+                        "error_runs": error_runs,
+                        "availability_pct": availability,
+                        "error_rate_pct": error_rate,
+                        "fetched_total": total_fetched,
+                        "fetched_avg_per_run": avg_fetched,
+                        "duration_avg_ms": avg_duration_ms,
+                        "window_hours": hours,
+                    }
+                )
+
+            summary = {
+                "runs_total": aggregate_runs,
+                "availability_pct": round((aggregate_success / aggregate_runs) * 100, 2) if aggregate_runs else None,
+                "error_rate_pct": round((aggregate_errors / aggregate_runs) * 100, 2) if aggregate_runs else None,
+                "fetched_total": aggregate_fetched,
+                "fetched_avg_per_run": round((aggregate_fetched / aggregate_runs), 2) if aggregate_runs else None,
+                "duration_avg_ms": round((aggregate_duration_total_ms / aggregate_duration_count), 2) if aggregate_duration_count else None,
+            }
+            return jsonify(
+                {
+                    "hours": hours,
+                    "datasource": datasource,
+                    "total_feeds": len(metric_items),
+                    "items": metric_items,
+                    "summary": summary,
                 }
             )
         finally:
