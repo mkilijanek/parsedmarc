@@ -1641,6 +1641,55 @@ class TestMWDBTelemetryInFeedStats:
         assert rows == []
 
 
+class TestMWDBTimeWindowRegression:
+    """Regression coverage for MWDB time-window and timestamp parse edge cases."""
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_invalid_upload_time_does_not_drop_valid_ioc(self, mock_retry):
+        """Invalid timestamps must not crash parsing or drop IOC by default."""
+        mock_retry.side_effect = [
+            {"objects": [{"id": "obj-x", "sha256": "d" * 64, "upload_time": "not-a-date", "tags": []}]},
+            {"objects": []},
+        ]
+
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=[],
+                custom_filter="",
+                mode="recent",
+                limit=10,
+            )
+        )
+        assert len(rows) == 1
+        assert rows[0]["ioc_value"] == "d" * 64
+
+    @patch("app.services.mwdb.retry_with_backoff")
+    def test_since_filter_excludes_older_rows_and_reports_no_results(self, mock_retry):
+        """Rows older than since cutoff should be filtered with deterministic stop_reason."""
+        mock_retry.side_effect = [
+            {"objects": [{"id": "obj-old", "sha256": "e" * 64, "upload_time": "2020-01-01T00:00:00Z", "tags": []}]},
+            {"objects": []},
+        ]
+        telemetry: dict = {}
+        rows = list(
+            fetch_mwdb_by_tags(
+                base_url="https://mwdb.example.com",
+                auth_key="abc",
+                tags=[],
+                custom_filter="",
+                mode="recent",
+                since=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                limit=10,
+                telemetry=telemetry,
+            )
+        )
+        assert rows == []
+        assert telemetry.get("stop_reason") in {"no_results", "no_older_than"}
+        assert int(telemetry.get("filtered_time", 0)) >= 1
+
+
 # ============================================================================
 # dep_health_refresh tests
 # ============================================================================
