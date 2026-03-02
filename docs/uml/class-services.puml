@@ -1,0 +1,132 @@
+@startuml IOC_Service_Layer
+!theme cerulean-outline
+skinparam classAttributeIconSize 0
+
+title IOC Threat Intelligence Service - Service Layer
+
+abstract class BaseService {
+    #config: Config
+    #logger: Logger
+    --
+    +__init__(config: Config)
+    +update_indicators(): Dict <<abstract>>
+    +test_connection(): Tuple<bool, str> <<abstract>>
+}
+
+class CrowdSecService {
+    +update_crowdsec_list(list_id: str): Dict
+    +update_all_crowdsec_lists(): Dict
+    -_fetch_list(api_key, list_id): List<str>
+    -_deactivate_missing(db, incoming)
+}
+
+class MISPService {
+    +update_misp_indicators(): Dict
+    -_search_misp(days: int): List
+    -_normalize_event(event): Indicator
+    -_apply_tlp_rules()
+}
+
+class MalwareBazaarService {
+    +update_malwarebazaar_indicators(): Dict
+    -_fetch_by_tags(tags: List<str>): List
+    -_fetch_by_date(since: Date)
+}
+
+class MWDBService {
+    +update_mwdb_indicators(): Dict
+    +fetch_mwdb_organizations(): List<Dict>
+    +test_mwdb_connection(): Dict
+    -_query_with_filters()
+}
+
+class AbuseChService {
+    +update_abusech_indicators(): Dict
+    +fetch_threatfox(days: int): List
+    +fetch_urlhaus(): List
+    +fetch_feodotracker(): List
+    +fetch_yaraify(): List
+    -_parse_ioc_data(raw)
+}
+
+class CorrelationService {
+    +query_correlations(limit: int): List
+    +refresh_correlation_snapshots()
+    +find_cross_source_matches(): List
+    -_calculate_similarity()
+}
+
+class ExportService {
+    +export_txt(indicators: List): str
+    +export_csv(indicators: List): str
+    +export_json(indicators: List): str
+    +export_stix(indicators: List): str
+    +export_cef(indicators: List): str
+    +export_fortigate(indicators: List): str
+    +export_splunk(indicators: List): str
+    +export_elasticsearch(indicators: List): str
+    --
+    -_get_formatter(fmt: str): Callable
+    -_severity_from_confidence(conf): str
+}
+
+class QueryParser {
+    +parse_kibana_query(query: str): List<Token>
+    +parse_term(field, op, value): Term
+    +tokenize(input: str): List<str>
+    +rpn_to_filter(rpn): SQLAlchemyFilter
+    --
+    -_shunting_yard(tokens)
+    -_apply_operator(op, stack)
+}
+
+class Config {
+    +SECRET_KEY: str
+    +DATABASE_URL: str
+    +REDIS_URL: str
+    +CACHE_TTL: int
+    +REQUESTS_PER_SECOND_MAX: int
+    +MISP_URL: str
+    +MISP_API_KEY: str
+    +CROWDSEC_API_KEY: str
+    --
+    +get_setting(key): str
+}
+
+' Inheritance
+BaseService <|-- CrowdSecService
+BaseService <|-- MISPService
+BaseService <|-- MalwareBazaarService
+BaseService <|-- MWDBService
+BaseService <|-- AbuseChService
+
+' Dependencies
+CrowdSecService ..> Config
+MISPService ..> Config
+MalwareBazaarService ..> Config
+MWDBService ..> Config
+AbuseChService ..> Config
+ExportService ..> Config
+QueryParser ..> Config
+
+note right of BaseService
+  Abstract base class defining
+  interface for all feed services
+end note
+
+note right of ExportService
+  17 export formats supported:
+  - Basic: txt, csv, json, xml
+  - Firewall: fortigate, checkpoint, paloalto
+  - SIEM: sentinel, arcsight, splunk
+  - Platforms: elasticsearch, cribl, fidelis
+end note
+
+note right of QueryParser
+  Kibana-like query syntax:
+  - Operators: AND, OR, NOT
+  - Fields: value, type, confidence, tlp, tags, source
+  - Wildcards: *, ?
+end note
+
+@enduml

@@ -1,0 +1,60 @@
+@startuml IOC_Service_SyncJob_StateMachine
+!theme cerulean-outline
+
+title SyncJob Lifecycle State Machine
+
+[*] --> queued : enqueue
+
+state queued {
+    [*] --> waiting
+    state waiting
+}
+
+queued --> running : start (idempotency passed)
+queued --> cancelled : admin_cancel
+
+state running {
+    [*] --> processing
+    state processing
+}
+
+running --> success : complete (update stats)
+
+running --> failed : error
+
+running --> cancel_requested : admin_cancel_request
+
+state cancel_requested {
+    [*] --> draining
+    state draining
+}
+
+cancel_requested --> cancelled : finalize_cancel
+
+failed --> queued : admin_retry (new job_id)
+cancelled --> queued : admin_retry (new job_id)
+
+success --> [*]
+
+failed --> [*]
+cancelled --> [*]
+
+note right of queued
+  Jobs are created with
+  idempotency_key to
+  prevent duplicates
+end note
+
+note right of running
+  Advisory lock ensures
+  only one worker per
+  feed at a time
+end note
+
+note right of success
+  Result contains
+  counts and metadata
+  for monitoring
+end note
+
+@enduml

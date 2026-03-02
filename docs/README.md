@@ -15,6 +15,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - 🛠️ **[Runbook](runbook.md)** - Incident response and release gate procedures
 - 🧭 **[M16 Finalization](m16-finalization.md)** - Go/no-go and closure checklist
 - 📆 **[Maintenance Plan](maintenance-plan.md)** - 90-day operating cadence and KPI policy
+- 🧩 **[UML Diagrams](uml/README.md)** - deployment, data model, sync flow, state machine
 - ✅ **[Contributing](../CONTRIBUTING.md)** - Quality gate and CI merge policy
 - 🔌 **[Data Sources](data-sources.md)** - MISP, CrowdSec, MalwareBazaar, MWDB integration
 - 💾 **[Database](database.md)** - Schema, indexes, and queries
