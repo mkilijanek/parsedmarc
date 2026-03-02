@@ -1,0 +1,524 @@
+{
+  "_type": "Project",
+  "_id": "AAAAAAFF+h6SjaM2Hec=",
+  "name": "IOC Service - State Machine Diagrams",
+  "ownedElements": [
+    {
+      "_type": "UMLModel",
+      "_id": "AAAAAAGVkqCVMn3B7qU=",
+      "_parent": "AAAAAAFF+h6SjaM2Hec=",
+      "name": "State Machine Model",
+      "ownedElements": [
+        {
+          "_type": "UMLStateMachine",
+          "_id": "AAAAAAGVkqCvMn3CxPQ=",
+          "_parent": "AAAAAAGVkqCVMn3B7qU=",
+          "name": "SyncJob Lifecycle",
+          "ownedElements": [
+            {
+              "_type": "UMLStatechartDiagram",
+              "_id": "AAAAAAGVkqDEMn3Dzqw=",
+              "_parent": "AAAAAAGVkqCvMn3CxPQ=",
+              "name": "SyncJob State Machine",
+              "ownedViews": [
+                {
+                  "_type": "UMLInitialStateView",
+                  "_id": "AAAAAAGVkqD7Mn3E0YU=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "model": "AAAAAAGVkqD7Mn3F8jo=",
+                  "name": "Initial"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqEgMn3G9CQ=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "model": "AAAAAAGVkqEgMn3HFeE=",
+                  "name": "queued",
+                  "entry": "set created_at",
+                  "do": "wait for worker",
+                  "documentation": "Job is waiting in queue"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqFIMn3IQW8=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "model": "AAAAAAGVkqFIMn3JYMk=",
+                  "name": "running",
+                  "entry": "set started_at",
+                  "do": "execute sync",
+                  "documentation": "Job is actively processing"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqFoMn3KZ5s=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "model": "AAAAAAGVkqFoMn3LgpI=",
+                  "name": "success",
+                  "entry": "set finished_at, result_json",
+                  "documentation": "Job completed successfully"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqGGMn3Mhh8=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "model": "AAAAAAGVkqGGMn3NoZI=",
+                  "name": "failed",
+                  "entry": "set finished_at, error",
+                  "documentation": "Job failed with error"
+                },
+                {
+                  "_type": "UMLFinalStateView",
+                  "_id": "AAAAAAGVkqGgMn3OpYY=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "model": "AAAAAAGVkqGgMn3Pw6o=",
+                  "name": "Final"
+                }
+              ],
+              "transitions": [
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqG0Mn3Qxpw=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "source": "AAAAAAGVkqD7Mn3F8jo=",
+                  "target": "AAAAAAGVkqEgMn3HFeE=",
+                  "name": "enqueue",
+                  "trigger": "scheduler",
+                  "effect": "create SyncJob"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqHVMn3R6vI=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "source": "AAAAAAGVkqEgMn3HFeE=",
+                  "target": "AAAAAAGVkqFIMn3JYMk=",
+                  "name": "start",
+                  "trigger": "worker pick",
+                  "guard": "idempotency check passed"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqHvMn3S+ds=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "source": "AAAAAAGVkqFIMn3JYMk=",
+                  "target": "AAAAAAGVkqFoMn3LgpI=",
+                  "name": "complete",
+                  "trigger": "sync success",
+                  "effect": "update feed_stats"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqIHMn3T/ts=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "source": "AAAAAAGVkqFIMn3JYMk=",
+                  "target": "AAAAAAGVkqGGMn3NoZI=",
+                  "name": "fail",
+                  "trigger": "exception",
+                  "effect": "log error"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqIfMn3U/r0=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "source": "AAAAAAGVkqFoMn3LgpI=",
+                  "target": "AAAAAAGVkqGgMn3Pw6o=",
+                  "name": ""
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqIuMn3VAPQ=",
+                  "_parent": "AAAAAAGVkqDEMn3Dzqw=",
+                  "source": "AAAAAAGVkqGGMn3NoZI=",
+                  "target": "AAAAAAGVkqGgMn3Pw6o=",
+                  "name": ""
+                }
+              ]
+            }
+          ],
+          "regions": [
+            {
+              "_type": "UMLRegion",
+              "_id": "AAAAAAGVkqJAMn3WBNQ=",
+              "_parent": "AAAAAAGVkqCvMn3CxPQ=",
+              "name": "Region1",
+              "vertices": [
+                {
+                  "_type": "UMLInitialState",
+                  "_id": "AAAAAAGVkqD7Mn3F8jo=",
+                  "_parent": "AAAAAAGVkqJAMn3WBNQ=",
+                  "name": "Initial"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqEgMn3HFeE=",
+                  "_parent": "AAAAAAGVkqJAMn3WBNQ=",
+                  "name": "queued",
+                  "entry": "set created_at",
+                  "doActivity": "wait for worker"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqFIMn3JYMk=",
+                  "_parent": "AAAAAAGVkqJAMn3WBNQ=",
+                  "name": "running",
+                  "entry": "set started_at",
+                  "doActivity": "execute sync"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqFoMn3LgpI=",
+                  "_parent": "AAAAAAGVkqJAMn3WBNQ=",
+                  "name": "success",
+                  "entry": "set finished_at, result_json"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqGGMn3NoZI=",
+                  "_parent": "AAAAAAGVkqJAMn3WBNQ=",
+                  "name": "failed",
+                  "entry": "set finished_at, error"
+                },
+                {
+                  "_type": "UMLFinalState",
+                  "_id": "AAAAAAGVkqGgMn3Pw6o=",
+                  "_parent": "AAAAAAGVkqJAMn3WBNQ=",
+                  "name": "Final"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "_type": "UMLStateMachine",
+          "_id": "AAAAAAGVkqJmMn3XCXc=",
+          "_parent": "AAAAAAGVkqCVMn3B7qU=",
+          "name": "Feed Lifecycle",
+          "ownedElements": [
+            {
+              "_type": "UMLStatechartDiagram",
+              "_id": "AAAAAAGVkqJ6Mn3YDvQ=",
+              "_parent": "AAAAAAGVkqJmMn3XCXc=",
+              "name": "Feed State Machine",
+              "ownedViews": [
+                {
+                  "_type": "UMLInitialStateView",
+                  "_id": "AAAAAAGVkqKbMn3ZRgg=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "model": "AAAAAAGVkqKbMn3aaOI=",
+                  "name": "Initial"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqKzMn3bh/g=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "model": "AAAAAAGVkqKzMn3coB4=",
+                  "name": "disabled",
+                  "entry": "set enabled=false",
+                  "documentation": "Feed is configured but not active"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqLTMn3dpSI=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "model": "AAAAAAGVkqLTMn3ew8Q=",
+                  "name": "enabled",
+                  "entry": "set enabled=true",
+                  "do": "participate in sync schedule",
+                  "documentation": "Feed is active and scheduled"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqLtMn3fyN4=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "model": "AAAAAAGVkqLtMn3g5qU=",
+                  "name": "deleted",
+                  "entry": "set deleted=true",
+                  "documentation": "Feed is soft-deleted"
+                },
+                {
+                  "_type": "UMLFinalStateView",
+                  "_id": "AAAAAAGVkqL+Mn3h6dE=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "model": "AAAAAAGVkqL+Mn3iBuQ=",
+                  "name": "Final"
+                }
+              ],
+              "transitions": [
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqMTMn3jCvc=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "source": "AAAAAAGVkqKbMn3aaOI=",
+                  "target": "AAAAAAGVkqKzMn3coB4=",
+                  "name": "create",
+                  "effect": "MISP default disabled"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqMnMn3kHsg=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "source": "AAAAAAGVkqKzMn3coB4=",
+                  "target": "AAAAAAGVkqLTMn3ew8Q=",
+                  "name": "enable",
+                  "trigger": "admin action",
+                  "guard": "valid configuration"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqM5Mn3lI0w=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "source": "AAAAAAGVkqLTMn3ew8Q=",
+                  "target": "AAAAAAGVkqKzMn3coB4=",
+                  "name": "disable",
+                  "trigger": "admin action or error"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqNNMn3mJIk=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "source": "AAAAAAGVkqKzMn3coB4=",
+                  "target": "AAAAAAGVkqLtMn3g5qU=",
+                  "name": "delete",
+                  "trigger": "admin action"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqNcMn3nKTQ=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "source": "AAAAAAGVkqLTMn3ew8Q=",
+                  "target": "AAAAAAGVkqLtMn3g5qU=",
+                  "name": "delete",
+                  "trigger": "admin action"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqNtMn3oLlQ=",
+                  "_parent": "AAAAAAGVkqJ6Mn3YDvQ=",
+                  "source": "AAAAAAGVkqLtMn3g5qU=",
+                  "target": "AAAAAAGVkqL+Mn3iBuQ=",
+                  "name": ""
+                }
+              ]
+            }
+          ],
+          "regions": [
+            {
+              "_type": "UMLRegion",
+              "_id": "AAAAAAGVkqN9Mn3pMvA=",
+              "_parent": "AAAAAAGVkqJmMn3XCXc=",
+              "name": "Region1",
+              "vertices": [
+                {
+                  "_type": "UMLInitialState",
+                  "_id": "AAAAAAGVkqKbMn3aaOI=",
+                  "_parent": "AAAAAAGVkqN9Mn3pMvA=",
+                  "name": "Initial"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqKzMn3coB4=",
+                  "_parent": "AAAAAAGVkqN9Mn3pMvA=",
+                  "name": "disabled",
+                  "entry": "set enabled=false"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqLTMn3ew8Q=",
+                  "_parent": "AAAAAAGVkqN9Mn3pMvA=",
+                  "name": "enabled",
+                  "entry": "set enabled=true",
+                  "doActivity": "participate in sync schedule"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqLtMn3g5qU=",
+                  "_parent": "AAAAAAGVkqN9Mn3pMvA=",
+                  "name": "deleted",
+                  "entry": "set deleted=true"
+                },
+                {
+                  "_type": "UMLFinalState",
+                  "_id": "AAAAAAGVkqL+Mn3iBuQ=",
+                  "_parent": "AAAAAAGVkqN9Mn3pMvA=",
+                  "name": "Final"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "_type": "UMLStateMachine",
+          "_id": "AAAAAAGVkqOTMn3qNks=",
+          "_parent": "AAAAAAGVkqCVMn3B7qU=",
+          "name": "ExportJob Lifecycle",
+          "ownedElements": [
+            {
+              "_type": "UMLStatechartDiagram",
+              "_id": "AAAAAAGVkqOjMn3rOoI=",
+              "_parent": "AAAAAAGVkqOTMn3qNks=",
+              "name": "ExportJob State Machine",
+              "ownedViews": [
+                {
+                  "_type": "UMLInitialStateView",
+                  "_id": "AAAAAAGVkqO7Mn3sPxI=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "model": "AAAAAAGVkqO7Mn3tWnY=",
+                  "name": "Initial"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqPOMn3udqQ=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "model": "AAAAAAGVkqPOMn3vkqw=",
+                  "name": "queued",
+                  "entry": "persist job",
+                  "documentation": "Export job waiting for processing"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqPmMn3wmAY=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "model": "AAAAAAGVkqPmMn3xtdk=",
+                  "name": "running",
+                  "entry": "spawn background thread",
+                  "do": "query and format",
+                  "documentation": "Actively processing export"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqP+Mn3yu+Y=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "model": "AAAAAAGVkqP+Mn3z2wE=",
+                  "name": "completed",
+                  "entry": "write file, update path",
+                  "documentation": "Export file ready"
+                },
+                {
+                  "_type": "UMLStateView",
+                  "_id": "AAAAAAGVkqQYMn30f0Y=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "model": "AAAAAAGVkqQYMn31mTI=",
+                  "name": "failed",
+                  "entry": "log error",
+                  "documentation": "Export failed"
+                },
+                {
+                  "_type": "UMLFinalStateView",
+                  "_id": "AAAAAAGVkqQsMn32nCA=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "model": "AAAAAAGVkqQsMn33uUY=",
+                  "name": "Final"
+                }
+              ],
+              "transitions": [
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqQ+Mn34ujw=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "source": "AAAAAAGVkqO7Mn3tWnY=",
+                  "target": "AAAAAAGVkqPOMn3vkqw=",
+                  "name": "request",
+                  "trigger": "large export",
+                  "effect": "create ExportJob"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqRUNn35v0w=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "source": "AAAAAAGVkqPOMn3vkqw=",
+                  "target": "AAAAAAGVkqPmMn3xtdk=",
+                  "name": "start",
+                  "trigger": "thread spawn"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqRkNn36wZw=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "source": "AAAAAAGVkqPmMn3xtdk=",
+                  "target": "AAAAAAGVkqP+Mn3z2wE=",
+                  "name": "finish",
+                  "trigger": "write complete"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqR0Nn37wpA=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "source": "AAAAAAGVkqPmMn3xtdk=",
+                  "target": "AAAAAAGVkqQYMn31mTI=",
+                  "name": "error",
+                  "trigger": "exception"
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqSCNn38xJQ=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "source": "AAAAAAGVkqP+Mn3z2wE=",
+                  "target": "AAAAAAGVkqQsMn33uUY=",
+                  "name": ""
+                },
+                {
+                  "_type": "UMLTransition",
+                  "_id": "AAAAAAGVkqSSNn39xuc=",
+                  "_parent": "AAAAAAGVkqOjMn3rOoI=",
+                  "source": "AAAAAAGVkqQYMn31mTI=",
+                  "target": "AAAAAAGVkqQsMn33uUY=",
+                  "name": ""
+                }
+              ]
+            }
+          ],
+          "regions": [
+            {
+              "_type": "UMLRegion",
+              "_id": "AAAAAAGVkqSiNn3+yQ8=",
+              "_parent": "AAAAAAGVkqOTMn3qNks=",
+              "name": "Region1",
+              "vertices": [
+                {
+                  "_type": "UMLInitialState",
+                  "_id": "AAAAAAGVkqO7Mn3tWnY=",
+                  "_parent": "AAAAAAGVkqSiNn3+yQ8=",
+                  "name": "Initial"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqPOMn3vkqw=",
+                  "_parent": "AAAAAAGVkqSiNn3+yQ8=",
+                  "name": "queued",
+                  "entry": "persist job"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqPmMn3xtdk=",
+                  "_parent": "AAAAAAGVkqSiNn3+yQ8=",
+                  "name": "running",
+                  "entry": "spawn background thread",
+                  "doActivity": "query and format"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqP+Mn3z2wE=",
+                  "_parent": "AAAAAAGVkqSiNn3+yQ8=",
+                  "name": "completed",
+                  "entry": "write file, update path"
+                },
+                {
+                  "_type": "UMLState",
+                  "_id": "AAAAAAGVkqQYMn31mTI=",
+                  "_parent": "AAAAAAGVkqSiNn3+yQ8=",
+                  "name": "failed",
+                  "entry": "log error"
+                },
+                {
+                  "_type": "UMLFinalState",
+                  "_id": "AAAAAAGVkqQsMn33uUY=",
+                  "_parent": "AAAAAAGVkqSiNn3+yQ8=",
+                  "name": "Final"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

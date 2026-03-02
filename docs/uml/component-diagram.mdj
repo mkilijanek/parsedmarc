@@ -1,0 +1,273 @@
+{
+  "_type": "Project",
+  "_id": "AAAAAAFF+h6SjaM2Hec=",
+  "name": "IOC Service - Component Diagram",
+  "ownedElements": [
+    {
+      "_type": "UMLModel",
+      "_id": "AAAAAAGVklh9MXyZQHE=",
+      "_parent": "AAAAAAFF+h6SjaM2Hec=",
+      "name": "Component Model",
+      "ownedElements": [
+        {
+          "_type": "UMLComponentDiagram",
+          "_id": "AAAAAAGVklioMXyap+c=",
+          "_parent": "AAAAAAGVklh9MXyZQHE=",
+          "name": "System Components",
+          "ownedViews": [
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVkljGMXybYh8=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVkljGMXycgZo=",
+              "subViews": [
+                {
+                  "_type": "UMLNameCompartmentView",
+                  "_id": "AAAAAAGVkljGMXydn9s=",
+                  "_parent": "AAAAAAGVkljGMXybYh8=",
+                  "model": "AAAAAAGVkljGMXycgZo=",
+                  "name": "«component»\nWeb Application",
+                  "font": "Arial;13;1"
+                }
+              ],
+              "containedViews": [
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVklk4MXyen8o=",
+                  "_parent": "AAAAAAGVkljGMXybYh8=",
+                  "model": "AAAAAAGVklk4MXyfv8I=",
+                  "name": "API Layer",
+                  "stereotype": "component"
+                },
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVkllOMXygwew=",
+                  "_parent": "AAAAAAGVkljGMXybYh8=",
+                  "model": "AAAAAAGVkllOMXyh+eo=",
+                  "name": "Web UI",
+                  "stereotype": "component"
+                },
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVkllmMXyiZxI=",
+                  "_parent": "AAAAAAGVkljGMXybYh8=",
+                  "model": "AAAAAAGVkllmMXyjnJY=",
+                  "name": "Security Layer",
+                  "stereotype": "component"
+                }
+              ]
+            },
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVklmGMXykMKE=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVklmGMXylV9w=",
+              "name": "«component»\nBackground Worker",
+              "font": "Arial;13;1"
+            },
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVklmmMXymRt0=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVklmmMXynfwo=",
+              "name": "«component»\nFeed Connectors",
+              "font": "Arial;13;1",
+              "containedViews": [
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVklnHMXyobAU=",
+                  "_parent": "AAAAAAGVklmmMXymRt0=",
+                  "model": "AAAAAAGVklnHMXypkRw=",
+                  "name": "CrowdSec Connector",
+                  "stereotype": "component"
+                },
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVklnZMXyqXs0=",
+                  "_parent": "AAAAAAGVklmmMXymRt0=",
+                  "model": "AAAAAAGVklnZMXyrhlI=",
+                  "name": "MISP Connector",
+                  "stereotype": "component"
+                },
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVklnsMXysSpU=",
+                  "_parent": "AAAAAAGVklmmMXymRt0=",
+                  "model": "AAAAAAGVklnsMXytc/E=",
+                  "name": "MalwareBazaar Connector",
+                  "stereotype": "component"
+                },
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVkl0QMXyuP0k=",
+                  "_parent": "AAAAAAGVklmmMXymRt0=",
+                  "model": "AAAAAAGVkl0QMXyvXrQ=",
+                  "name": "MWDB Connector",
+                  "stereotype": "component"
+                },
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVkl0xMXywMsY=",
+                  "_parent": "AAAAAAGVklmmMXymRt0=",
+                  "model": "AAAAAAGVkl0xMXyxW2w=",
+                  "name": "Abuse.ch Connector",
+                  "stereotype": "component"
+                }
+              ]
+            },
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVkl1JMXyyOzg=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVkl1JMXyzY5Y=",
+              "name": "«component»\nExport Engine",
+              "font": "Arial;13;1",
+              "containedViews": [
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVkl1lMXy0fhc=",
+                  "_parent": "AAAAAAGVkl1JMXyyOzg=",
+                  "model": "AAAAAAGVkl1lMXy1pPs=",
+                  "name": "Format Registry",
+                  "stereotype": "component"
+                },
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVkl12MXy2NJ0=",
+                  "_parent": "AAAAAAGVkl1JMXyyOzg=",
+                  "model": "AAAAAAGVkl12MXy3XHo=",
+                  "name": "Vendor Formatters",
+                  "stereotype": "component"
+                }
+              ]
+            },
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVkl2KMXy4DSw=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVkl2KMXy5NUE=",
+              "name": "«component»\nQuery Engine",
+              "font": "Arial;13;1",
+              "containedViews": [
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVkl2dMXy6A4I=",
+                  "_parent": "AAAAAAGVkl2KMXy4DSw=",
+                  "model": "AAAAAAGVkl2dMXy7KHc=",
+                  "name": "Kibana Parser",
+                  "stereotype": "component"
+                },
+                {
+                  "_type": "UMLComponentView",
+                  "_id": "AAAAAAGVkl2xMXy8AMw=",
+                  "_parent": "AAAAAAGVkl2KMXy4DSw=",
+                  "model": "AAAAAAGVkl2xMXy9Jqg=",
+                  "name": "SQL Generator",
+                  "stereotype": "component"
+                }
+              ]
+            },
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVkl3GMXy91ZY=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVkl3GMXy/Ao0=",
+              "name": "«component»\nCorrelation Engine",
+              "font": "Arial;13;1"
+            },
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVkl3fMXy/WtQ=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVkl3fMXy/f/A=",
+              "name": "«component»\nPostgreSQL",
+              "stereotype": "database"
+            },
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVkl3yMXy/8zs=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVkl3yMXzAHGI=",
+              "name": "«component»\nRedis Cache",
+              "stereotype": "cache"
+            },
+            {
+              "_type": "UMLComponentView",
+              "_id": "AAAAAAGVkl4HMXzAiXk=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "model": "AAAAAAGVkl4HMXzBt7w=",
+              "name": "«component»\nNginx",
+              "stereotype": "proxy"
+            }
+          ],
+          "connectors": [
+            {
+              "_type": "UMLDependency",
+              "_id": "AAAAAAGVkl5WMXzCpEg=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "source": "AAAAAAGVkl4HMXzBt7w=",
+              "target": "AAAAAAGVkljGMXycgZo=",
+              "name": "reverse proxy"
+            },
+            {
+              "_type": "UMLDependency",
+              "_id": "AAAAAAGVkl53MXzD4aE=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "source": "AAAAAAGVkljGMXycgZo=",
+              "target": "AAAAAAGVkl3fMXy/f/A=",
+              "name": "reads/writes"
+            },
+            {
+              "_type": "UMLDependency",
+              "_id": "AAAAAAGVkl6XMXzEksg=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "source": "AAAAAAGVkljGMXycgZo=",
+              "target": "AAAAAAGVkl3yMXzAHGI=",
+              "name": "caches"
+            },
+            {
+              "_type": "UMLDependency",
+              "_id": "AAAAAAGVkl6xMXzFfKg=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "source": "AAAAAAGVklmGMXylV9w=",
+              "target": "AAAAAAGVklmmMXynfwo=",
+              "name": "triggers"
+            },
+            {
+              "_type": "UMLDependency",
+              "_id": "AAAAAAGVkl7HMXzGYu0=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "source": "AAAAAAGVklmmMXynfwo=",
+              "target": "AAAAAAGVkl3fMXy/f/A=",
+              "name": "persists"
+            },
+            {
+              "_type": "UMLDependency",
+              "_id": "AAAAAAGVkl7eMXzHWog=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "source": "AAAAAAGVkl2KMXy5NUE=",
+              "target": "AAAAAAGVkl3fMXy/f/A=",
+              "name": "queries"
+            },
+            {
+              "_type": "UMLDependency",
+              "_id": "AAAAAAGVkl72MXzIdWc=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "source": "AAAAAAGVkl1JMXyzY5Y=",
+              "target": "AAAAAAGVkl3fMXy/f/A=",
+              "name": "reads"
+            },
+            {
+              "_type": "UMLDependency",
+              "_id": "AAAAAAGVkl8PMXzJXBk=",
+              "_parent": "AAAAAAGVklioMXyap+c=",
+              "source": "AAAAAAGVkl3GMXy/Ao0=",
+              "target": "AAAAAAGVkl3fMXy/f/A=",
+              "name": "analyzes"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

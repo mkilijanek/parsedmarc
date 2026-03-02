@@ -7,6 +7,7 @@ import threading
 import time
 from collections import deque
 from typing import Callable, TypeVar
+from requests import HTTPError
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -195,12 +196,24 @@ _dep_status = DepStatusCache()
 
 def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay: float = 1.0, max_delay: float = 30.0, jitter: float = 0.2) -> T:
     """Exponential backoff with jitter for transient failures."""
+    retriable_4xx = {408, 425, 429}
+
+    def _should_retry(exc: Exception) -> bool:
+        if isinstance(exc, HTTPError):
+            response = getattr(exc, "response", None)
+            status = getattr(response, "status_code", None)
+            if isinstance(status, int) and (400 <= status < 500) and status not in retriable_4xx:
+                return False
+        return True
+
     attempt = 0
     while True:
         attempt += 1
         try:
             return fn()
         except Exception as e:
+            if not _should_retry(e):
+                raise
             if attempt >= max_attempts:
                 raise
             sleep = min(max_delay, base_delay * (2 ** (attempt - 1)))

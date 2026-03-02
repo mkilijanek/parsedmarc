@@ -260,11 +260,13 @@ def fetch_mwdb_by_tags(
 
     base_url = base_url.rstrip("/")
 
-    # lucene tag/custom query — always send a query param
+    # lucene tag/custom query
     q = _build_object_query(tags, custom_filter)
+    default_query_applied = False
     if not q:
-        # Fall back to safe default so the API always receives a query param
+        # Fall back to default query when neither tags nor custom_filter are configured.
         q = (default_query or "type:*").strip()
+        default_query_applied = bool(q)
     q_hash = hashlib.sha256(q.encode("utf-8")).hexdigest()[:12]
     query_sent = bool(q)
 
@@ -291,8 +293,8 @@ def fetch_mwdb_by_tags(
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         while True:
             params: Dict[str, str] = {"count": str(min(chunk_size, 1000))}
-            # Always send query to avoid empty-query edge cases
-            params["query"] = q
+            if q:
+                params["query"] = q
             if older_than:
                 params["older_than"] = older_than
             logger.info(
@@ -312,11 +314,25 @@ def fetch_mwdb_by_tags(
                 resp = session.get(f"{base_url}/api/object", params=params, timeout=timeout_s)
                 resp.raise_for_status()
                 return resp.json()
-            data = retry_with_backoff(
-                _do,
-                max_attempts=max(1, retry_attempts),
-                base_delay=max(0.1, retry_base_delay_s),
-            )
+            try:
+                data = retry_with_backoff(
+                    _do,
+                    max_attempts=max(1, retry_attempts),
+                    base_delay=max(0.1, retry_base_delay_s),
+                )
+            except requests.HTTPError as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status == 400 and default_query_applied and q:
+                    logger.warning(
+                        "mwdb_default_query_rejected_fallback",
+                        extra={"default_query": q, "query_hash": q_hash},
+                    )
+                    q = ""
+                    query_sent = False
+                    q_hash = hashlib.sha256(b"(empty)").hexdigest()[:12]
+                    default_query_applied = False
+                    continue
+                raise
             objs = data.get("objects") or data.get("files") or []
             logger.info("mwdb_fetch_page_result", extra={
                 "mode": mode,

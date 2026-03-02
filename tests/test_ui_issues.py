@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
+
+from app.models import SyncJob
 
 
 def test_indicators_formats_links_quote_url_values(client, sample_indicators):
@@ -33,6 +37,7 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Configuration Panel" in html
     assert "Manual Synchronization and Feed Management" in html
     assert "Config Readiness" in html
+    assert "Recent Sync Jobs" in html
     assert "href='/admin/feed/misp/configure'" in html
     assert "Add New Feed" in html
 
@@ -150,6 +155,15 @@ def test_feed_test_connection_endpoint_redirects(client, sample_indicators):
     assert response.status_code in {301, 302}
 
 
+def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(client, sample_indicators):
+    with patch("app.main.requests.post") as mocked_post:
+        response = client.post("/admin/feed/malwarebazaar/test", data={"api_key": ""}, follow_redirects=True)
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "ABUSECH_AUTH_KEY" in html
+    mocked_post.assert_not_called()
+
+
 def test_admin_logs_tab_and_api(client, sample_indicators):
     page = client.get("/logs")
     assert page.status_code == 200
@@ -197,3 +211,62 @@ def test_api_500_returns_json_with_correlation_id(client, sample_indicators):
     data = response.get_json()
     assert isinstance(data.get("error"), str) and data["error"]
     assert isinstance(data.get("correlation_id"), str) and data["correlation_id"]
+
+
+def test_sync_job_details_page_renders(client, sample_indicators):
+    sync_resp = client.post("/api/sync", json={"source": "abusech"})
+    assert sync_resp.status_code == 202
+    job_id = sync_resp.get_json()["jobs"][0]["job_id"]
+    details = client.get(f"/admin/sync-jobs/{job_id}")
+    assert details.status_code == 200
+    html = details.get_data(as_text=True)
+    assert "Sync Job Details" in html
+    assert job_id in html
+
+
+def test_sync_job_cancel_endpoint_cancels_queued_job(client, sample_indicators, test_db):
+    # Ensure default feeds exist.
+    assert client.get("/admin").status_code == 200
+    job = SyncJob(
+        job_id="cancel-job-1",
+        feed_source_id="abusech",
+        trigger_type="manual",
+        idempotency_key="abusech:manual:test",
+        status="queued",
+        result_json={},
+        created_at=datetime.now(timezone.utc),
+    )
+    test_db.add(job)
+    test_db.commit()
+
+    resp = client.post("/admin/sync-jobs/cancel-job-1/cancel", follow_redirects=True)
+    assert resp.status_code == 200
+    refreshed = test_db.query(SyncJob).filter(SyncJob.job_id == "cancel-job-1").one()
+    assert refreshed.status == "cancelled"
+
+
+def test_sync_job_retry_endpoint_enqueues_new_job(client, sample_indicators, test_db):
+    # Ensure default feeds exist.
+    assert client.get("/admin").status_code == 200
+    failed = SyncJob(
+        job_id="failed-job-1",
+        feed_source_id="abusech",
+        trigger_type="manual",
+        idempotency_key="abusech:manual:failed1",
+        status="failed",
+        error="boom",
+        result_json={},
+        created_at=datetime.now(timezone.utc),
+        finished_at=datetime.now(timezone.utc),
+    )
+    test_db.add(failed)
+    test_db.commit()
+
+    resp = client.post("/admin/sync-jobs/failed-job-1/retry", follow_redirects=True)
+    assert resp.status_code == 200
+    queued = (
+        test_db.query(SyncJob)
+        .filter(SyncJob.feed_source_id == "abusech", SyncJob.trigger_type == "retry")
+        .all()
+    )
+    assert queued

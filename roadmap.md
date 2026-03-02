@@ -73,14 +73,15 @@ architectural changes or major stack evolution
 
 ### Control & Retry
 
--   [ ] Add retry failed job button
--   [ ] Add cancel running job
--   [ ] Add job details page
+-   [x] Add retry failed job button
+-   [x] Add cancel running job
+-   [x] Add job details page
 
 ### Health
 
 -   [x] Add /healthz endpoint (`/health` endpoint implemented)
 -   [x] Add /readyz endpoint (`/readyz` endpoint implemented)
+-   [x] Refresh `docs/uml/` diagrams for current architecture and include them in 1.2.x release documentation scope
 
 ------------------------------------------------------------------------
 

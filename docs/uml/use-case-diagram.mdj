@@ -1,0 +1,355 @@
+{
+  "_type": "Project",
+  "_id": "AAAAAAFF+h6SjaM2Hec=",
+  "name": "IOC Service - Use Case Diagram",
+  "ownedElements": [
+    {
+      "_type": "UMLModel",
+      "_id": "AAAAAAGVknQjMn0SIdo=",
+      "_parent": "AAAAAAFF+h6SjaM2Hec=",
+      "name": "Use Case Model",
+      "ownedElements": [
+        {
+          "_type": "UMLUseCaseDiagram",
+          "_id": "AAAAAAGVknQyMn0TOsQ=",
+          "_parent": "AAAAAAGVknQjMn0SIdo=",
+          "name": "System Use Cases",
+          "ownedViews": [
+            {
+              "_type": "UMLActorView",
+              "_id": "AAAAAAGVknRGMn0UrLs=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknRGMn0VWvk=",
+              "name": "Security Analyst",
+              "type": "UMLActor"
+            },
+            {
+              "_type": "UMLActorView",
+              "_id": "AAAAAAGVknRmMn0WcGo=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknRmMn0XjvA=",
+              "name": "Administrator",
+              "type": "UMLActor"
+            },
+            {
+              "_type": "UMLActorView",
+              "_id": "AAAAAAGVknR6Mn0YftY=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknR6Mn0ZoXE=",
+              "name": "External System",
+              "type": "UMLActor"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknSSMn0aqvs=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknSSMn0b1OY=",
+              "name": "Search Indicators",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknSqMn0c+QE=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknSqMn0dFLc=",
+              "name": "Export IOCs",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknS8Mn0eOgk=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknS8Mn0fXtk=",
+              "name": "View Correlations",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknTQMn0ggSU=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknTQMn0hpRI=",
+              "name": "View Dashboard",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknTkMn0ixw0=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknTkMn0j7Os=",
+              "name": "Configure Feeds",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknT2Mn0kGQw=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknT2Mn0lPWE=",
+              "name": "Trigger Sync",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknUGMn0mWq4=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknUGMn0nfQ4=",
+              "name": "View Logs",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknUgMn0gohw=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknUgMn0hxtI=",
+              "name": "Test Feed Connection",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknU1Mn0i5yE=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknU1Mn0jBC4=",
+              "name": "Ingest via API",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknVHMn0kKEw=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknVHMn0lTUA=",
+              "name": "Monitor Metrics",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknVcMn0mdhk=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknVcMn0nnAw=",
+              "name": "API Export",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknVuMn0owJE=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "model": "AAAAAAGVknVuMn0p7hE=",
+              "name": "Auto-sync Feeds",
+              "type": "UMLUseCase"
+            }
+          ],
+          "edges": [
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknWQMn0q+sQ=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknRGMn0VWvk=",
+              "target": "AAAAAAGVknSSMn0b1OY=",
+              "name": "uses"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknWnMn0r+LE=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknRGMn0VWvk=",
+              "target": "AAAAAAGVknSqMn0dFLc=",
+              "name": "uses"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknW4Mn0s4zg=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknRGMn0VWvk=",
+              "target": "AAAAAAGVknS8Mn0fXtk=",
+              "name": "uses"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknXGMn0t35k=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknRGMn0VWvk=",
+              "target": "AAAAAAGVknTQMn0hpRI=",
+              "name": "uses"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknXdMn0u8gE=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknRmMn0XjvA=",
+              "target": "AAAAAAGVknTkMn0j7Os=",
+              "name": "manages"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknXuMn0v9Rg=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknRmMn0XjvA=",
+              "target": "AAAAAAGVknT2Mn0lPWE=",
+              "name": "initiates"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknX+Mn0w+xk=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknRmMn0XjvA=",
+              "target": "AAAAAAGVknUGMn0nfQ4=",
+              "name": "reviews"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknYPMn0x+2U=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknRmMn0XjvA=",
+              "target": "AAAAAAGVknUgMn0hxtI=",
+              "name": "validates"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknYgMn0y/HU=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknR6Mn0ZoXE=",
+              "target": "AAAAAAGVknU1Mn0jBC4=",
+              "name": "pushes"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknYwMn0z/1k=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknR6Mn0ZoXE=",
+              "target": "AAAAAAGVknVHMn0lTUA=",
+              "name": "polls"
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknY9Mn00APc=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknR6Mn0ZoXE=",
+              "target": "AAAAAAGVknVcMn0nnAw=",
+              "name": "consumes"
+            },
+            {
+              "_type": "UMLInclude",
+              "_id": "AAAAAAGVknZWYn01AEM=",
+              "_parent": "AAAAAAGVknQyMn0TOsQ=",
+              "source": "AAAAAAGVknT2Mn0lPWE=",
+              "target": "AAAAAAGVknVuMn0p7hE=",
+              "name": "«include»"
+            }
+          ]
+        },
+        {
+          "_type": "UMLUseCaseDiagram",
+          "_id": "AAAAAAGVknZtYn02AM0=",
+          "_parent": "AAAAAAGVknQjMn0SIdo=",
+          "name": "Feed Management",
+          "ownedViews": [
+            {
+              "_type": "UMLActorView",
+              "_id": "AAAAAAGVknZ/Yn03Ar4=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "model": "AAAAAAGVknRmMn0XjvA=",
+              "name": "Administrator",
+              "type": "UMLActor"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknaNYn04A7I=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "model": "AAAAAAGVknaNYn05BU8=",
+              "name": "Add Feed",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknaeYn06Bgk=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "model": "AAAAAAGVknaeYn07CvI=",
+              "name": "Edit Feed",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknauYn08C3s=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "model": "AAAAAAGVknauYn09DNg=",
+              "name": "Disable Feed",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVkna8Yn0+DN4=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "model": "AAAAAAGVkna8Yn0/Dew=",
+              "name": "Configure Schedule",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknbNYn1AE4I=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "model": "AAAAAAGVknbNYn1BFsY=",
+              "name": "Set Credentials",
+              "type": "UMLUseCase"
+            },
+            {
+              "_type": "UMLUseCaseView",
+              "_id": "AAAAAAGVknbeYn1CF4k=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "model": "AAAAAAGVknbeYn1DGME=",
+              "name": "Test Connection",
+              "type": "UMLUseCase"
+            }
+          ],
+          "edges": [
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknbyYn1EGqg=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "source": "AAAAAAGVknRmMn0XjvA=",
+              "target": "AAAAAAGVknaNYn05BU8=",
+              "name": ""
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVknb+Yn1FGyA=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "source": "AAAAAAGVknRmMn0XjvA=",
+              "target": "AAAAAAGVknaeYn07CvI=",
+              "name": ""
+            },
+            {
+              "_type": "UMLAssociation",
+              "_id": "AAAAAAGVkncOYn1GGyE=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "source": "AAAAAAGVknRmMn0XjvA=",
+              "target": "AAAAAAGVknauYn09DNg=",
+              "name": ""
+            },
+            {
+              "_type": "UMLInclude",
+              "_id": "AAAAAAGVkncfYn1HG0I=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "source": "AAAAAAGVkna8Yn0/Dew=",
+              "target": "AAAAAAGVknaNYn05BU8=",
+              "name": "«include»"
+            },
+            {
+              "_type": "UMLInclude",
+              "_id": "AAAAAAGVkncwYn1IHB8=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "source": "AAAAAAGVknbNYn1BFsY=",
+              "target": "AAAAAAGVknaeYn07CvI=",
+              "name": "«include»"
+            },
+            {
+              "_type": "UMLExtend",
+              "_id": "AAAAAAGVknc9Yn1JHBg=",
+              "_parent": "AAAAAAGVknZtYn02AM0=",
+              "source": "AAAAAAGVknbeYn1DGME=",
+              "target": "AAAAAAGVknaeYn07CvI=",
+              "name": "«extend»"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

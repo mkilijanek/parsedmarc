@@ -1,0 +1,758 @@
+{
+  "_type": "Project",
+  "_id": "AAAAAAFF+h6SjaM2Hec=",
+  "name": "IOC Service - Database ER Diagram",
+  "ownedElements": [
+    {
+      "_type": "ERDDataModel",
+      "_id": "AAAAAAGVkmIJMXzK7S8=",
+      "_parent": "AAAAAAFF+h6SjaM2Hec=",
+      "name": "Database Model",
+      "ownedElements": [
+        {
+          "_type": "ERDDiagram",
+          "_id": "AAAAAAGVkmIqMXzLiUY=",
+          "_parent": "AAAAAAGVkmIJMXzK7S8=",
+          "name": "PostgreSQL Schema",
+          "ownedViews": [
+            {
+              "_type": "ERDEntityView",
+              "_id": "AAAAAAGVkmI9MXzMRBw=",
+              "_parent": "AAAAAAGVkmIqMXzLiUY=",
+              "model": "AAAAAAGVkmI9MXzNTEE=",
+              "name": "indicators",
+              "columns": [
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXDMXzOA6I=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "id",
+                  "type": "INTEGER",
+                  "primaryKey": true,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXDMXzPHoQ=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "uuid",
+                  "type": "UUID",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "unique": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXDMXzQSKY=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "value",
+                  "type": "TEXT",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXDMXzRdmU=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "type",
+                  "type": "VARCHAR(50)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "documentation": "ip, domain, url, hash, email"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXDMXzSoqI=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "source",
+                  "type": "VARCHAR(100)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "documentation": "misp, crowdsec, malwarebazaar, mwdb, abusech"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXDMXzTz5k=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "source_id",
+                  "type": "TEXT",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXEMXzU+bc=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "confidence",
+                  "type": "INTEGER",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "50"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXEMXzVJK8=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "tlp",
+                  "type": "VARCHAR(20)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'WHITE'",
+                  "documentation": "WHITE, GREEN, AMBER, RED"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXEMXzWWTg=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "is_active",
+                  "type": "BOOLEAN",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "true"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXEMXzXhWA=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "tags",
+                  "type": "TEXT[]",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "{}"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXEMXzYsKY=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "metadata",
+                  "type": "JSONB",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'{}'"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXEMXzZ3gE=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "first_seen",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXEMXzaDU8=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "last_seen",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXEMXzbOYg=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMXzcZu8=",
+                  "_parent": "AAAAAAGVkmI9MXzNTEE=",
+                  "name": "updated_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                }
+              ],
+              "indexes": [
+                "idx_indicators_value_type_active",
+                "idx_indicators_active_last_seen",
+                "idx_indicators_active_type_last_seen",
+                "idx_indicators_active_source_last_seen",
+                "idx_indicators_active_tlp_conf_last_seen"
+              ],
+              "constraints": [
+                "UNIQUE(value, source, source_id)"
+              ]
+            },
+            {
+              "_type": "ERDEntityView",
+              "_id": "AAAAAAGVkmXFMXzdktY=",
+              "_parent": "AAAAAAGVkmIqMXzLiUY=",
+              "model": "AAAAAAGVkmXFMXzevm0=",
+              "name": "sync_jobs",
+              "columns": [
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnzf6jE=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "id",
+                  "type": "INTEGER",
+                  "primaryKey": true,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnzgGvM=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "job_id",
+                  "type": "VARCHAR(64)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "unique": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnzhRHU=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "feed_source_id",
+                  "type": "VARCHAR(120)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnziCLA=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "trigger_type",
+                  "type": "VARCHAR(32)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'manual'",
+                  "documentation": "manual, scheduled, api"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnzjPIQ=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "idempotency_key",
+                  "type": "VARCHAR(200)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnzkabY=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "status",
+                  "type": "VARCHAR(32)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'queued'",
+                  "documentation": "queued, running, success, failed"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnzllo4=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "error",
+                  "type": "TEXT",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnzmxwI=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "result_json",
+                  "type": "JSONB",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'{}'"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXFMnzn81A=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXGMnzoJHc=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXGMnzpUao=",
+                  "_parent": "AAAAAAGVkmXFMXzevm0=",
+                  "name": "finished_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                }
+              ],
+              "indexes": [
+                "idx_sync_jobs_feed_status",
+                "idx_sync_jobs_created",
+                "idx_sync_jobs_status_created",
+                "idx_sync_jobs_trigger_status"
+              ]
+            },
+            {
+              "_type": "ERDEntityView",
+              "_id": "AAAAAAGVkmXGMnzqfIQ=",
+              "_parent": "AAAAAAGVkmIqMXzLiUY=",
+              "model": "AAAAAAGVkmXGMnzrpCo=",
+              "name": "feeds",
+              "columns": [
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXGMnzs0ak=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "id",
+                  "type": "INTEGER",
+                  "primaryKey": true,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXGMnzt/pI=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "source_id",
+                  "type": "VARCHAR(120)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "unique": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXHMnzuK6Q=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "source_type",
+                  "type": "VARCHAR(80)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "documentation": "misp, crowdsec, malwarebazaar, mwdb, abusech"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXHMnzvV64=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "display_name",
+                  "type": "VARCHAR(200)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXHMnzwhA0=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "base_url",
+                  "type": "TEXT",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXHMnzxsTE=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "auth_type",
+                  "type": "VARCHAR(50)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXHMnzy3rY=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "schedule_cron",
+                  "type": "VARCHAR(64)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'*/15 * * * *'"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXHMnzzDuQ=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "enabled",
+                  "type": "BOOLEAN",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "true"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXHMnz0OLY=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "deleted",
+                  "type": "BOOLEAN",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "false"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXHMnz1ZY4=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXIMnz2lrg=",
+                  "_parent": "AAAAAAGVkmXGMnzrpCo=",
+                  "name": "updated_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                }
+              ]
+            },
+            {
+              "_type": "ERDEntityView",
+              "_id": "AAAAAAGVkmXIMnz3yM0=",
+              "_parent": "AAAAAAGVkmIqMXzLiUY=",
+              "model": "AAAAAAGVkmXIMnz48C0=",
+              "name": "feed_stats",
+              "columns": [
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXIMnz5IIE=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "id",
+                  "type": "INTEGER",
+                  "primaryKey": true,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXIMnz5SMS=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "source",
+                  "type": "VARCHAR(100)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXIMnz6dwg=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "source_id",
+                  "type": "TEXT",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXIMnz7oxI=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "total_indicators",
+                  "type": "INTEGER",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "0"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXIMnz8za4=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "active_indicators",
+                  "type": "INTEGER",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "0"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXJMnz+Dvk=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "inactive_indicators",
+                  "type": "INTEGER",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "0"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXJMnz/OIA=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "last_update",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXJMnz/YaI=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "last_fetch_status",
+                  "type": "VARCHAR(50)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXJMnz/lks=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "last_fetch_error",
+                  "type": "TEXT",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXJMnz/wg0=",
+                  "_parent": "AAAAAAGVkmXIMnz48C0=",
+                  "name": "metadata",
+                  "type": "JSONB",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'{}'"
+                }
+              ],
+              "constraints": [
+                "UNIQUE(source, source_id)"
+              ]
+            },
+            {
+              "_type": "ERDEntityView",
+              "_id": "AAAAAAGVkmXJMnz/9Xc=",
+              "_parent": "AAAAAAGVkmIqMXzLiUY=",
+              "model": "AAAAAAGVkmXJMnz//jgw=",
+              "name": "audit_log",
+              "columns": [
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXKMn0AIOk=",
+                  "_parent": "AAAAAAGVkmXJMnz//jgw=",
+                  "name": "id",
+                  "type": "INTEGER",
+                  "primaryKey": true,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXKMn0BTJw=",
+                  "_parent": "AAAAAAGVkmXJMnz//jgw=",
+                  "name": "action",
+                  "type": "VARCHAR(50)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXKMn0CeMo=",
+                  "_parent": "AAAAAAGVkmXJMnz//jgw=",
+                  "name": "entity_type",
+                  "type": "VARCHAR(50)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXKMn0DowY=",
+                  "_parent": "AAAAAAGVkmXJMnz//jgw=",
+                  "name": "entity_id",
+                  "type": "INTEGER",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXKMn0Eyw0=",
+                  "_parent": "AAAAAAGVkmXJMnz//jgw=",
+                  "name": "user_id",
+                  "type": "VARCHAR(100)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXLMn0F7Ls=",
+                  "_parent": "AAAAAAGVkmXJMnz//jgw=",
+                  "name": "ip_address",
+                  "type": "INET",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXLMn0GHew=",
+                  "_parent": "AAAAAAGVkmXJMnz//jgw=",
+                  "name": "metadata",
+                  "type": "JSONB",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'{}'"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXLMn0HQfs=",
+                  "_parent": "AAAAAAGVkmXJMnz//jgw=",
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                }
+              ]
+            },
+            {
+              "_type": "ERDEntityView",
+              "_id": "AAAAAAGVkmXLMn0IePA=",
+              "_parent": "AAAAAAGVkmIqMXzLiUY=",
+              "model": "AAAAAAGVkmXLMn0Jozw=",
+              "name": "app_logs",
+              "columns": [
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXLMn0Kyw8=",
+                  "_parent": "AAAAAAGVkmXLMn0Jozw=",
+                  "name": "id",
+                  "type": "INTEGER",
+                  "primaryKey": true,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXLMn0L7Sg=",
+                  "_parent": "AAAAAAGVkmXLMn0Jozw=",
+                  "name": "level",
+                  "type": "VARCHAR(16)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'INFO'"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXMMn0MIZQ=",
+                  "_parent": "AAAAAAGVkmXLMn0Jozw=",
+                  "name": "component",
+                  "type": "VARCHAR(64)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'app'"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXMMn0NSr4=",
+                  "_parent": "AAAAAAGVkmXLMn0Jozw=",
+                  "name": "message",
+                  "type": "TEXT",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXMMn0OdDQ=",
+                  "_parent": "AAAAAAGVkmXLMn0Jozw=",
+                  "name": "feed_source_id",
+                  "type": "VARCHAR(120)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXMMn0Pneg=",
+                  "_parent": "AAAAAAGVkmXLMn0Jozw=",
+                  "name": "run_id",
+                  "type": "VARCHAR(64)",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": true
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXMMn0QyqQ=",
+                  "_parent": "AAAAAAGVkmXLMn0Jozw=",
+                  "name": "metadata",
+                  "type": "JSONB",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false,
+                  "defaultValue": "'{}'"
+                },
+                {
+                  "_type": "ERDColumn",
+                  "_id": "AAAAAAGVkmXMMn0R9P0=",
+                  "_parent": "AAAAAAGVkmXLMn0Jozw=",
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "primaryKey": false,
+                  "foreignKey": false,
+                  "nullable": false
+                }
+              ],
+              "indexes": [
+                "idx_app_logs_created",
+                "idx_app_logs_feed_created"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
