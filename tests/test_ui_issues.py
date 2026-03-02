@@ -77,6 +77,13 @@ def test_unified_table_template_has_accessibility_roles_and_badges():
     assert "badge-type" in template
 
 
+def test_app_package_init_is_lazy():
+    init_text = Path("app/__init__.py").read_text(encoding="utf-8")
+    top_level = "\n".join(init_text.splitlines()[:6])
+    assert "from .main import create_app" not in top_level
+    assert "def create_app" in init_text
+
+
 def test_dark_mode_toggle_present_on_overview_and_logs(client, sample_indicators):
     overview = client.get("/")
     logs = client.get("/logs")
@@ -139,6 +146,7 @@ def test_mwdb_configure_shows_extended_fields(client, sample_indicators):
     assert "MWDB tags (comma-separated)" in html
     assert "MWDB days" in html
     assert "No time limit" in html
+    assert "Base URL" not in html
 
 
 def test_abusech_configure_shows_service_selectors(client, sample_indicators):
@@ -151,6 +159,7 @@ def test_abusech_configure_shows_service_selectors(client, sample_indicators):
     assert "FeodoTracker" in html
     assert "YARAify" in html
     assert "Custom filter" in html
+    assert "Base URL" not in html
 
 
 def test_feed_test_connection_endpoint_redirects(client, sample_indicators):

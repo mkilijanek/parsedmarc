@@ -5,6 +5,7 @@ import os
 import signal
 import time
 import schedule
+from sqlalchemy import select
 
 from .config import Config
 from .logging import setup_logging
@@ -16,6 +17,8 @@ from .services.abusech import update_abusech_indicators
 from .services.cleanup import cleanup_old_indicators, cleanup_export_files
 from .services.correlation_snapshot import refresh_correlation_snapshots
 from .services.deps import dep_health_refresh
+from .db import get_session
+from .models import AppSetting
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +45,43 @@ def _safe_job(name: str, fn):
             logger.error("job_failed", extra={"job": name, "error": str(e), "duration_ms": duration_ms}, exc_info=True)
     return _wrap
 
+def _bootstrap_proxy_env_from_settings() -> None:
+    db = get_session(read_only=False)
+    try:
+        keys = {"proxy.http_url", "proxy.https_url", "proxy.no_proxy"}
+        rows = list(db.scalars(select(AppSetting).where(AppSetting.key.in_(keys))).all())
+        settings = {str(r.key): str(r.value or "") for r in rows}
+        proxy_http = settings.get("proxy.http_url", "").strip()
+        proxy_https = settings.get("proxy.https_url", "").strip()
+        proxy_no = settings.get("proxy.no_proxy", "").strip()
+
+        if proxy_http:
+            os.environ["HTTP_PROXY"] = proxy_http
+            os.environ["http_proxy"] = proxy_http
+        else:
+            os.environ.pop("HTTP_PROXY", None)
+            os.environ.pop("http_proxy", None)
+        if proxy_https:
+            os.environ["HTTPS_PROXY"] = proxy_https
+            os.environ["https_proxy"] = proxy_https
+        else:
+            os.environ.pop("HTTPS_PROXY", None)
+            os.environ.pop("https_proxy", None)
+        if proxy_no:
+            os.environ["NO_PROXY"] = proxy_no
+            os.environ["no_proxy"] = proxy_no
+        else:
+            os.environ.pop("NO_PROXY", None)
+            os.environ.pop("no_proxy", None)
+    except Exception:
+        logger.warning("worker_proxy_bootstrap_failed", exc_info=True)
+    finally:
+        db.close()
+
 def main():
     cfg = Config()
     setup_logging(cfg.LOG_LEVEL)
+    _bootstrap_proxy_env_from_settings()
 
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)

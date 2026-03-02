@@ -337,16 +337,31 @@ def create_app() -> Flask:
         proxy_no = _get_setting(db, "proxy.no_proxy", "")
         if proxy_http:
             os.environ["HTTP_PROXY"] = proxy_http
+            os.environ["http_proxy"] = proxy_http
         else:
             os.environ.pop("HTTP_PROXY", None)
+            os.environ.pop("http_proxy", None)
         if proxy_https:
             os.environ["HTTPS_PROXY"] = proxy_https
+            os.environ["https_proxy"] = proxy_https
         else:
             os.environ.pop("HTTPS_PROXY", None)
+            os.environ.pop("https_proxy", None)
         if proxy_no:
             os.environ["NO_PROXY"] = proxy_no
+            os.environ["no_proxy"] = proxy_no
         else:
             os.environ.pop("NO_PROXY", None)
+            os.environ.pop("no_proxy", None)
+
+    def _bootstrap_runtime_settings() -> None:
+        db = _db()
+        try:
+            _write_proxy_env(db)
+        except Exception:
+            logger.warning("runtime_settings_bootstrap_failed", exc_info=True)
+        finally:
+            db.close()
 
     def _source_templates() -> Dict[str, Dict[str, Any]]:
         return {
@@ -1148,6 +1163,8 @@ def create_app() -> Flask:
             or (request.args.get("admin_token") or "").strip()
         )
         return bool(token) and hmac.compare_digest(token, expected)
+
+    _bootstrap_runtime_settings()
 
     def _db_try_advisory_lock(db: Session, lock_id: int) -> bool:
         bind = db.get_bind()
@@ -2727,7 +2744,6 @@ def create_app() -> Flask:
 <p>Status: {'OK' if state['ready'] else 'Incomplete: ' + _esc(', '.join(state['missing']))}</p>
 <form method='post' action='/admin/feed/{_esc(source_id)}/configure' id='feedConfigForm'>
 <p><label>Display name <input type='text' name='display_name' value='{_esc(feed.display_name)}' required/></label></p>
-<p><label>Base URL <input type='text' name='base_url' value='{_esc(str(feed.base_url or ""))}'/></label></p>
 <p><label>Schedule cron <input type='text' name='schedule_cron' value='{_esc(feed.schedule_cron)}'/></label></p>
 {fields_html}
 {orgs_html}
@@ -2796,7 +2812,7 @@ if (form) {{
                     if incoming:
                         _set_setting(db, _feed_secret_key(feed.source_id, str(f["key"])), incoming, secret=True)
                     elif f.get("required") and not _get_setting(db, _feed_secret_key(feed.source_id, str(f["key"])), "", secret=True):
-                        missing.append(str(f["label"]))
+                        errors.append(f"Missing required field: {f['label']}")
                 else:
                     normalized = incoming
                     if str(f.get("type") or "") == "checkbox":

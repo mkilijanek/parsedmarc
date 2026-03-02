@@ -39,6 +39,13 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SECRET_KEY: ${SECRET_KEY:-}
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
+      http_proxy: ${HTTP_PROXY:-}
+      https_proxy: ${HTTPS_PROXY:-}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
+      REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,6 +74,13 @@ services:
       CORRELATION_SNAPSHOT_MIN_SOURCES: ${CORRELATION_SNAPSHOT_MIN_SOURCES:-2}
       CORRELATION_SNAPSHOT_LIMIT: ${CORRELATION_SNAPSHOT_LIMIT:-1000}
       CORRELATION_SNAPSHOT_TYPES: ${CORRELATION_SNAPSHOT_TYPES:-all,domain,ip,url,hash,email}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
+      http_proxy: ${HTTP_PROXY:-}
+      https_proxy: ${HTTPS_PROXY:-}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
+      REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
 
       # DB
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
@@ -118,6 +132,13 @@ services:
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-4}
       DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
       DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
+      http_proxy: ${HTTP_PROXY:-}
+      https_proxy: ${HTTPS_PROXY:-}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
+      REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
 
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
       REDIS_URL: redis://:${REDIS_PASSWORD:-redispass}@redis:6379/0

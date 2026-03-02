@@ -8,6 +8,7 @@ import time
 from collections import deque
 from typing import Callable, TypeVar
 from requests import HTTPError
+from requests.exceptions import ProxyError, SSLError, ConnectTimeout, ReadTimeout, ConnectionError as RequestsConnectionError
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -220,5 +221,14 @@ def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay
             # Additive jitter only extends wait time (never shortens below base backoff).
             delta = sleep * jitter
             sleep = max(0.1, sleep + random.uniform(0, delta))
-            logger.warning("retry_backoff", extra={"attempt": attempt, "sleep_s": round(sleep,3), "error": str(e)})
+            extra = {"attempt": attempt, "sleep_s": round(sleep, 3), "error": str(e), "error_type": e.__class__.__name__}
+            if isinstance(e, ProxyError):
+                extra["network_hint"] = "proxy_error"
+            elif isinstance(e, SSLError):
+                extra["network_hint"] = "tls_error"
+            elif isinstance(e, (ConnectTimeout, ReadTimeout)):
+                extra["network_hint"] = "timeout"
+            elif isinstance(e, RequestsConnectionError):
+                extra["network_hint"] = "connection_error"
+            logger.warning("retry_backoff", extra=extra)
             time.sleep(sleep)
