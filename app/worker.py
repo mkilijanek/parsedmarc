@@ -15,6 +15,7 @@ from .services.mwdb import update_mwdb_indicators
 from .services.abusech import update_abusech_indicators
 from .services.cleanup import cleanup_old_indicators, cleanup_export_files
 from .services.correlation_snapshot import refresh_correlation_snapshots
+from .services.deps import dep_health_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,11 @@ def main():
         return
 
     interval = max(30, int(cfg.UPDATE_INTERVAL))
+    dep_health_interval = max(10, int(cfg.DEP_HEALTH_INTERVAL_S))
+
+    # Dependency health probes run on a short interval, independently of feed syncs
+    schedule.every(dep_health_interval).seconds.do(_safe_job("dep_health_refresh", dep_health_refresh))
+    _safe_job("dep_health_refresh_startup", dep_health_refresh)()
 
     schedule.every(interval).seconds.do(_safe_job("crowdsec_update", update_all_crowdsec_lists))
     schedule.every(interval).seconds.do(_safe_job("misp_update", update_misp_indicators))

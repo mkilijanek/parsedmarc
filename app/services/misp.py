@@ -151,6 +151,35 @@ def update_misp_indicators() -> Dict[str, int]:
     cfg = Config()
     now = datetime.now(timezone.utc)
 
+    if not cfg.MISP_URL or not cfg.MISP_API_KEY:
+        _dep_status.update("misp", "down", error="not_configured", duration_ms=0)
+        logger.info("misp_skipped", extra={"reason": "not_configured"})
+        db = SessionLocal()
+        try:
+            db.execute(
+                pg_insert(FeedStats.__table__).values(
+                    source="misp",
+                    source_id=None,
+                    last_update=now,
+                    last_fetch_status="skipped",
+                    last_fetch_error="not_configured",
+                    metadata={},
+                ).on_conflict_do_update(
+                    index_elements=["source", "source_id"],
+                    set_={
+                        "last_update": now,
+                        "last_fetch_status": "skipped",
+                        "last_fetch_error": "not_configured",
+                    },
+                )
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
+        return {"skipped": 1, "fetched": 0, "reason": "not_configured"}
+
     if _circuit_breaker.is_open("misp"):
         logger.warning("misp_circuit_open_skipping")
         return {"skipped": 1, "fetched": 0}
