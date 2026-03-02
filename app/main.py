@@ -74,23 +74,27 @@ DB_SUPPORTED_FORMATS = {"txt", "csv", "json"}
 
 
 def _aggregate_fetched_count(result_data: Any) -> int:
-    if isinstance(result_data, dict):
-        # Flat connector result: {"fetched": 10, ...}
-        if "fetched" in result_data and not isinstance(result_data.get("fetched"), dict):
-            try:
-                return max(0, int(result_data.get("fetched", 0) or 0))
-            except Exception:
-                return 0
-        # Nested result: {"feedA": {"fetched": 3}, "feedB": {"fetched": 2}}
-        total = 0
-        for value in result_data.values():
-            if isinstance(value, dict):
+    total = 0
+
+    def _walk(node: Any) -> None:
+        nonlocal total
+        if isinstance(node, dict):
+            if "fetched" in node:
                 try:
-                    total += int(value.get("fetched", 0) or 0)
+                    fetched = int(node.get("fetched", 0) or 0)
+                    if fetched > 0:
+                        total += fetched
+                        return
                 except Exception:
-                    continue
-        return max(0, total)
-    return 0
+                    pass
+            for value in node.values():
+                _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(result_data)
+    return max(0, total)
 
 def create_app() -> Flask:
     cfg = Config()
@@ -984,6 +988,7 @@ def create_app() -> Flask:
 
     def _execute_sync_job(job: SyncJob) -> Dict[str, Any]:
         run_id = job.job_id
+        feed_source_id = str(job.feed_source_id or "")
         scheduler_state["active_job_id"] = job.job_id
         scheduler_state["active_run_id"] = run_id
         updates: Dict[str, str | None] = {}
@@ -1008,7 +1013,7 @@ def create_app() -> Flask:
                 row.started_at = now
             db.commit()
 
-            _app_log("INFO", "scheduler", "feed_sync_started", feed_source_id=feed.source_id, run_id=run_id, metadata={"trigger": job.trigger_type}, db=db)
+            _app_log("INFO", "scheduler", "feed_sync_started", feed_source_id=feed_source_id, run_id=run_id, metadata={"trigger": job.trigger_type}, db=db)
 
             state = _read_feed_config_state(db, feed)
             if not state["ready"]:
@@ -1053,6 +1058,29 @@ def create_app() -> Flask:
             fetched_count = _aggregate_fetched_count(result_data)
             dur_ms = int((time.time() - started) * 1000)
 
+            cancel_row = db.scalar(select(SyncJob).where(SyncJob.id == job.id))
+            if cancel_row and cancel_row.status == "cancel_requested":
+                run = db.scalar(select(FeedRun).where(FeedRun.run_id == run_id))
+                if run:
+                    run.status = "cancelled"
+                    run.error = "cancelled by admin"
+                    run.finished_at = datetime.now(timezone.utc)
+                cancel_row.status = "cancelled"
+                cancel_row.error = "cancelled by admin"
+                cancel_row.finished_at = datetime.now(timezone.utc)
+                cancel_row.result_json = {"cancelled": True, "duration_ms": dur_ms}
+                db.commit()
+                _app_log(
+                    "WARNING",
+                    "scheduler",
+                    "feed_sync_cancelled",
+                    feed_source_id=feed_source_id,
+                    run_id=run_id,
+                    metadata={"duration_ms": dur_ms},
+                    db=db,
+                )
+                return {"source": feed_source_id, "cancelled": 1}
+
             run = db.scalar(select(FeedRun).where(FeedRun.run_id == run_id))
             if run:
                 run.status = "success"
@@ -1065,7 +1093,7 @@ def create_app() -> Flask:
                 row.finished_at = datetime.now(timezone.utc)
                 row.result_json = {"fetched_count": fetched_count, "duration_ms": dur_ms}
             db.commit()
-            _app_log("INFO", "scheduler", "feed_sync_completed", feed_source_id=feed.source_id, run_id=run_id, metadata={"duration_ms": dur_ms, "fetched_count": fetched_count}, db=db)
+            _app_log("INFO", "scheduler", "feed_sync_completed", feed_source_id=feed_source_id, run_id=run_id, metadata={"duration_ms": dur_ms, "fetched_count": fetched_count}, db=db)
             return result
         except Exception as e:
             db.rollback()
@@ -1863,6 +1891,11 @@ def create_app() -> Flask:
             else:
                 latest_runs = {}
             scheduler_heartbeat = _get_setting(db, "scheduler.heartbeat", "")
+            recent_sync_jobs = list(
+                db.scalars(
+                    select(SyncJob).order_by(SyncJob.created_at.desc()).limit(40)
+                ).all()
+            )
         finally:
             db.close()
 
@@ -1912,6 +1945,39 @@ def create_app() -> Flask:
                 for f in feeds
             ]
         )
+        recent_jobs_html = "".join(
+            [
+                (
+                    "<tr>"
+                    f"<td><code>{_esc(j.job_id)}</code></td>"
+                    f"<td>{_esc(j.feed_source_id)}</td>"
+                    f"<td>{_esc(j.trigger_type)}</td>"
+                    f"<td>{_esc(j.status)}</td>"
+                    f"<td>{_esc(str(j.created_at or ''))}</td>"
+                    f"<td>{_esc(str(j.started_at or ''))}</td>"
+                    f"<td>{_esc(str(j.finished_at or ''))}</td>"
+                    "<td>"
+                    f"<a href='/admin/sync-jobs/{_esc(j.job_id)}'>Details</a> "
+                    + (
+                        f"<form method='post' action='/admin/sync-jobs/{_esc(j.job_id)}/retry' style='display:inline'>"
+                        "<button type='submit'>Retry</button></form> "
+                        if str(j.status or "").lower() in {"failed", "cancelled"}
+                        else ""
+                    )
+                    + (
+                        f"<form method='post' action='/admin/sync-jobs/{_esc(j.job_id)}/cancel' style='display:inline'>"
+                        "<button type='submit'>Cancel</button></form>"
+                        if str(j.status or "").lower() in {"queued", "running", "cancel_requested"}
+                        else ""
+                    )
+                    + "</td>"
+                    "</tr>"
+                )
+                for j in recent_sync_jobs
+            ]
+        )
+        if not recent_jobs_html:
+            recent_jobs_html = "<tr><td colspan='8'>No sync jobs yet.</td></tr>"
 
         return f"""<!doctype html>
 <html lang="en">
@@ -1991,6 +2057,13 @@ def create_app() -> Flask:
     <table>
       <thead><tr><th>Source</th><th>Source ID</th><th>Last Status</th><th>Last Update</th><th>Last Error</th></tr></thead>
       <tbody>{feed_rows_html}</tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Recent Sync Jobs</h2>
+    <table>
+      <thead><tr><th>Job ID</th><th>Source</th><th>Trigger</th><th>Status</th><th>Created</th><th>Started</th><th>Finished</th><th>Actions</th></tr></thead>
+      <tbody>{recent_jobs_html}</tbody>
     </table>
   </div>
   <div class="card">
@@ -2413,6 +2486,171 @@ if (form) {{
             logger.exception("admin_sync_failed")
             _app_log("ERROR", "scheduler", "manual_sync_failed", metadata={"source": source_name, "error": str(e)}, db=db)
             return redirect(url_for("admin_panel", msg=f"Sync failed: {e}"))
+        finally:
+            db.close()
+
+    @app.get("/admin/sync-jobs/<job_id>")
+    @limiter.limit("30 per minute")
+    def admin_sync_job_details(job_id: str):
+        job_id = (job_id or "").strip()
+        if not job_id:
+            return redirect(url_for("admin_panel", msg="Missing job_id."))
+        db = _db(read_only=True)
+        try:
+            job = db.scalar(select(SyncJob).where(SyncJob.job_id == job_id))
+            if not job:
+                return redirect(url_for("admin_panel", msg=f"Sync job not found: {job_id}"))
+            run = db.scalar(select(FeedRun).where(FeedRun.run_id == job_id))
+            logs = list(
+                db.scalars(
+                    select(AppLog).where(AppLog.run_id == job_id).order_by(AppLog.created_at.desc()).limit(200)
+                ).all()
+            )
+        finally:
+            db.close()
+
+        log_rows = "".join(
+            [
+                (
+                    "<tr>"
+                    f"<td>{_esc(str(item.created_at))}</td>"
+                    f"<td>{_esc(item.level)}</td>"
+                    f"<td>{_esc(item.component)}</td>"
+                    f"<td>{_esc(item.message)}</td>"
+                    f"<td><code>{_esc(json.dumps(item.metadata_ or {}, ensure_ascii=True))}</code></td>"
+                    "</tr>"
+                )
+                for item in logs
+            ]
+        ) or "<tr><td colspan='5'>No logs for this job.</td></tr>"
+
+        return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Sync Job { _esc(job_id) }</title>
+<style>
+  :root {{ color-scheme: light dark; }}
+  body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }}
+  body[data-theme="light"] {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
+  body[data-theme="dark"] {{ --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }}
+  body:not([data-theme]) {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
+  .topbar {{ display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }}
+  .card {{ border: 1px solid var(--line); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; background: var(--card); }}
+  table {{ width:100%; border-collapse:collapse; }}
+  th, td {{ border-bottom:1px solid var(--line); padding:.45rem; text-align:left; vertical-align:top; }}
+  button {{ padding: .5rem .8rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }}
+</style>
+</head>
+<body>
+  <header class="topbar" id="globalTopbar">
+    <nav>
+      <a href="/">Overview</a>
+      <a href="/indicators">Indicators</a>
+      <a href="/admin">Admin</a>
+      <a href="/logs">Logs</a>
+    </nav>
+    <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
+  </header>
+  <div class="card">
+    <h1>Sync Job Details</h1>
+    <p><strong>Job ID:</strong> <code>{_esc(job.job_id)}</code></p>
+    <p><strong>Source:</strong> {_esc(job.feed_source_id)} | <strong>Trigger:</strong> {_esc(job.trigger_type)} | <strong>Status:</strong> {_esc(job.status)}</p>
+    <p><strong>Created:</strong> {_esc(str(job.created_at or ''))} | <strong>Started:</strong> {_esc(str(job.started_at or ''))} | <strong>Finished:</strong> {_esc(str(job.finished_at or ''))}</p>
+    <p><strong>Error:</strong> {_esc(str(job.error or ''))}</p>
+    <p><strong>Result:</strong> <code>{_esc(json.dumps(job.result_json or {}, ensure_ascii=True))}</code></p>
+    <p><strong>FeedRun status:</strong> {_esc(str(getattr(run, 'status', 'n/a')))} | <strong>Fetched:</strong> {_esc(str(getattr(run, 'fetched_count', 'n/a')))}</p>
+    <p><a href="/api/logs?job_id={_esc(job.job_id)}&limit=200">Open JSON logs for this job</a></p>
+  </div>
+  <div class="card">
+    <h2>Job Logs</h2>
+    <table>
+      <thead><tr><th>Time</th><th>Level</th><th>Component</th><th>Message</th><th>Metadata</th></tr></thead>
+      <tbody>{log_rows}</tbody>
+    </table>
+  </div>
+  <script>
+    const themeKey = 'ioc-theme';
+    const preferredTheme = localStorage.getItem(themeKey);
+    if (preferredTheme === 'dark' || preferredTheme === 'light') {{
+      document.body.setAttribute('data-theme', preferredTheme);
+    }}
+    const themeToggle = document.getElementById('themeToggleGlobal');
+    if (themeToggle) {{
+      themeToggle.addEventListener('click', () => {{
+        const curr = document.body.getAttribute('data-theme') || 'light';
+        const next = curr === 'dark' ? 'light' : 'dark';
+        document.body.setAttribute('data-theme', next);
+        localStorage.setItem(themeKey, next);
+      }});
+    }}
+  </script>
+</body></html>"""
+
+    @app.post("/admin/sync-jobs/<job_id>/retry")
+    @limiter.limit("20 per minute")
+    def admin_sync_job_retry(job_id: str):
+        job_id = (job_id or "").strip()
+        db = _db()
+        try:
+            job = db.scalar(select(SyncJob).where(SyncJob.job_id == job_id))
+            if not job:
+                return redirect(url_for("admin_panel", msg=f"Retry failed: job not found ({job_id})."))
+            if str(job.status or "").lower() not in {"failed", "cancelled"}:
+                return redirect(url_for("admin_panel", msg=f"Retry allowed only for failed/cancelled jobs (current: {job.status})."))
+            feed = db.scalar(select(Feed).where(Feed.source_id == job.feed_source_id, Feed.deleted == False))  # noqa: E712
+            if not feed:
+                return redirect(url_for("admin_panel", msg=f"Retry failed: feed not found ({job.feed_source_id})."))
+            state = _read_feed_config_state(db, feed)
+            if not state["ready"]:
+                return redirect(url_for("admin_panel", msg=f"Retry blocked: configuration incomplete for {feed.source_id}."))
+            new_job, created = _enqueue_sync_job(feed, trigger_type="retry", db=db)
+            return redirect(
+                url_for(
+                    "admin_panel",
+                    msg=f"Retry {'queued' if created else 'reused existing'} for {feed.source_id} (job_id={new_job.job_id}).",
+                )
+            )
+        except Exception as e:
+            logger.exception("admin_sync_job_retry_failed")
+            return redirect(url_for("admin_panel", msg=f"Retry failed: {e}"))
+        finally:
+            db.close()
+
+    @app.post("/admin/sync-jobs/<job_id>/cancel")
+    @limiter.limit("20 per minute")
+    def admin_sync_job_cancel(job_id: str):
+        job_id = (job_id or "").strip()
+        db = _db()
+        try:
+            job = db.scalar(select(SyncJob).where(SyncJob.job_id == job_id))
+            if not job:
+                return redirect(url_for("admin_panel", msg=f"Cancel failed: job not found ({job_id})."))
+            status = str(job.status or "").lower()
+            if status in {"success", "failed", "cancelled"}:
+                return redirect(url_for("admin_panel", msg=f"Cancel ignored: job already {status}."))
+            now = datetime.now(timezone.utc)
+            run = db.scalar(select(FeedRun).where(FeedRun.run_id == job.job_id))
+            if status == "queued":
+                job.status = "cancelled"
+                job.error = "cancelled by admin"
+                job.finished_at = now
+                job.result_json = {"cancelled": True}
+                if run:
+                    run.status = "cancelled"
+                    run.error = "cancelled by admin"
+                    run.finished_at = now
+                db.commit()
+                return redirect(url_for("admin_panel", msg=f"Job {job.job_id} cancelled."))
+            job.status = "cancel_requested"
+            if not job.error:
+                job.error = "cancel requested by admin"
+            if run and run.status == "running":
+                run.error = "cancel requested by admin"
+            db.commit()
+            return redirect(url_for("admin_panel", msg=f"Cancellation requested for running job {job.job_id}."))
+        except Exception as e:
+            db.rollback()
+            logger.exception("admin_sync_job_cancel_failed")
+            return redirect(url_for("admin_panel", msg=f"Cancel failed: {e}"))
         finally:
             db.close()
 
