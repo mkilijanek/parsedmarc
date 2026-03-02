@@ -86,6 +86,7 @@ Documentation and runbooks for RHEL deployments, SELinux, Nginx, and F5 monitors
 
 **Issues (new placeholders)**
 - NEW-ISSUE: Add RHEL + SELinux + Nginx + F5 troubleshooting runbook (502 guide)
+- NEW-ISSUE: Refresh `docs/uml/*` diagrams and include them as maintained release artifacts for 1.2.x
 
 **Checklist**
 - [x] Add `docs/troubleshooting/502-bad-gateway.md`
@@ -96,6 +97,9 @@ Documentation and runbooks for RHEL deployments, SELinux, Nginx, and F5 monitors
 - [x] Include F5 SNI/Host header monitor notes
 - [x] Include minimal `ss/curl` triage flow
 - [x] Link runbook from `DEPLOYMENT.md`
+- [ ] Update `docs/uml/*.puml` to match current architecture and APIs
+- [ ] Regenerate UML rendered outputs (PNG/SVG where applicable) from current `.puml` sources
+- [ ] Link UML docs from `docs/README.md` and release notes as 1.2.x documentation scope
 
 **Definition of Done**
 - Documented fix paths for:
@@ -103,6 +107,7 @@ Documentation and runbooks for RHEL deployments, SELinux, Nginx, and F5 monitors
   - SELinux blocking proxy connects
   - wrong upstream address (host vs container)
   - wrong health endpoint used by LB monitor
+- `docs/uml/` is current and explicitly tracked in 1.2.x release documentation scope
 
 ---
 
