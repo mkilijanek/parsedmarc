@@ -167,6 +167,12 @@ def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(client, s
 def test_admin_logs_tab_and_api(client, sample_indicators):
     page = client.get("/logs")
     assert page.status_code == 200
+    page_html = page.get_data(as_text=True)
+    assert "Copy all visible logs" in page_html
+    assert "Download visible .log" in page_html
+    assert "navigator.clipboard" in page_html
+    assert "execCommand('copy')" in page_html
+    assert "Copied ${lineCount} lines." in page_html
     api = client.get("/api/logs?limit=10")
     assert api.status_code == 200
     data = api.get_json()
