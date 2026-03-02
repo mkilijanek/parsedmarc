@@ -25,12 +25,12 @@ Reliability, health endpoint semantics, F5/Nginx compatibility.
 - NEW-ISSUE: MISP update job: `not_configured` → skip (no exception)
 
 **Checklist**
-- [ ] `/healthz` returns **200**, performs **no external calls**, target **<50ms**
-- [ ] `/readyz` checks **DB + Redis only**
-- [ ] `/health` uses **cached summary only** (no live external calls)
-- [ ] Worker never exits due to MISP dependency failures
+- [x] `/healthz` returns **200**, performs **no external calls**, target **<50ms**
+- [x] `/readyz` checks **DB + Redis only**
+- [x] `/health` uses **cached summary only** (no live external calls)
+- [x] Worker never exits due to MISP dependency failures
 - [ ] F5 monitor points to `/healthz`
-- [ ] Deployment docs updated (monitor endpoints + expectations)
+- [x] Deployment docs updated (monitor endpoints + expectations)
 
 **Definition of Done**
 - Simulated MISP outage does not stop service; port **8004 stays listening**
@@ -64,7 +64,7 @@ Telemetry, scheduler stats consistency, MWDB default semantics and robustness.
   - [ ] filter counters (time/org/type/parse_failures)
 - [ ] Manual and scheduled sync use identical stats schema
 - [ ] MWDB default 30-day time window deterministic
-- [ ] Default query semantics enforced (no empty query ambiguity)
+- [x] Default query semantics enforced (no empty query ambiguity)
 - [ ] Unit/regression tests cover early-break + parse failures
 
 **Definition of Done**
@@ -88,14 +88,14 @@ Documentation and runbooks for RHEL deployments, SELinux, Nginx, and F5 monitors
 - NEW-ISSUE: Add RHEL + SELinux + Nginx + F5 troubleshooting runbook (502 guide)
 
 **Checklist**
-- [ ] Add `docs/troubleshooting/502-bad-gateway.md`
-- [ ] Include SELinux triage and fixes:
+- [x] Add `docs/troubleshooting/502-bad-gateway.md`
+- [x] Include SELinux triage and fixes:
   - `ausearch -m AVC`
   - `semanage port`
   - `setsebool -P httpd_can_network_connect 1` (when applicable)
-- [ ] Include F5 SNI/Host header monitor notes
-- [ ] Include minimal `ss/curl` triage flow
-- [ ] Link runbook from `DEPLOYMENT.md`
+- [x] Include F5 SNI/Host header monitor notes
+- [x] Include minimal `ss/curl` triage flow
+- [x] Link runbook from `DEPLOYMENT.md`
 
 **Definition of Done**
 - Documented fix paths for:
