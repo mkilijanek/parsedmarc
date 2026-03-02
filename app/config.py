@@ -74,6 +74,13 @@ class Config:
     MISP_VERIFY_SSL: bool = field(default_factory=lambda: _env_bool("MISP_VERIFY_SSL", True))
     MISP_DAYS: int = field(default_factory=lambda: _env_int("MISP_DAYS", 7))
     MISP_SYNC_TIMEOUT_S: int = field(default_factory=lambda: _env_int("MISP_SYNC_TIMEOUT_S", 30))
+    MISP_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("MISP_CIRCUIT_FAIL_THRESHOLD", 3))
+    MISP_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("MISP_CIRCUIT_COOLDOWN_S", 300))
+    # Maximum TLP level to ingest from MISP; attributes with a higher TLP are silently skipped.
+    # Valid values: WHITE, GREEN, AMBER, RED. Default: AMBER (TLP:RED is not ingested).
+    MISP_MAX_TLP: str = field(default_factory=lambda: _env_str("MISP_MAX_TLP", "AMBER"))
+    # Timeout (seconds) for the lightweight MISP health-check call (not full sync).
+    MISP_HEALTH_TIMEOUT_S: int = field(default_factory=lambda: _env_int("MISP_HEALTH_TIMEOUT_S", 3))
 
     MALWAREBAZAAR_SINCE_DATE: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_SINCE_DATE", ""))
     MALWAREBAZAAR_API_URL: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_API_URL", "https://mb-api.abuse.ch/api/v1/"))
@@ -88,6 +95,12 @@ class Config:
     MWDB_NO_TIME_LIMIT: bool = field(default_factory=lambda: _env_bool("MWDB_NO_TIME_LIMIT", False))
     MWDB_ORGANIZATIONS: str = field(default_factory=lambda: _env_str("MWDB_ORGANIZATIONS", ""))
     MWDB_LIMIT: int = field(default_factory=lambda: _env_int("MWDB_LIMIT", 1000))
+    MWDB_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("MWDB_CIRCUIT_FAIL_THRESHOLD", 3))
+    MWDB_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("MWDB_CIRCUIT_COOLDOWN_S", 300))
+    MWDB_MY_GROUP: str = field(default_factory=lambda: _env_str("MWDB_MY_GROUP", ""))
+    # Fallback Lucene query used when no tags or custom filter are configured.
+    # Prevents silent zero-result syncs on MWDB deployments that require a query param.
+    MWDB_DEFAULT_QUERY: str = field(default_factory=lambda: _env_str("MWDB_DEFAULT_QUERY", "type:*"))
 
     ABUSECH_AUTH_KEY: str = field(default_factory=lambda: _env_str("ABUSECH_AUTH_KEY", ""))
     THREATFOX_ENABLED: bool = field(default_factory=lambda: _env_bool("THREATFOX_ENABLED", False))
@@ -127,6 +140,7 @@ class Config:
     # Worker
     ENABLE_BACKGROUND_JOBS: bool = field(default_factory=lambda: _env_bool("ENABLE_BACKGROUND_JOBS", True))
     UPDATE_INTERVAL: int = field(default_factory=lambda: _env_int("UPDATE_INTERVAL", 600))
+    DEP_HEALTH_INTERVAL_S: int = field(default_factory=lambda: _env_int("DEP_HEALTH_INTERVAL_S", 60))
 
     # Security
     ALLOWED_HOSTS: str = field(default_factory=lambda: _env_str("ALLOWED_HOSTS", "*"))

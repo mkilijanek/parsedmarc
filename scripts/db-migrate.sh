@@ -20,7 +20,7 @@ with engine.begin() as conn:
     if engine.dialect.name == "postgresql":
         acquired = bool(conn.execute(text("SELECT pg_try_advisory_lock(:id)"), {"id": lock_id}).scalar())
         if not acquired:
-            print("Migration lock not acquired; another instance is migrating. Exiting.")
+            print("Migration lock not acquired; another instance is running migrations. Skipping in this process.")
             raise SystemExit(0)
 
 try:

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 from typing import Any, Dict
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 
 def _domain_root(domain: str) -> str:
@@ -40,8 +43,8 @@ def enrich_metadata(*, value: str, ioc_type: str, metadata: Dict[str, Any] | Non
             enrichment["ip_is_private"] = bool(ip.is_private)
             enrichment["ip_is_global"] = bool(ip.is_global)
             enrichment["ip_is_multicast"] = bool(ip.is_multicast)
-        except Exception:
-            pass
+        except ValueError:
+            logger.debug("enrichment_ip_parse_failed", extra={"value": v})
 
     if t == "domain":
         dv = v.lower().strip(".")

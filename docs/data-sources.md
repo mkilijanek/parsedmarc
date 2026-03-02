@@ -1,6 +1,6 @@
 # Data Sources
 
-Status: updated for `1.1.x` (2026-02-26).
+Status: updated for `1.1.x` (2026-03-01).
 
 ## Overview
 
@@ -42,6 +42,11 @@ MISP_DAYS=7  # Fetch events from last N days
 - Falls back to event tags
 - Supports TLP 2.0 (clear → WHITE)
 - Default: GREEN if not specified
+
+**TLP ceiling (`MISP_MAX_TLP`):**
+- Attributes whose TLP exceeds `MISP_MAX_TLP` are silently skipped and counted in `tlp_skipped` (visible in logs and `feed_stats.metadata`).
+- Default: `AMBER` — **TLP:RED attributes are not ingested by default**.
+- Set `MISP_MAX_TLP=RED` to allow all TLP levels.
 
 **Confidence Calculation:**
 ```
@@ -192,6 +197,37 @@ python -m app.cli fetch \
 - `Test connection`
 - dynamic user organization selection
 - optional custom query filter (stored per feed)
+- "My MWDB group" selector (see below)
+
+#### My MWDB Group (TLP:AMBER)
+
+When `MWDB_MY_GROUP` is set, the service compares each object's uploaders
+against the configured group name. Objects where `uploaders[].group` (or
+`organization`, `name`) matches the configured value are tagged `TLP:AMBER`
+instead of the default `TLP:GREEN`.
+
+Configure via `MWDB_MY_GROUP=<group-name>` environment variable or use the
+"My MWDB group" single-select dropdown in the Admin → Feed configuration UI.
+The selected group is persisted in DB settings and injected into the sync
+environment before each run.
+
+#### Default Query (empty-query edge case)
+
+When neither `MWDB_TAGS` nor `MWDB_CUSTOM_FILTER` is set, the sync would
+historically send no `query` parameter. Some MWDB deployments return empty
+results without a query. The service now always sends a query, falling back to
+`MWDB_DEFAULT_QUERY` (default: `type:*`) when nothing else is configured.
+
+**Troubleshooting "0 fetched" from MWDB:**
+1. Check worker logs for `mwdb_stop_reason` entries — look at `query_hash`, `filtered_org`, `filtered_time`, `filtered_no_ioc` fields.
+2. If `filtered_time` is high, increase `MWDB_DAYS` or set `MWDB_NO_TIME_LIMIT=true`.
+3. If `filtered_org` is high, review `MWDB_ORGANIZATIONS` (leave empty to accept all).
+4. Check `/deps` endpoint for MWDB status and last error:
+   ```bash
+   curl -s http://127.0.0.1:8080/deps | python -m json.tool
+   ```
+5. If no objects match `MWDB_TAGS`, try a broader set or use `MWDB_CUSTOM_FILTER`.
+6. If MWDB deployment requires a specific query scope, set `MWDB_DEFAULT_QUERY` accordingly.
 
 ---
 

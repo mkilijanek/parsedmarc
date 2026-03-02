@@ -1,6 +1,6 @@
 # Web UI Documentation
 
-Status: updated for `1.1.x` (2026-02-26).
+Status: updated for `1.1.x` (2026-03-01).
 
 ## Overview
 
@@ -107,6 +107,11 @@ Feed forms include:
 - `Test connection`
 - `Back`
 - Disabled/loading button states on submit
+
+**MWDB feed** additionally shows a "My MWDB group" single-select dropdown populated
+after a successful connection test. Selecting a group configures `MWDB_MY_GROUP`:
+indicators uploaded by members of that group are tagged `TLP:AMBER` instead of the
+default `TLP:GREEN`. The selection is persisted in DB settings.
 
 ### Layout
 

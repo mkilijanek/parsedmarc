@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
 import requests
+from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..config import Config
@@ -18,18 +19,16 @@ from ..metrics import (
     feed_update_errors,
     feed_fetch_total,
     feed_fetched_rows_total,
-    feed_deactivated_rows_total,
     feed_update_duration_seconds,
     quality_normalized_total,
     quality_dropped_invalid_total,
     quality_dedup_merged_total,
 )
 from ..models import FeedStats, Indicator
-from .common import retry_with_backoff, throttle_external_request
+from .common import retry_with_backoff, throttle_external_request, _circuit_breaker
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
-_CIRCUIT_STATE: Dict[str, Dict[str, float]] = {}
 
 
 def _parse_dt(s: str | None) -> Optional[datetime]:
@@ -42,14 +41,14 @@ def _parse_dt(s: str | None) -> Optional[datetime]:
         try:
             dt = datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
             return dt
-        except Exception:
+        except ValueError:
             pass
     try:
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
-    except Exception:
+    except ValueError:
         return None
 
 
@@ -71,7 +70,7 @@ def _infer_ioc_type(value: str) -> str:
     try:
         ipaddress.ip_address(v)
         return "ip"
-    except Exception:
+    except ValueError:
         pass
     if "." in v and "/" not in v and " " not in v:
         return "domain"
@@ -143,24 +142,6 @@ def _get_text_with_retry(
         base_delay=max(0.1, retry_base_delay_s),
     )
 
-
-def _cb_is_open(source: str, now_ts: float) -> bool:
-    state = _CIRCUIT_STATE.get(source) or {}
-    return float(state.get("open_until", 0.0)) > now_ts
-
-
-def _cb_record_success(source: str) -> None:
-    _CIRCUIT_STATE[source] = {"fails": 0.0, "open_until": 0.0}
-
-
-def _cb_record_failure(source: str, *, fail_threshold: int, cooldown_s: int, now_ts: float) -> None:
-    state = _CIRCUIT_STATE.get(source) or {"fails": 0.0, "open_until": 0.0}
-    fails = float(state.get("fails", 0.0)) + 1.0
-    open_until = float(state.get("open_until", 0.0))
-    if fails >= max(1, fail_threshold):
-        open_until = now_ts + max(1, cooldown_s)
-        fails = 0.0
-    _CIRCUIT_STATE[source] = {"fails": fails, "open_until": open_until}
 
 
 def fetch_threatfox_iocs(
@@ -578,12 +559,24 @@ def _upsert_source_rows(
 ) -> Dict[str, int]:
     incoming = {str(r.get("ioc_value") or "").strip() for r in rows if str(r.get("ioc_value") or "").strip()}
     incoming_types = {str(r.get("ioc_type") or "").strip() for r in rows if str(r.get("ioc_type") or "").strip()}
-    existing = db.query(Indicator.id, Indicator.value).filter(Indicator.source == source).all()
-    existing_map = {value: ind_id for (ind_id, value) in existing}
-    to_deactivate = [existing_map[v] for v in existing_map.keys() if v not in incoming]
-    if to_deactivate:
-        db.query(Indicator).filter(Indicator.id.in_(to_deactivate)).update(  # type: ignore[arg-type]
-            {"is_active": False, "last_seen": now}, synchronize_session=False
+    # Deactivate indicators not in incoming set using a single SQL UPDATE (avoids loading all rows to Python)
+    if incoming:
+        db.execute(
+            update(Indicator)
+            .where(
+                Indicator.source == source,
+                Indicator.is_active == True,  # noqa: E712
+                ~Indicator.value.in_(list(incoming)),
+            )
+            .values(is_active=False, last_seen=now)
+            .execution_options(synchronize_session=False)
+        )
+    else:
+        db.execute(
+            update(Indicator)
+            .where(Indicator.source == source, Indicator.is_active == True)  # noqa: E712
+            .values(is_active=False, last_seen=now)
+            .execution_options(synchronize_session=False)
         )
 
     related_sources_map: Dict[tuple[str, str], set[str]] = {}
@@ -650,7 +643,7 @@ def _upsert_source_rows(
             },
         )
     )
-    return {"fetched": len(rows), "deactivated": len(to_deactivate)}
+    return {"fetched": len(rows)}
 
 
 def _quality_prepare_rows(source: str, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -817,10 +810,9 @@ def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
             if not enabled:
                 continue
             with feed_update_duration_seconds.labels(source=source).time():
-                now_ts = time.time()
-                if _cb_is_open(source, now_ts):
+                if _circuit_breaker.is_open(source):
                     feed_fetch_total.labels(source=source, status="circuit_open").inc()
-                    results[source] = {"skipped": 1, "fetched": 0, "deactivated": 0}
+                    results[source] = {"skipped": 1, "fetched": 0}
                     continue
                 try:
                     rows = fetch_fn()
@@ -833,18 +825,16 @@ def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
                         meta={"fetched": len(rows)},
                     )
                     db.commit()
-                    _cb_record_success(source)
+                    _circuit_breaker.record_success(source)
                     feed_fetch_total.labels(source=source, status="success").inc()
                     feed_fetched_rows_total.labels(source=source).inc(stats["fetched"])
-                    feed_deactivated_rows_total.labels(source=source).inc(stats["deactivated"])
                     results[source] = stats
                 except Exception as e:
                     db.rollback()
-                    _cb_record_failure(
+                    _circuit_breaker.record_failure(
                         source,
                         fail_threshold=max(1, int(cfg.ABUSECH_CIRCUIT_FAIL_THRESHOLD)),
                         cooldown_s=max(1, int(cfg.ABUSECH_CIRCUIT_COOLDOWN_S)),
-                        now_ts=now_ts,
                     )
                     feed_update_errors.labels(source=source).inc()
                     feed_fetch_total.labels(source=source, status="error").inc()
@@ -854,7 +844,7 @@ def update_abusech_indicators() -> Dict[str, Dict[str, int]]:
                     except Exception:
                         db.rollback()
                     logger.error("abusech_source_update_failed", extra={"source": source, "error": str(e)}, exc_info=True)
-                    results[source] = {"error": 1, "fetched": 0, "deactivated": 0}
+                    results[source] = {"error": 1, "fetched": 0}
         return results
     finally:
         db.close()

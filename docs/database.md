@@ -1,6 +1,6 @@
 # Database Documentation
 
-Status: updated for `1.1.x` (2026-02-26).
+Status: updated for `1.1.x` (2026-03-01).
 
 ## Overview
 
@@ -80,7 +80,7 @@ Indexes:
 - `idx_sync_jobs_status_created`
 - `idx_sync_jobs_trigger_status`
 
-Schema is managed through Alembic migrations (`0001`, `0002`).
+Schema is managed through Alembic migrations (`0001`, `0002`, `0003`).
 
 ```sql
 CREATE TABLE ti.feed_stats (
@@ -130,8 +130,11 @@ CREATE INDEX idx_indicators_tlp ON ti.indicators(tlp, is_active);
 CREATE INDEX idx_indicators_last_seen ON ti.indicators(last_seen DESC);
 
 -- Partial index for active only
-CREATE INDEX idx_indicators_active ON ti.indicators(ioc_value, ioc_type) 
+CREATE INDEX idx_indicators_active ON ti.indicators(ioc_value, ioc_type)
   WHERE is_active = TRUE;
+
+-- migration 0003: efficient status queries and admin dashboard
+CREATE INDEX idx_feed_runs_status_started ON feed_runs (status, started_at);
 ```
 
 ### GIN Indexes

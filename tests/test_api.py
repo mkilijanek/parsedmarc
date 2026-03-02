@@ -197,6 +197,12 @@ class TestIndicatorsViewEndpoint:
         data = response.get_json()
         assert "error" in data
 
+    def test_indicators_view_empty_confidence_values_are_allowed(self, client, sample_indicators):
+        """Empty min_conf/max_conf query params should be treated as no filter."""
+        response = client.get("/indicators?type=all&tlp=RED&source=all&min_conf=&max_conf=")
+        assert response.status_code == 200
+        assert "text/html" in response.content_type
+
     def test_indicators_view_caching(self, client, sample_indicators, fake_redis):
         """Test indicators view uses caching."""
         with patch("app.main.get_redis", return_value=fake_redis):
@@ -802,3 +808,116 @@ class TestPerformance:
         # All should succeed
         for response in responses:
             assert response.status_code == 200
+
+
+# ============================================================================
+# Liveness / Readiness / Dependency Status Endpoints
+# ============================================================================
+
+class TestHealthzEndpoint:
+    """Test /healthz liveness probe."""
+
+    def test_healthz_always_200(self, client):
+        response = client.get("/healthz")
+        assert response.status_code == 200
+
+    def test_healthz_json_status_ok(self, client):
+        data = client.get("/healthz").get_json()
+        assert data == {"status": "ok"}
+
+    def test_healthz_no_external_calls(self, client):
+        """healthz must not make any network calls."""
+        with patch("requests.get") as mock_get, patch("requests.Session") as mock_session:
+            response = client.get("/healthz")
+            assert response.status_code == 200
+            mock_get.assert_not_called()
+            mock_session.assert_not_called()
+
+    def test_healthz_content_type_json(self, client):
+        response = client.get("/healthz")
+        assert "application/json" in response.content_type
+
+    def test_healthz_security_headers(self, client):
+        response = client.get("/healthz")
+        assert_security_headers(response)
+
+
+class TestDepsEndpoint:
+    """Test /deps dependency status snapshot."""
+
+    def test_deps_returns_200(self, client):
+        response = client.get("/deps")
+        assert response.status_code == 200
+
+    def test_deps_returns_json_dict(self, client):
+        response = client.get("/deps")
+        data = response.get_json()
+        assert isinstance(data, dict)
+
+    def test_deps_no_external_calls(self, client):
+        """deps must not make any network calls."""
+        with patch("requests.get") as mock_get:
+            response = client.get("/deps")
+            assert response.status_code == 200
+            mock_get.assert_not_called()
+
+    def test_deps_shows_updated_status(self, client):
+        """After _dep_status is updated, /deps reflects new value."""
+        from app.services.common import _dep_status
+        _dep_status.update("test_source", "ok", duration_ms=5)
+        data = client.get("/deps").get_json()
+        assert "test_source" in data
+        entry = data["test_source"]
+        assert entry["status"] == "ok"
+        assert entry["last_duration_ms"] == 5
+
+    def test_deps_entry_schema(self, client):
+        """Each entry in /deps has the expected keys."""
+        from app.services.common import _dep_status
+        _dep_status.update("schema_check", "down", error="timeout")
+        data = client.get("/deps").get_json()
+        entry = data.get("schema_check", {})
+        assert "status" in entry
+        assert "last_ok_ts" in entry
+        assert "last_check_ts" in entry
+        assert "last_error" in entry
+        assert "last_duration_ms" in entry
+
+
+class TestReadyzEndpoint:
+    """Test /readyz readiness probe."""
+
+    def test_readyz_200_when_db_ok(self, client, test_db):
+        with patch("app.main.get_redis") as mock_redis:
+            mock_redis.return_value.ping.return_value = True
+            response = client.get("/readyz")
+            assert response.status_code == 200
+
+    def test_readyz_json_ready_when_ok(self, client, test_db):
+        with patch("app.main.get_redis") as mock_redis:
+            mock_redis.return_value.ping.return_value = True
+            data = client.get("/readyz").get_json()
+            assert data["status"] == "ready"
+            assert data["checks"]["database"] is True
+            assert data["checks"]["redis"] is True
+
+    def test_readyz_503_when_redis_down(self, client, test_db):
+        with patch("app.main.get_redis") as mock_redis:
+            mock_redis.return_value.ping.side_effect = Exception("redis down")
+            response = client.get("/readyz")
+            assert response.status_code == 503
+            data = response.get_json()
+            assert data["status"] == "not_ready"
+            assert data["checks"]["redis"] is False
+
+    def test_readyz_content_type_json(self, client):
+        with patch("app.main.get_redis") as mock_redis:
+            mock_redis.return_value.ping.return_value = True
+            response = client.get("/readyz")
+            assert "application/json" in response.content_type
+
+    def test_readyz_security_headers(self, client):
+        with patch("app.main.get_redis") as mock_redis:
+            mock_redis.return_value.ping.return_value = True
+            response = client.get("/readyz")
+            assert_security_headers(response)
