@@ -119,6 +119,7 @@ Global admin configuration includes outbound proxy controls:
 - `HTTP proxy`
 - `HTTPS proxy`
 - `No proxy list`
+- `Organization CA bundle path` (maps to `REQUESTS_CA_BUNDLE`)
 - `Trusted proxy count`
 - `Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)`
 

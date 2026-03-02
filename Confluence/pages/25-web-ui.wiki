@@ -3,7 +3,7 @@ h1. Web UI
 {info:title=Documentation Metadata}
 Purpose: UI screens, behavior, and usage.\\
 Source file: {code}docs/web-ui.md{code}\\
-Generated (UTC): 2026-03-02 17:29:40Z
+Generated (UTC): 2026-03-02 21:53:25Z
 {info}
 
 h2. Content
@@ -127,6 +127,7 @@ Global admin configuration includes outbound proxy controls:
 * {{HTTP proxy}}
 * {{HTTPS proxy}}
 * {{No proxy list}}
+* {{Organization CA bundle path}} (maps to {{REQUESTS_CA_BUNDLE}})
 * {{Trusted proxy count}}
 * {{Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)}}
 

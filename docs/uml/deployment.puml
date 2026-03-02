@@ -89,6 +89,8 @@ note bottom of App
   HTTP(S)_PROXY, NO_PROXY,
   REQUESTS_CA_BUNDLE,
   REQUESTS_SKIP_TLS_VERIFY
+  (also configurable from Admin DB settings:
+   proxy.ca_bundle_path / proxy.skip_tls_verify)
 end note
 
 legend right

@@ -3,7 +3,7 @@ h1. Configuration
 {info:title=Documentation Metadata}
 Purpose: Environment variables and runtime configuration matrix.\\
 Source file: {code}docs/configuration.md{code}\\
-Generated (UTC): 2026-03-02 17:29:40Z
+Generated (UTC): 2026-03-02 21:53:25Z
 {info}
 
 h2. Content
@@ -377,7 +377,7 @@ REQUESTS_SKIP_TLS_VERIFY=false
 *Notes:*
 * {{REQUESTS_CA_BUNDLE}}: preferred for TLS interception environments (secure).
 * {{REQUESTS_SKIP_TLS_VERIFY=true}}: insecure fallback (equivalent to {{curl -k}}), use only temporarily.
-* Admin UI ({{/admin}}) can persist proxy settings in DB; worker/app bootstrap these values at runtime.
+* Admin UI ({{/admin}}) can persist proxy settings in DB ({{proxy.http_url}}, {{proxy.https_url}}, {{proxy.no_proxy}}, {{proxy.ca_bundle_path}}, {{proxy.skip_tls_verify}}); worker/app bootstrap these values at runtime.
 
 h3. CORS_ORIGINS
 

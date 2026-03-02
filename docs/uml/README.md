@@ -11,6 +11,8 @@ This directory contains UML source and generated diagram artifacts aligned with 
 - Deployment and component diagrams include sync-job control surface and worker refresh jobs.
 - Deployment/component/class diagrams include outbound proxy + TLS controls
   (`REQUESTS_CA_BUNDLE`, `REQUESTS_SKIP_TLS_VERIFY`).
+- Deployment notes include Admin-configured proxy settings
+  (`proxy.ca_bundle_path`, `proxy.skip_tls_verify`).
 - Diagram set is now part of 1.2.x release documentation scope.
 
 ## File Structure

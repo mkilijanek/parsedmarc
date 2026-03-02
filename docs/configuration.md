@@ -369,7 +369,7 @@ REQUESTS_SKIP_TLS_VERIFY=false
 **Notes:**
 - `REQUESTS_CA_BUNDLE`: preferred for TLS interception environments (secure).
 - `REQUESTS_SKIP_TLS_VERIFY=true`: insecure fallback (equivalent to `curl -k`), use only temporarily.
-- Admin UI (`/admin`) can persist proxy settings in DB; worker/app bootstrap these values at runtime.
+- Admin UI (`/admin`) can persist proxy settings in DB (`proxy.http_url`, `proxy.https_url`, `proxy.no_proxy`, `proxy.ca_bundle_path`, `proxy.skip_tls_verify`); worker/app bootstrap these values at runtime.
 
 ### CORS_ORIGINS
 

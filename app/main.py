@@ -344,6 +344,7 @@ def create_app() -> Flask:
         proxy_http = _get_setting(db, "proxy.http_url", "")
         proxy_https = _get_setting(db, "proxy.https_url", "")
         proxy_no = _get_setting(db, "proxy.no_proxy", "")
+        proxy_ca_bundle_path = _get_setting(db, "proxy.ca_bundle_path", "")
         proxy_skip_tls_verify = _get_setting(db, "proxy.skip_tls_verify", "0")
         if proxy_http:
             os.environ["HTTP_PROXY"] = proxy_http
@@ -363,6 +364,10 @@ def create_app() -> Flask:
         else:
             os.environ.pop("NO_PROXY", None)
             os.environ.pop("no_proxy", None)
+        if proxy_ca_bundle_path:
+            os.environ["REQUESTS_CA_BUNDLE"] = proxy_ca_bundle_path
+        else:
+            os.environ.pop("REQUESTS_CA_BUNDLE", None)
         if str(proxy_skip_tls_verify).strip().lower() in {"1", "true", "yes", "on"}:
             os.environ["REQUESTS_SKIP_TLS_VERIFY"] = "true"
         else:
@@ -2160,6 +2165,7 @@ def create_app() -> Flask:
                 "proxy_http_url": _get_setting(db, "proxy.http_url", os.getenv("HTTP_PROXY", "")),
                 "proxy_https_url": _get_setting(db, "proxy.https_url", os.getenv("HTTPS_PROXY", "")),
                 "proxy_no_proxy": _get_setting(db, "proxy.no_proxy", os.getenv("NO_PROXY", "")),
+                "proxy_ca_bundle_path": _get_setting(db, "proxy.ca_bundle_path", os.getenv("REQUESTS_CA_BUNDLE", "")),
                 "proxy_skip_tls_verify": _get_setting(db, "proxy.skip_tls_verify", os.getenv("REQUESTS_SKIP_TLS_VERIFY", "0")),
                 "trusted_proxy_count": _get_setting(db, "proxy.trusted_proxy_count", os.getenv("TRUSTED_PROXY_COUNT", "0")),
             }
@@ -2430,6 +2436,7 @@ def create_app() -> Flask:
       <p><label>HTTP proxy <input type="text" name="proxy_http_url" value="{_esc(proxy_conf['proxy_http_url'])}" placeholder="http://proxy:8080"/></label></p>
       <p><label>HTTPS proxy <input type="text" name="proxy_https_url" value="{_esc(proxy_conf['proxy_https_url'])}" placeholder="http://proxy:8080"/></label></p>
       <p><label>No proxy list <input type="text" name="proxy_no_proxy" value="{_esc(proxy_conf['proxy_no_proxy'])}" placeholder="localhost,127.0.0.1,.internal"/></label></p>
+      <p><label>Organization CA bundle path <input type="text" name="proxy_ca_bundle_path" value="{_esc(proxy_conf['proxy_ca_bundle_path'])}" placeholder="/etc/ssl/certs/org-ca.pem"/></label></p>
       <p><label><input type="checkbox" name="proxy_skip_tls_verify" value="1" {"checked" if str(proxy_conf['proxy_skip_tls_verify']).strip().lower() in {"1","true","yes","on"} else ""}/> Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)</label></p>
       <p><label>Trusted proxy count <input type="text" name="trusted_proxy_count" value="{_esc(proxy_conf['trusted_proxy_count'])}" placeholder="0"/></label></p>
       <button type="submit">Save configuration</button>
@@ -2522,6 +2529,7 @@ def create_app() -> Flask:
             _set_setting(db, "proxy.http_url", (request.form.get("proxy_http_url") or "").strip())
             _set_setting(db, "proxy.https_url", (request.form.get("proxy_https_url") or "").strip())
             _set_setting(db, "proxy.no_proxy", (request.form.get("proxy_no_proxy") or "").strip())
+            _set_setting(db, "proxy.ca_bundle_path", (request.form.get("proxy_ca_bundle_path") or "").strip())
             _set_setting(
                 db,
                 "proxy.skip_tls_verify",

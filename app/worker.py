@@ -49,12 +49,13 @@ def _safe_job(name: str, fn):
 def _bootstrap_proxy_env_from_settings() -> None:
     db = get_session(read_only=False)
     try:
-        keys = {"proxy.http_url", "proxy.https_url", "proxy.no_proxy", "proxy.skip_tls_verify"}
+        keys = {"proxy.http_url", "proxy.https_url", "proxy.no_proxy", "proxy.ca_bundle_path", "proxy.skip_tls_verify"}
         rows = list(db.scalars(select(AppSetting).where(AppSetting.key.in_(keys))).all())
         settings = {str(r.key): str(r.value or "") for r in rows}
         proxy_http = settings.get("proxy.http_url", "").strip()
         proxy_https = settings.get("proxy.https_url", "").strip()
         proxy_no = settings.get("proxy.no_proxy", "").strip()
+        proxy_ca_bundle = settings.get("proxy.ca_bundle_path", "").strip()
         proxy_skip_tls_verify = settings.get("proxy.skip_tls_verify", "").strip()
 
         if proxy_http:
@@ -75,6 +76,10 @@ def _bootstrap_proxy_env_from_settings() -> None:
         else:
             os.environ.pop("NO_PROXY", None)
             os.environ.pop("no_proxy", None)
+        if proxy_ca_bundle:
+            os.environ["REQUESTS_CA_BUNDLE"] = proxy_ca_bundle
+        else:
+            os.environ.pop("REQUESTS_CA_BUNDLE", None)
         if proxy_skip_tls_verify.lower() in {"1", "true", "yes", "on"}:
             os.environ["REQUESTS_SKIP_TLS_VERIFY"] = "true"
         else:

@@ -44,6 +44,7 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Problems only" in html
     assert "Danger Zone" in html
     assert "Skip TLS certificate verification for outbound HTTP requests" in html
+    assert "Organization CA bundle path" in html
     assert "curl -k equivalent" in html
 
 
@@ -196,6 +197,7 @@ def test_admin_settings_persist_proxy_skip_tls_verify(client, sample_indicators,
             "proxy_http_url": "http://proxy.local:8080",
             "proxy_https_url": "http://proxy.local:8080",
             "proxy_no_proxy": "localhost,127.0.0.1",
+            "proxy_ca_bundle_path": "/etc/ssl/certs/org-ca.pem",
             "proxy_skip_tls_verify": "1",
             "trusted_proxy_count": "1",
         },
@@ -205,6 +207,9 @@ def test_admin_settings_persist_proxy_skip_tls_verify(client, sample_indicators,
     row = test_db.query(AppSetting).filter(AppSetting.key == "proxy.skip_tls_verify").one_or_none()
     assert row is not None
     assert str(row.value) == "1"
+    row_ca = test_db.query(AppSetting).filter(AppSetting.key == "proxy.ca_bundle_path").one_or_none()
+    assert row_ca is not None
+    assert str(row_ca.value) == "/etc/ssl/certs/org-ca.pem"
 
 
 def test_admin_logs_tab_and_api(client, sample_indicators):

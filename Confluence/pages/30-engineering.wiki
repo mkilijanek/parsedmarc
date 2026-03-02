@@ -3,7 +3,7 @@ h1. Engineering
 {info:title=Documentation Metadata}
 Purpose: Engineering-oriented architecture and delivery topics.\\
 Source file: {code}docs/architecture.md{code}\\
-Generated (UTC): 2026-03-02 17:29:40Z
+Generated (UTC): 2026-03-02 21:53:25Z
 {info}
 
 h2. Content
