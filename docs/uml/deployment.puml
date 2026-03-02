@@ -79,11 +79,16 @@ note right of Worker
   * Retry with backoff
   * cancel_requested support
   * periodic dependency refresh
+  * proxy bootstrap from DB settings
 end note
 
 note bottom of App
   Docker Compose exposes service
   on host port 7003 -> container 8080
+  Outbound proxy controls:
+  HTTP(S)_PROXY, NO_PROXY,
+  REQUESTS_CA_BUNDLE,
+  REQUESTS_SKIP_TLS_VERIFY
 end note
 
 legend right

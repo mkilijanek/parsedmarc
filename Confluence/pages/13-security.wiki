@@ -3,17 +3,21 @@ h1. Security
 {info:title=Documentation Metadata}
 Purpose: Security posture, controls, and recommended hardening.\\
 Source file: {code}SECURITY.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
 
 h2. Supported Versions
-Currently supporting version 1.0.x
+Currently supporting release line {{1.1.x}}.
 
 h2. Reporting Vulnerabilities
-Report to: security@example.com
-PGP Key: [Your PGP key]
+Create a private security report in GitHub Security Advisories for this repository.
+If unavailable, open a private channel with repository maintainers and include:
+* affected version/tag
+* reproduction steps
+* impact assessment
+* proposed fix or mitigation
 
 h2. Security Features
 * TLS 1.2+ only
@@ -22,6 +26,8 @@ h2. Security Features
 * XSS protection
 * CSRF protection
 * Security headers
+* Correlation IDs in API error responses
+* Migration-first startup (no runtime schema creation)
 
 h2. Best Practices
 # Rotate secrets every 90 days
@@ -30,3 +36,4 @@ h2. Best Practices
 # Regular updates
 # Monitor logs
 # Backup data
+# Run DB migrations before restarting app/worker on upgrades

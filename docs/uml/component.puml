@@ -98,4 +98,12 @@ note bottom of Worker
   and cancel_requested handling
 end note
 
+note bottom of API
+  Outbound HTTP proxy stack
+  supports:
+  HTTP(S)_PROXY, NO_PROXY,
+  REQUESTS_CA_BUNDLE and
+  REQUESTS_SKIP_TLS_VERIFY
+end note
+
 @enduml

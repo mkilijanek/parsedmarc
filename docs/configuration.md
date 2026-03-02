@@ -353,6 +353,24 @@ TRUSTED_PROXY_COUNT=0
 - `1`: Trust 1 proxy (take client IP from X-Forwarded-For)
 - `2+`: Trust N proxies (take IP at position from right)
 
+### Outbound Proxy/TLS Settings
+
+Use these variables when connectors (MWDB, abuse.ch, MalwareBazaar, MISP, CrowdSec)
+must route through a corporate proxy.
+
+```bash
+HTTP_PROXY=http://proxy.example.local:8080
+HTTPS_PROXY=http://proxy.example.local:8080
+NO_PROXY=localhost,127.0.0.1,postgres,redis,.internal
+REQUESTS_CA_BUNDLE=/etc/ssl/certs/org-ca.pem
+REQUESTS_SKIP_TLS_VERIFY=false
+```
+
+**Notes:**
+- `REQUESTS_CA_BUNDLE`: preferred for TLS interception environments (secure).
+- `REQUESTS_SKIP_TLS_VERIFY=true`: insecure fallback (equivalent to `curl -k`), use only temporarily.
+- Admin UI (`/admin`) can persist proxy settings in DB; worker/app bootstrap these values at runtime.
+
 ### CORS_ORIGINS
 
 **Type:** Comma-separated origins  

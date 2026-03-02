@@ -3,10 +3,12 @@ h1. API Reference
 {info:title=Documentation Metadata}
 Purpose: HTTP API endpoints, parameters, and examples.\\
 Source file: {code}docs/api.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Status: updated for {{1.1.x}} (2026-03-01).
 
 h2. Overview
 
@@ -32,11 +34,111 @@ The current implementation does not require authentication for API access. *For 
 
 h2. Endpoints
 
-h3. Health Check
+h3. Synchronization Jobs
 
-h4. {{GET /health}}
+h4. {{POST /api/sync}}
 
-Returns service health status and integration checks.
+Enqueue sync job for single feed or all enabled feeds.
+
+Request example:
+{code:language=json}
+{ "source": "abusech" }
+{code}
+
+Response:
+* {{202 Accepted}} with queued/reused job metadata ({{job_id}}, {{feed_source_id}}, {{created}})
+* {{400}} for invalid source or incomplete config
+
+h3. Logs API
+
+h4. {{GET /api/logs}}
+
+Supports filtering by:
+* {{feed}}
+* {{job_id}} (or {{run_id}})
+* {{level}}
+* {{component}}
+* {{since}}, {{until}}, {{limit}}
+
+h3. Current Runs / Queue
+
+h4. {{GET /api/runs/current}}
+
+Returns:
+* scheduler heartbeat
+* active run/job IDs
+* queued/running sync jobs
+* latest run history
+
+h3. Health / Liveness / Readiness
+
+h4. {{GET /healthz}} — Liveness probe
+
+Pure liveness endpoint — no external calls, always fast (< 50 ms).
+Use this for F5/Nginx/Kubernetes *liveness* monitors.
+
+*Rate Limit:* 120 requests/minute
+
+*Response (always 200):*
+{code:language=json}
+{"status": "ok"}
+{code}
+
+---
+
+h4. {{GET /readyz}} — Readiness probe
+
+Checks DB and Redis only. Returns 503 when either is unavailable.
+Use this for load-balancer *readiness* checks (removes instance from pool when infra is down).
+Does *not* check external feeds — a MISP outage must not affect readiness.
+
+*Rate Limit:* 120 requests/minute
+
+*Response (200 when ready):*
+{code:language=json}
+{"status": "ready", "checks": {"database": true, "redis": true}}
+{code}
+
+*Response (503 when not ready):*
+{code:language=json}
+{"status": "not_ready", "checks": {"database": true, "redis": false}}
+{code}
+
+---
+
+h4. {{GET /deps}} — Dependency status snapshot
+
+Returns the last known health of each external dependency (MISP, MWDB, …) populated by background worker runs. No live network calls — always fast.
+
+*Rate Limit:* 30 requests/minute
+
+*Response:*
+{code:language=json}
+{
+  "misp": {
+    "status": "ok",
+    "last_ok_ts": 1740000000.0,
+    "last_check_ts": 1740000060.0,
+    "last_error": null,
+    "last_duration_ms": 42
+  },
+  "mwdb": {
+    "status": "down",
+    "last_ok_ts": 1739990000.0,
+    "last_check_ts": 1740000120.0,
+    "last_error": "Connection refused",
+    "last_duration_ms": null
+  }
+}
+{code}
+
+*Status Values per entry:* {{ok}}, {{degraded}}, {{down}}, {{unknown}}
+
+---
+
+h4. {{GET /health}} — Legacy combined check
+
+Backward-compatible endpoint. Checks DB + Redis live; reads MISP/CrowdSec status from in-process cache (no live MISP calls). Prefer {{/healthz}} for monitors.
 
 *Rate Limit:* 60 requests/minute
 
@@ -54,8 +156,8 @@ Returns service health status and integration checks.
 {code}
 
 *Status Values:*
-* {{healthy}} - All checks passed
-* {{degraded}} - Some checks failed
+* {{healthy}} - DB + Redis OK
+* {{degraded}} - DB or Redis unreachable
 
 ---
 
@@ -81,6 +183,14 @@ Returns Prometheus-compatible metrics for monitoring.
 * {{correlation_groups_returned_total}} - Returned correlation group count
 * {{cache_access_total}} - Cache hit/miss counter by endpoint
 * {{db_query_duration_seconds}} - Database query latency by endpoint
+
+*Job Backlog Metrics (Gauge — refreshed on each scrape):*
+
+| Metric                | Description                                       |
+|-----------------------|---------------------------------------------------|
+| {{sync_jobs_queued}}    | SyncJobs currently in status=queued               |
+| {{sync_jobs_running}}   | SyncJobs currently in status=running              |
+| {{export_jobs_pending}} | ExportJobs in status=queued or status=running     |
 
 *Security Note:* Deploy this endpoint behind internal network/VPN in production.
 
@@ -400,10 +510,13 @@ Rate limits are enforced per client IP address:
 
 | Endpoint | Limit |
 |----------|-------|
+| {{/healthz}} | 120/minute |
+| {{/readyz}} | 120/minute |
+| {{/deps}} | 30/minute |
+| {{/health}} | 60/minute |
 | {{/indicators}} | 20/minute |
 | {{/indicators/<format>}} | 30/minute |
 | {{/correlations}} | 20/minute |
-| {{/health}} | 60/minute |
 | {{/metrics}} | 30/minute |
 | {{/misp/*}} | 30/minute |
 | {{/crowdsec/*}} | 30/minute |

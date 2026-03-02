@@ -3,10 +3,12 @@ h1. Quickstart
 {info:title=Documentation Metadata}
 Purpose: Fast setup and operational shortcuts for local/prod usage.\\
 Source file: {code}QUICKSTART.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Aktualizacja: {{1.1.x}} (2026-02-26)
 
 h2. 📦 Zawartość Archiwum
 
@@ -97,26 +99,26 @@ MISP_VERIFY_SSL=false
 
 h3. 5. Uruchomienie
 {code:language=bash}
-# Opcja A: Używając Makefile
-make start
-
-# Opcja B: Bezpośrednio Docker Compose
-docker-compose up -d
+# Compose + migracje
+docker compose up -d postgres redis
+docker compose up -d app worker
 
 # Sprawdź status
-docker-compose ps
+docker compose ps
 {code}
 
 h3. 6. Weryfikacja
 {code:language=bash}
 # Health check
-curl -k https://localhost:7003/health
+curl http://localhost:7003/health
 
-# Statystyki
-curl -k https://localhost:7003/api/stats
+# Sync API (kolejka jobs)
+curl -X POST http://localhost:7003/api/sync \
+  -H "Content-Type: application/json" \
+  -d '{"source":"abusech"}'
 
 # Web UI
-firefox https://localhost:7003/
+firefox http://localhost:7003/
 {code}
 
 h2. 🔧 Komendy Pomocnicze

@@ -3,10 +3,12 @@ h1. Contributing
 {info:title=Documentation Metadata}
 Purpose: Contribution workflow and quality gates.\\
 Source file: {code}CONTRIBUTING.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Status: updated for 1.1.x (2026-02-26).
 
 This project uses a strict "green-only" merge policy.
 

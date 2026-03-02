@@ -1,6 +1,6 @@
 # Web UI Documentation
 
-Status: updated for `1.1.x` (2026-03-01).
+Status: updated for `1.2.x` (2026-03-02).
 
 ## Overview
 
@@ -112,6 +112,18 @@ Feed forms include:
 after a successful connection test. Selecting a group configures `MWDB_MY_GROUP`:
 indicators uploaded by members of that group are tagged `TLP:AMBER` instead of the
 default `TLP:GREEN`. The selection is persisted in DB settings.
+
+### Admin Proxy Settings
+
+Global admin configuration includes outbound proxy controls:
+- `HTTP proxy`
+- `HTTPS proxy`
+- `No proxy list`
+- `Trusted proxy count`
+- `Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)`
+
+`Skip TLS certificate verification` is intended for troubleshooting only. For production,
+prefer proper CA trust (`REQUESTS_CA_BUNDLE`) instead of disabling verification.
 
 ### Layout
 

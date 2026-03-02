@@ -3,10 +3,12 @@ h1. M16 Finalization
 {info:title=Documentation Metadata}
 Purpose: Finalization checklist and readiness outcomes.\\
 Source file: {code}docs/m16-finalization.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Status: updated for 1.1.x (2026-02-26).
 
 h2. Scope Completed
 
@@ -58,7 +60,7 @@ h2. Roadmap v2 Implementation Status (2026-02-26)
 # Implemented optional authenticated {{/metrics}} access via bearer token ({{METRICS_AUTH_TOKEN}}).
 # Expanded chaos checks to include DB restart, Redis pause/slow simulation, and optional packet-loss simulation.
 # Implemented weekly benchmark trend artifact generation ({{make benchmark-weekly}}).
-# Implemented dark mode persistence with shared theme storage key (localStorage).
+# Implemented dark mode persistence with shared theme storage key ({{localStorage}}).
 # Unified global topbar/navigation and theme controls across legacy UI pages.
 # Added pagination controls, result counts, and sticky filter summary for {{/indicators}}.
 # Added improved admin form feedback, readiness gating, and clearer configuration state.

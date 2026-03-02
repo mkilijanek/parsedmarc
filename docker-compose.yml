@@ -47,6 +47,7 @@ services:
       https_proxy: ${HTTPS_PROXY:-}
       no_proxy: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
       REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
+      REQUESTS_SKIP_TLS_VERIFY: ${REQUESTS_SKIP_TLS_VERIFY:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,6 +83,7 @@ services:
       https_proxy: ${HTTPS_PROXY:-}
       no_proxy: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
       REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
+      REQUESTS_SKIP_TLS_VERIFY: ${REQUESTS_SKIP_TLS_VERIFY:-false}
 
       # DB
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
@@ -140,6 +142,7 @@ services:
       https_proxy: ${HTTPS_PROXY:-}
       no_proxy: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
       REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
+      REQUESTS_SKIP_TLS_VERIFY: ${REQUESTS_SKIP_TLS_VERIFY:-false}
 
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}
       REDIS_URL: redis://:${REDIS_PASSWORD:-redispass}@redis:6379/0

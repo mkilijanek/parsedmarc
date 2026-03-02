@@ -3,10 +3,12 @@ h1. Getting Started
 {info:title=Documentation Metadata}
 Purpose: Entry point for installation and first-run setup.\\
 Source file: {code}README.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Updated for release line {{1.2.x}} (2026-03-02).
 
 Production-ready threat feed aggregation and export service:
 * Ingests *CrowdSec* blocklists and *MISP* (IDS-flagged only, warninglist enforced)
@@ -16,6 +18,28 @@ Production-ready threat feed aggregation and export service:
 * Web UI: {{/indicators}} (Kibana-like search) with WCAG/ARIA attributes
 * Source shortcuts: {{/sources/<src>}} (e.g. {{/sources/bazaar}}, {{/sources/mwdb}})
 * 17 export formats via {{/indicators/<format>}}
+* Queue-based sync jobs with per-feed idempotency ({{sync_jobs}})
+* Admin feed configuration with {{Test connection}}, per-feed settings, and optional {{custom filter}}
+* Unified light/dark theme across overview, indicators, admin, logs, and feed forms
+* MISP integration is disabled by default and can be enabled from Admin feed controls
+
+h2. Release Highlights (1.2.x)
+
+* Runtime schema creation removed from app startup.
+* Alembic migrations introduced ({{scripts/db-migrate.sh}}, {{migrate}} compose service).
+* {{app}} and {{worker}} now auto-run {{alembic upgrade head}} on container start ({{AUTO_MIGRATE_ON_START=true}} by default).
+* Scheduler/manual sync refactored to enqueue jobs ({{/api/sync}} -> {{202}} with job metadata).
+* Logs API supports {{job_id}} filtering.
+* Feed configuration extended:
+* abuse.ch service selectors ({{threatfox}}, {{urlhaus}}, {{bazaar}}, {{feodotracker}}, {{yaraify}})
+* MWDB: organizations, tags, days/no-time-limit, optional custom filter.
+* MISP safety guard:
+* sync timeout watchdog ({{MISP_SYNC_TIMEOUT_S}}, default {{30s}})
+* automatic MISP feed disable on connectivity timeout/failure to avoid blocking workers.
+* *MWDB "My MWDB group" selector* — configure {{MWDB_MY_GROUP}} or use the Admin UI dropdown; indicators from that group are tagged {{TLP:AMBER}}.
+* *Prometheus job backlog metrics* — {{sync_jobs_queued}}, {{sync_jobs_running}}, {{export_jobs_pending}} Gauges refreshed on each {{/metrics}} scrape.
+* *Export file cleanup* — scheduled job at 03:00 UTC removes stale files from {{EXPORT_JOB_DIR}} (prevents unbounded {{/tmp}} growth).
+* *CircuitBreaker* for MWDB, MISP, and abuse.ch — configurable fail threshold and cooldown; state logged with {{circuit_open}}/{{circuit_recovered}} events.
 
 h2. Quickstart (Docker Compose)
 
@@ -25,25 +49,33 @@ cp .env.example .env
 ./scripts/generate-secrets.sh >> .env
 {code}
 
-2) Create dev TLS cert (self-signed):
-{code:language=bash}
-./scripts/setup-ssl.sh
-{code}
-
-3) Configure integrations (optional):
+2) Configure integrations (optional):
 * CrowdSec: set {{CROWDSEC_API_KEY}} and {{CROWDSEC_LISTS}} (comma-separated list IDs)
 * MISP: set {{MISP_URL}}, {{MISP_API_KEY}}, and {{MISP_VERIFY_SSL}}
 
-4) Start:
+3) Start automated deploy (DB + Redis + app, host port {{7003}} by default):
 {code:language=bash}
-docker compose up -d --build
+bash scripts/deploy-compose.sh
 {code}
 
-5) Validate:
+Alternative:
 {code:language=bash}
+docker compose up -d --build postgres redis
+docker compose up -d --build app worker
+{code}
+
+4) Validate:
+{code:language=bash}
+curl http://localhost:7003/health
+curl http://localhost:7003/indicators
+curl http://localhost:7003/indicators/arcsight | head
+{code}
+
+Optional TLS edge ({{nginx}} profile):
+{code:language=bash}
+./scripts/setup-ssl.sh
+docker compose --profile edge up -d nginx
 curl -k https://localhost:7003/health
-curl -k https://localhost:7003/indicators
-curl -k https://localhost:7003/indicators/arcsight | head
 {code}
 
 h2. Endpoints
@@ -157,6 +189,8 @@ Contribution and quality gate:
 * See {{CONTRIBUTING.md}} for merge policy and smoke-test checklist.
 * CI ({{.github/workflows/ci.yml}}) enforces tests on Python 3.11/3.12 for pushes and PRs.
 * Performance artifacts: {{docs/performance.md}}, {{monitoring/alerts/m12-slo-alerts.yml}}, {{monitoring/grafana/m12-dashboard.json}}.
+* Confluence package (pages/subpages for Confluence 9.2.13): {{Confluence/README.md}}, {{Confluence/manifest.yaml}}, {{Confluence/pages/*.wiki}}.
+* UML diagrams and generation guide: {{docs/uml/README.md}}.
 
 
 h2. Configuration
@@ -173,6 +207,7 @@ h2. Configuration
 * {{MWDB_LIMIT}} (optional): max rows per run (default: {{1000}}).
 * outbound feed throttle (optional, enabled by default): {{FEED_REQUESTS_PER_SECOND}} (default: {{10}}), {{FEED_REQUESTS_PER_MINUTE}} (default: {{55}}), {{FEED_RATE_LIMIT_ENABLED}}.
 * abuse.ch extended integrations (optional): {{THREATFOX_*}}, {{URLHAUS_*}}, {{YARAIFY_*}}, {{FEODOTRACKER_*}}, {{HUNTING_FPLIST_*}}, with shared {{ABUSECH_AUTH_KEY}}.
+* startup migration control (optional): {{AUTO_MIGRATE_ON_START}} (default: {{true}}).
 
 
 h2. CLI (IOC ingestion)
@@ -195,8 +230,7 @@ Supported keys:
 * {{MALWAREBAZAAR_API_URL}}
 * {{MWDB_URL}}
 * {{MWDB_AUTH_KEY}}
-* {{ABUSECH_AUTH_KEY}} (preferred shared key for abuse.ch services)
-* {{MALWAREBAZAAR_AUTH_KEY}} (optional override)
+* {{ABUSECH_AUTH_KEY}} (shared key for abuse.ch services, including MalwareBazaar)
 
 Precedence:
 * CLI flags override values from {{--config-file}}.

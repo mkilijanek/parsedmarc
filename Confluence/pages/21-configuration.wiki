@@ -3,14 +3,87 @@ h1. Configuration
 {info:title=Documentation Metadata}
 Purpose: Environment variables and runtime configuration matrix.\\
 Source file: {code}docs/configuration.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
 
+Status: updated for {{1.1.x}} (2026-03-01).
+
 h2. Environment Variables
 
 All configuration is done via environment variables. No config files required.
+
+---
+
+h2. New in 1.1.x (Feeds & Sync)
+
+h3. Feed Transport / Retry
+
+{code:language=bash}
+FEED_HTTP_TIMEOUT_S=30
+FEED_RETRY_ATTEMPTS=4
+FEED_RETRY_BASE_DELAY_S=1
+{code}
+
+h3. Feed-level Rate Limits (global defaults + optional per-source override)
+
+{code:language=bash}
+FEED_RATE_LIMIT_ENABLED=true
+FEED_REQUESTS_PER_SECOND=10
+FEED_REQUESTS_PER_MINUTE=55
+{code}
+
+Optional per source (example for MWDB):
+
+{code:language=bash}
+FEED_REQUESTS_PER_SECOND_MWDB=5
+FEED_REQUESTS_PER_MINUTE_MWDB=40
+{code}
+
+h3. MISP Feed Options
+
+{code:language=bash}
+MISP_MAX_TLP=AMBER          # Maximum TLP level to ingest; attributes above this are skipped silently.
+                             # Valid: WHITE, GREEN, AMBER, RED. Default: AMBER (TLP:RED not ingested).
+MISP_HEALTH_TIMEOUT_S=3     # Timeout (seconds) for the lightweight MISP connectivity check in /health.
+                             # Does not affect full sync timeout (MISP_SYNC_TIMEOUT_S).
+{code}
+
+h3. MWDB Feed Options
+
+{code:language=bash}
+MWDB_TAGS=apt,malware
+MWDB_DAYS=30
+MWDB_NO_TIME_LIMIT=false
+MWDB_ORGANIZATIONS=
+MWDB_CUSTOM_FILTER=
+MWDB_MY_GROUP=          # MWDB group name; indicators uploaded by this group receive TLP:AMBER
+MWDB_DEFAULT_QUERY=type:*  # Fallback Lucene query when no MWDB_TAGS or MWDB_CUSTOM_FILTER set
+{code}
+
+{{MWDB_CUSTOM_FILTER}} is optional and appended to MWDB query expression.
+
+{{MWDB_MY_GROUP}} can also be set via the Admin → Feed configuration UI (persisted in DB settings).
+
+{{MWDB_DEFAULT_QUERY}} prevents empty-query edge cases on MWDB deployments that require a query parameter. Change only if your MWDB instance uses a different default scope.
+
+h3. Circuit Breaker Configuration
+
+Shared {{CircuitBreaker}} ({{app/services/common.py}}) is used by abusech, mwdb, and misp.
+It opens after N consecutive failures and waits COOLDOWN_S before attempting again.
+
+| Variable                        | Default | Description                               |
+|---------------------------------|---------|-------------------------------------------|
+| ABUSECH_CIRCUIT_FAIL_THRESHOLD  | 3       | Consecutive failures to open circuit      |
+| ABUSECH_CIRCUIT_COOLDOWN_S      | 300     | Cooldown seconds after circuit opens      |
+| MWDB_CIRCUIT_FAIL_THRESHOLD     | 3       | Same, for MWDB                            |
+| MWDB_CIRCUIT_COOLDOWN_S         | 300     | Same, for MWDB                            |
+| MISP_CIRCUIT_FAIL_THRESHOLD     | 3       | Same, for MISP                            |
+| MISP_CIRCUIT_COOLDOWN_S         | 300     | Same, for MISP                            |
+
+Circuit state is logged with keys {{circuit_open}} / {{circuit_recovered}} (field: {{source}}).
+To force a reset, restart the worker.
 
 ---
 
@@ -288,6 +361,24 @@ TRUSTED_PROXY_COUNT=0
 * {{1}}: Trust 1 proxy (take client IP from X-Forwarded-For)
 * {{2+}}: Trust N proxies (take IP at position from right)
 
+h3. Outbound Proxy/TLS Settings
+
+Use these variables when connectors (MWDB, abuse.ch, MalwareBazaar, MISP, CrowdSec)
+must route through a corporate proxy.
+
+{code:language=bash}
+HTTP_PROXY=http://proxy.example.local:8080
+HTTPS_PROXY=http://proxy.example.local:8080
+NO_PROXY=localhost,127.0.0.1,postgres,redis,.internal
+REQUESTS_CA_BUNDLE=/etc/ssl/certs/org-ca.pem
+REQUESTS_SKIP_TLS_VERIFY=false
+{code}
+
+*Notes:*
+* {{REQUESTS_CA_BUNDLE}}: preferred for TLS interception environments (secure).
+* {{REQUESTS_SKIP_TLS_VERIFY=true}}: insecure fallback (equivalent to {{curl -k}}), use only temporarily.
+* Admin UI ({{/admin}}) can persist proxy settings in DB; worker/app bootstrap these values at runtime.
+
 h3. CORS_ORIGINS
 
 *Type:* Comma-separated origins  
@@ -382,20 +473,10 @@ h4. MALWAREBAZAAR_API_URL
 
 *Type:* URL  
 *Default:* {{https://mb-api.abuse.ch/api/v1/}}  
-*Purpose:* MalwareBazaar API endpoint
+*Purpose:* MalwareBazaar API endpoint (authentication uses {{ABUSECH_AUTH_KEY}})
 
 {code:language=bash}
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
-{code}
-
-h4. MALWAREBAZAAR_AUTH_KEY
-
-*Type:* String (API key)  
-*Default:* Empty (optional)  
-*Purpose:* MalwareBazaar API authentication override. If empty, {{ABUSECH_AUTH_KEY}} is used.
-
-{code:language=bash}
-MALWAREBAZAAR_AUTH_KEY=your-api-key
 {code}
 
 h4. MALWAREBAZAAR_SINCE_DATE
@@ -558,6 +639,18 @@ FEED_REQUESTS_PER_MINUTE=55
 ---
 
 h2. Worker Configuration
+
+h3. DEP_HEALTH_INTERVAL_S
+
+*Type:* Integer (seconds)
+*Default:* {{60}}
+*Purpose:* Interval for the dependency health refresh job that probes external services (MISP, …) and updates {{/deps}} independently of feed sync jobs.
+
+{code:language=bash}
+DEP_HEALTH_INTERVAL_S=60
+{code}
+
+Set lower (e.g. {{30}}) for faster recovery detection; set higher to reduce probe frequency.
 
 h3. ENABLE_BACKGROUND_JOBS
 
@@ -742,7 +835,6 @@ CROWDSEC_LISTS=list1,list2,list3
 
 # MalwareBazaar
 MALWAREBAZAAR_API_URL=https://mb-api.abuse.ch/api/v1/
-MALWAREBAZAAR_AUTH_KEY=your-key
 MALWAREBAZAAR_SINCE_DATE=2025-01-01
 MALWAREBAZAAR_TAGS=TrickBot,Emotet
 MALWAREBAZAAR_LIMIT=1000

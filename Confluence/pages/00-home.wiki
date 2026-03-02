@@ -3,10 +3,12 @@ h1. IOC Service Documentation
 {info:title=Documentation Metadata}
 Purpose: Central entry page for the IOC Service documentation tree.\\
 Source file: {code}docs/README.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Status: updated for {{1.2.x}} (2026-03-02).
 
 Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed Aggregation system.
 
@@ -21,6 +23,7 @@ h2. Quick Links
 * 🛠️ *[Runbook|runbook.md]* - Incident response and release gate procedures
 * 🧭 *[M16 Finalization|m16-finalization.md]* - Go/no-go and closure checklist
 * 📆 *[Maintenance Plan|maintenance-plan.md]* - 90-day operating cadence and KPI policy
+* 🧩 *[UML Diagrams|uml/README.md]* - deployment, data model, sync flow, state machine
 * ✅ *[Contributing|../CONTRIBUTING.md]* - Quality gate and CI merge policy
 * 🔌 *[Data Sources|data-sources.md]* - MISP, CrowdSec, MalwareBazaar, MWDB integration
 * 💾 *[Database|database.md]* - Schema, indexes, and queries
@@ -110,6 +113,12 @@ h3. 📤 17 Export Formats
 h3. 🔄 Auto-Update
 
 Background worker fetches from MISP and CrowdSec every 10 minutes (configurable).
+
+h3. 🧰 Feed Admin & Sync Jobs
+
+* Per-feed configuration with connection test.
+* Queue-driven synchronization ({{sync_jobs}}) with job status tracking.
+* Logs filtered by feed, component, severity, and {{job_id}}.
 
 h3. 🔒 Security
 

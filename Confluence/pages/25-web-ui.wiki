@@ -3,10 +3,12 @@ h1. Web UI
 {info:title=Documentation Metadata}
 Purpose: UI screens, behavior, and usage.\\
 Source file: {code}docs/web-ui.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Status: updated for {{1.2.x}} (2026-03-02).
 
 h2. Overview
 
@@ -24,6 +26,7 @@ System overview with statistics and quick links.
 * Total/active indicator counts
 * Feed statistics table
 * Quick links to exports
+* Shared dark/light theme toggle with persisted preference
 
 h3. Indicator Search: {{/indicators}}
 
@@ -102,13 +105,33 @@ h2. Customization
 
 h3. Theming
 
-Edit inline CSS in {{app/main.py}}:
+Theme is unified across {{/}}, {{/indicators}}, {{/admin}}, {{/logs}}, and feed config pages.
+Preference is stored in browser {{localStorage}} under key {{ioc-theme}}.
 
-{code:language=python}
-def _render_indicators(...):
-    # CSS variables in <style> block
-    # Modify colors, fonts, spacing
-{code}
+h3. Admin Feed Configuration UX
+
+Feed forms include:
+* {{Save settings}}
+* {{Test connection}}
+* {{Back}}
+* Disabled/loading button states on submit
+
+*MWDB feed* additionally shows a "My MWDB group" single-select dropdown populated
+after a successful connection test. Selecting a group configures {{MWDB_MY_GROUP}}:
+indicators uploaded by members of that group are tagged {{TLP:AMBER}} instead of the
+default {{TLP:GREEN}}. The selection is persisted in DB settings.
+
+h3. Admin Proxy Settings
+
+Global admin configuration includes outbound proxy controls:
+* {{HTTP proxy}}
+* {{HTTPS proxy}}
+* {{No proxy list}}
+* {{Trusted proxy count}}
+* {{Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)}}
+
+{{Skip TLS certificate verification}} is intended for troubleshooting only. For production,
+prefer proper CA trust ({{REQUESTS_CA_BUNDLE}}) instead of disabling verification.
 
 h3. Layout
 

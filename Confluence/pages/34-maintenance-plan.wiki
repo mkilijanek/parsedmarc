@@ -3,10 +3,12 @@ h1. Maintenance Plan
 {info:title=Documentation Metadata}
 Purpose: Maintenance milestones and periodic tasks.\\
 Source file: {code}docs/maintenance-plan.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Status: updated for 1.1.x (2026-03-01).
 
 h2. Horizon
 
@@ -21,6 +23,9 @@ h2. Weekly
 * run {{python scripts/benchmark_suite_m14.py --base-url http://127.0.0.1:8080 --duration 20 --concurrency 64 --runs 1}}
 # Validate ingestion health:
 * verify worker logs and source update freshness.
+# Check job backlog:
+* {{curl -s http://127.0.0.1:8080/metrics | grep -E "sync_jobs|export_jobs"}}
+* If {{sync_jobs_queued}} > 10 for an extended period, restart the worker.
 
 h2. Biweekly
 
@@ -41,6 +46,8 @@ bash scripts/m15_premerge_gate.sh
 bash scripts/m16_release_readiness.sh
 {code}
 # Review dependencies and security advisories (including Dependabot findings).
+# Validate {{MWDB_MY_GROUP}} configuration and confirm {{TLP:AMBER}} is being applied to
+   indicators from that group (query: {{source:mwdb AND tlp:AMBER}}).
 
 h2. Capacity Policy
 

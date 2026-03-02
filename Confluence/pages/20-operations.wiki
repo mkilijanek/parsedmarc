@@ -3,10 +3,12 @@ h1. Operations
 {info:title=Documentation Metadata}
 Purpose: Operational practices and production support guidance.\\
 Source file: {code}docs/runbook.md{code}\\
-Generated (UTC): 2026-02-25 15:51:58Z
+Generated (UTC): 2026-03-02 17:29:40Z
 {info}
 
 h2. Content
+
+Status: updated for {{1.1.x}} (2026-03-01).
 
 h2. Scope
 
@@ -14,11 +16,22 @@ Operational playbook for the IOC service in production-like environments with sh
 
 h2. Quick Triage
 
+# Check liveness and readiness (use {{/healthz}} for F5/Nginx/Kubernetes monitors — no external calls):
+{code:language=bash}
+curl -s http://127.0.0.1:8080/healthz    # liveness: always fast, no external calls
+curl -s http://127.0.0.1:8080/readyz     # readiness: DB + Redis only
+curl -s http://127.0.0.1:8080/deps       # external dep status snapshot (no live calls)
+{code}
 # Check health and error ratio:
 {code:language=bash}
 curl -s http://127.0.0.1:8080/health
 curl -s http://127.0.0.1:8080/metrics | rg -n "http_requests_total|db_query_duration_seconds|cache_access_total"
 {code}
+# Check job backlog (queued/running sync and export jobs):
+{code:language=bash}
+curl -s http://127.0.0.1:8080/metrics | grep -E "sync_jobs|export_jobs"
+{code}
+If {{sync_jobs_queued}} stays > 10 for more than a few minutes, restart the worker.
 # Check container status:
 {code:language=bash}
 docker compose ps
@@ -80,6 +93,17 @@ Actions:
 # Keep ingestion running for unaffected sources.
 # Track outage in logs and feed stats.
 
+h4. Circuit Breaker State
+
+Check worker logs for {{circuit_open}} / {{circuit_recovered}} events (field: {{source}}).
+Thresholds are controlled by environment variables:
+* {{MWDB_CIRCUIT_FAIL_THRESHOLD}} / {{MWDB_CIRCUIT_COOLDOWN_S}}
+* {{MISP_CIRCUIT_FAIL_THRESHOLD}} / {{MISP_CIRCUIT_COOLDOWN_S}}
+* {{ABUSECH_CIRCUIT_FAIL_THRESHOLD}} / {{ABUSECH_CIRCUIT_COOLDOWN_S}}
+
+The circuit resets automatically after {{COOLDOWN_S}} seconds. To force an immediate
+reset, restart the worker container.
+
 h2. Release Gate
 
 Before merge/release:
@@ -92,12 +116,40 @@ Recommended thresholds:
 * mixed p95 <= 350 ms
 * mixed error rate <= 1%
 
+h2. Upgrade Procedure (Required Since 1.1.x)
+
+Always run migrations before app/worker restart:
+
+{code:language=bash}
+docker compose -f docker-compose-release.yml pull
+docker compose -f docker-compose-release.yml up -d app worker
+{code}
+
+Post-upgrade verification:
+
+{code:language=bash}
+docker compose -f docker-compose-release.yml logs --tail=200 app worker | rg "UndefinedTable|DetachedInstanceError|sync_job_enqueued|feed_sync_completed"
+{code}
+
 h2. Rollback
 
 # Deploy previous stable image/tag.
 # Restart app and worker.
 # Re-run smoke checks:
 {code:language=bash}
-curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:8080/healthz
+curl -fsS http://127.0.0.1:8080/readyz
 curl -fsS http://127.0.0.1:8080/indicators?limit=10
 {code}
+
+h2. F5 / Load Balancer Health Monitor
+
+Configure F5 (or any L4/L7 load balancer) to use {{/healthz}}:
+* *Monitor path:* {{/healthz}}
+* *Expected response:* {{200 OK}} with body {{{"status":"ok"}}}
+* *Do NOT use {{/health}}* for liveness — it checks DB/Redis on every call.
+
+{{/readyz}} is appropriate for load-balancer readiness (removes node when DB/Redis are unreachable).
+
+For full F5 Send String configuration, SELinux setup, and Nginx upstream troubleshooting, see:
+[docs/troubleshooting/502-bad-gateway.md|troubleshooting/502-bad-gateway.md]

@@ -89,6 +89,8 @@ class Config {
     +MISP_URL: str
     +MISP_API_KEY: str
     +CROWDSEC_API_KEY: str
+    +REQUESTS_CA_BUNDLE: str
+    +REQUESTS_SKIP_TLS_VERIFY: bool
     --
     +get_setting(key): str
 }
