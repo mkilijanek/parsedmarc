@@ -1,29 +1,29 @@
 # Upstream Tracking (dev)
 
-This file tracks upstream `domainaware/parsedmarc` issues/PRs that are relevant to this containerized repository (`mkilijanek/parsedmarc`).
+This file tracks upstream `domainaware/parsedmarc` items mapped to local issues in `mkilijanek/parsedmarc`.
 
-## Selected upstream items
+## Local issue mapping
 
-1. Upstream issues #593 and #479 (MS Graph transient failures)
-- Problem: intermittent Graph connection resets can crash processing loops.
-- Relevance here: this image is commonly used with long-running mailbox polling; unexpected exits reduce reliability.
-- Action in this repo: track and align runtime guidance/health behavior once upstream publishes a robust retry strategy.
+1. Local #26: MS Graph transient failures and retry behavior
+- Upstream refs: `domainaware/parsedmarc#593`, `#479`
+- Local status: mitigated operationally; awaiting upstream code-level retry behavior.
+- Local artifacts: `OPERATIONS.md` (graph reliability runbook)
 
-2. Upstream issues #581 and #584 (`since` + `watch` behavior/performance)
-- Problem: `since` filtering and mailbox polling behavior can be surprising or slow for large mailboxes.
-- Relevance here: directly impacts operators running this image against O365/IMAP.
-- Action in this repo: track upstream fix status and document safe configuration defaults/workarounds.
+2. Local #27: `since` and `watch` mailbox behavior/performance
+- Upstream refs: `domainaware/parsedmarc#581`, `#584`
+- Local status: mitigated operationally; awaiting upstream behavior fixes.
+- Local artifacts: `OPERATIONS.md` (backfill/steady-state split and mailbox sizing guidance)
 
-3. Upstream issues #574 and #367 (exit status on sink failures)
-- Problem: failures writing to downstream systems may not consistently return non-zero status.
-- Relevance here: container orchestrators depend on process exit codes for reliability and data safety.
-- Action in this repo: track upstream behavior and provide defensive runbook guidance.
+3. Local #28: non-zero exit on downstream sink failures
+- Upstream refs: `domainaware/parsedmarc#574`, `#367`
+- Local status: partially mitigated in this repo.
+- Local artifacts: `scripts/run-parsedmarc-safe.sh`, `OPERATIONS.md`
 
-4. Upstream PR #659 (DMARCbis support and forensic->failure terminology)
-- Problem/Change: major schema and naming updates are incoming.
-- Relevance here: affects release messaging, compatibility notes, and potentially default docs/config examples.
-- Action in this repo: prepare migration note once upstream change merges and ships.
+4. Local #29: DMARCbis migration readiness
+- Upstream refs: `domainaware/parsedmarc` PR `#659`
+- Local status: readiness checklist in place; waiting for upstream merge/release.
+- Local artifacts: `DMARCBIS_MIGRATION.md`
 
-## Out-of-scope upstream PRs for now
+## Out of scope for this wrapper repository
 
-- PR #658 and #650 (Google SecOps integrations) are feature additions in upstream core project and do not require immediate changes in this container wrapper repository.
+- Upstream PR `#658` and `#650` (Google SecOps integrations). These are core feature additions and do not require container-wrapper changes right now.
