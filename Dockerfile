@@ -15,7 +15,7 @@ LABEL org.opencontainers.image.source="https://github.com/mkilijanek/parsedmarc"
       org.opencontainers.image.title="parsedmarc (containerized)"
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}" \
+ && pip install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}" "urllib3>=2.6.3" \
  && adduser -D -h /home/parsedmarc -u 1000 parsedmarc \
  && mkdir -p /home/parsedmarc/ini /var/log/parsedmarc \
  && chown -R 1000:1000 /home/parsedmarc /var/log/parsedmarc

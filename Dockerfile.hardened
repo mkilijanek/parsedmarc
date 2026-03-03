@@ -17,7 +17,7 @@ ENV PYTHONUNBUFFERED=1
 
 RUN python -m venv "${VENV_PATH}" \
  && "${VENV_PATH}/bin/pip" install --no-cache-dir --upgrade pip \
- && "${VENV_PATH}/bin/pip" install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}"
+ && "${VENV_PATH}/bin/pip" install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}" "urllib3>=2.6.3"
 
 ############################
 # Runtime stage (distroless)
