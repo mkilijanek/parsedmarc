@@ -3,12 +3,12 @@ h1. API Reference
 {info:title=Documentation Metadata}
 Purpose: HTTP API endpoints, parameters, and examples.\\
 Source file: {code}docs/api.md{code}\\
-Generated (UTC): 2026-03-03 07:53:11Z
+Generated (UTC): 2026-03-03 09:11:26Z
 {info}
 
 h2. Content
 
-Status: updated for {{1.3.0}} (2026-03-03).
+Status: updated for {{1.3.1}} (2026-03-03).
 
 h2. Overview
 

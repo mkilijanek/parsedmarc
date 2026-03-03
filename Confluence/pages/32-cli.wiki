@@ -3,7 +3,7 @@ h1. CLI
 {info:title=Documentation Metadata}
 Purpose: Command-line ingestion workflows.\\
 Source file: {code}docs/cli.md{code}\\
-Generated (UTC): 2026-03-03 07:53:11Z
+Generated (UTC): 2026-03-03 09:11:26Z
 {info}
 
 h2. Content

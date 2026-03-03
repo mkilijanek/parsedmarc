@@ -1,10 +1,10 @@
 # UML Diagrams for IOC Threat Intelligence Service
 
-Status: refreshed for release `1.3.0` (2026-03-03).
+Status: refreshed for release `1.3.1` (2026-03-03).
 
 This directory contains UML source and generated diagram artifacts aligned with current scheduler, admin sync-job controls, and deployment/runtime behavior.
 
-## 1.3.0 Updates
+## 1.3.1 Updates
 
 - Sync job lifecycle includes `cancel_requested` and `cancelled` states.
 - Sync sequence includes admin actions: retry failed/cancelled jobs and cancel queued/running jobs.
