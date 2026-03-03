@@ -23,7 +23,7 @@ Production-ready threat feed aggregation and export service:
 - Scheduler/manual sync refactored to enqueue jobs (`/api/sync` -> `202` with job metadata).
 - Logs API supports `job_id` filtering.
 - Feed configuration extended:
-  - abuse.ch service selectors (`threatfox`, `urlhaus`, `bazaar`, `feodotracker`, `yaraify`)
+  - abuse.ch service selectors (`threatfox`, `urlhaus`, `feodotracker`, `yaraify`)
   - MWDB: organizations, tags, days/no-time-limit, optional custom filter.
 - MISP safety guard:
   - sync timeout watchdog (`MISP_SYNC_TIMEOUT_S`, default `30s`)

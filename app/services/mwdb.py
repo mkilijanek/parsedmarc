@@ -20,6 +20,7 @@ from .common import (
     _dep_status,
     standardized_update_result,
     build_feed_session,
+    ExternalFeedConnector,
 )
 from .quality import canonicalize_row, dedup_rows
 
@@ -306,6 +307,7 @@ def fetch_mwdb_by_tags(
             })
 
     with build_feed_session(source="mwdb") as session:
+        connector = ExternalFeedConnector(source="mwdb", session=session, retry_fn=retry_with_backoff)
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         while True:
             params: Dict[str, str] = {"count": str(min(chunk_size, 1000))}
@@ -331,16 +333,14 @@ def fetch_mwdb_by_tags(
                 },
             )
 
-            def _do():
-                throttle_external_request(source="mwdb")
-                resp = session.get(f"{base_url}/api/object", params=params, timeout=timeout_s)
-                resp.raise_for_status()
-                return resp.json()
             try:
-                data = retry_with_backoff(
-                    _do,
-                    max_attempts=max(1, retry_attempts),
-                    base_delay=max(0.1, retry_base_delay_s),
+                data = connector.request_json(
+                    method="GET",
+                    url=f"{base_url}/api/object",
+                    params=params,
+                    timeout_s=timeout_s,
+                    retry_attempts=max(1, retry_attempts),
+                    retry_base_delay_s=max(0.1, retry_base_delay_s),
                 )
             except requests.HTTPError as exc:
                 status = getattr(getattr(exc, "response", None), "status_code", None)

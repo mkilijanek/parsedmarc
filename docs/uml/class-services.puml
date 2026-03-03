@@ -61,6 +61,11 @@ class ProxyDiagnosticsService {
     +proxy_test_expected_match(target, title): bool
 }
 
+class ExternalFeedConnector {
+    +request_json(...): Dict
+    +request_text(...): str
+}
+
 class CorrelationService {
     +query_correlations(limit: int): List
     +refresh_correlation_snapshots()
@@ -126,6 +131,9 @@ SentinelGraphService ..> Config
 ProxyDiagnosticsService ..> Config
 ExportService ..> Config
 QueryParser ..> Config
+MWDBService ..> ExternalFeedConnector
+AbuseChService ..> ExternalFeedConnector
+MalwareBazaarService ..> ExternalFeedConnector
 
 note right of BaseService
   Abstract base class defining

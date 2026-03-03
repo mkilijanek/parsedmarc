@@ -486,8 +486,6 @@ def create_app() -> Flask:
                     {"key": "custom_filter", "label": "Custom filter", "secret": False, "required": False, "env": "ABUSECH_CUSTOM_FILTER", "placeholder": "Optional query filter"},
                     {"key": "threatfox_enabled", "label": "ThreatFox", "secret": False, "required": False, "env": "THREATFOX_ENABLED", "type": "checkbox"},
                     {"key": "urlhaus_enabled", "label": "URLhaus", "secret": False, "required": False, "env": "URLHAUS_ENABLED", "type": "checkbox"},
-                    {"key": "bazaar_enabled", "label": "Bazaar", "secret": False, "required": False, "env": "ABUSECH_BAZAAR_ENABLED", "type": "checkbox"},
-                    {"key": "bazaar_tags", "label": "Bazaar tags (comma-separated)", "secret": False, "required": False, "env": "MALWAREBAZAAR_TAGS", "placeholder": "exe, stealer"},
                     {"key": "feodotracker_enabled", "label": "FeodoTracker", "secret": False, "required": False, "env": "FEODOTRACKER_ENABLED", "type": "checkbox"},
                     {"key": "yaraify_enabled", "label": "YARAify", "secret": False, "required": False, "env": "YARAIFY_ENABLED", "type": "checkbox"},
                 ],
@@ -631,16 +629,11 @@ def create_app() -> Flask:
             toggles = {
                 "threatfox_enabled": (form_data.get(_field_input_name("threatfox_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
                 "urlhaus_enabled": (form_data.get(_field_input_name("urlhaus_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
-                "bazaar_enabled": (form_data.get(_field_input_name("bazaar_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
                 "feodotracker_enabled": (form_data.get(_field_input_name("feodotracker_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
                 "yaraify_enabled": (form_data.get(_field_input_name("yaraify_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
             }
             if not any(toggles.values()):
                 errors.append("Select at least one abuse.ch service.")
-            if toggles["bazaar_enabled"]:
-                bazaar_tags = (form_data.get(_field_input_name("bazaar_tags")) or "").strip()
-                if not bazaar_tags:
-                    errors.append("Bazaar tags are required when Bazaar is enabled.")
 
         return errors
 
@@ -1307,21 +1300,7 @@ def create_app() -> Flask:
             return {"source": feed.source_id, "result": update_mwdb_indicators()}
         if source_type == "abusech":
             from .services.abusech import update_abusech_indicators
-            base_result: Dict[str, Any] = dict(update_abusech_indicators() or {})
-            if str(os.getenv("ABUSECH_BAZAAR_ENABLED", "0")).strip().lower() in {"1", "true", "yes", "on"}:
-                from .services.malwarebazaar import update_malwarebazaar_indicators
-                bazaar_result = update_malwarebazaar_indicators()
-                rolled = sum_update_result([base_result, bazaar_result])
-                details = dict(rolled.get("details") or {})
-                details["abusech"] = base_result
-                details["malwarebazaar"] = bazaar_result
-                base_result = standardized_update_result(
-                    fetched=int(rolled.get("fetched", 0) or 0),
-                    deactivated=int(rolled.get("deactivated", 0) or 0),
-                    errors=int(rolled.get("errors", 0) or 0),
-                    details=details,
-                )
-            return {"source": feed.source_id, "result": base_result}
+            return {"source": feed.source_id, "result": update_abusech_indicators()}
         raise ValueError(f"Unknown source_type: {source_type}")
 
     def _enqueue_sync_job(feed: Feed, *, trigger_type: str, db: Session | None = None) -> tuple[SyncJob, bool]:
@@ -2277,6 +2256,7 @@ def create_app() -> Flask:
                     f"<input type='hidden' name='source' value='{_esc(item['source_id'])}'/>"
                     f"<button type='submit' {'disabled' if not item['ready'] else ''}>Sync now</button>"
                     "</form> "
+                    f"<a href='/logs?feed={_esc(item['source_id'])}'>View logs</a> "
                     f"<form method='post' action='/admin/feed/{_esc(item['source_id'])}/delete' style='display:inline' onsubmit='return confirm(\"Delete feed {_esc(item['source_id'])}?\")'>"
                     "<button type='submit'>Delete</button>"
                     "</form></td>"
@@ -2457,6 +2437,18 @@ def create_app() -> Flask:
     button {{ padding: .5rem .8rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }}
     fieldset {{ border: 1px solid var(--line); border-radius: 12px; margin: .75rem 0; padding: .75rem; }}
     .toast {{ border:1px solid var(--line); border-radius:10px; padding:.55rem .7rem; margin:.5rem 0 1rem; background:var(--card); }}
+    .status-chip {{ display:inline-block; border:1px solid var(--line); border-radius:999px; font-size:.75rem; font-weight:600; padding:.15rem .5rem; white-space:nowrap; }}
+    .status-chip.ok {{ background:#ecfdf3; color:#166534; }}
+    .status-chip.warning {{ background:#fffbeb; color:#92400e; }}
+    .status-chip.error {{ background:#fef2f2; color:#991b1b; }}
+    .status-chip.disabled {{ background:#f1f5f9; color:#334155; }}
+    .status-chip.not_configured {{ background:#fdf4ff; color:#7e22ce; }}
+    .metrics-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.6rem; margin:.75rem 0; }}
+    .metric-card {{ border:1px solid var(--line); border-radius:10px; padding:.55rem .7rem; }}
+    .metric-card .label {{ font-size:.8rem; opacity:.75; }}
+    .metric-card .value {{ font-size:1.05rem; font-weight:700; }}
+    .mini-chart-wrap {{ border:1px solid var(--line); border-radius:10px; padding:.4rem; margin:.55rem 0 .75rem; }}
+    .mini-chart-wrap svg {{ width:100%; height:120px; display:block; }}
   </style>
 </head>
 <body>
@@ -2543,8 +2535,9 @@ def create_app() -> Flask:
     </table>
   </div>
 
+  {ADMIN_FEED_METRICS_WIDGET_HTML}
   <div class="card">
-    <h2>Feed Statistics</h2>
+    <h2>Feed Statistics (Raw Last Status)</h2>
     <table>
       <thead><tr><th>Source</th><th>Source ID</th><th>Last Status</th><th>Last Update</th><th>Last Error</th></tr></thead>
       <tbody>{feed_rows_html}</tbody>
@@ -2615,6 +2608,7 @@ def create_app() -> Flask:
         }}
       }});
     }}
+    {ADMIN_FEED_METRICS_WIDGET_SCRIPT}
   </script>
 </body>
 </html>
@@ -3887,6 +3881,314 @@ STARTUP_LOADER_SCRIPT = """
     .catch(function () { finish(); })
     .finally(function () { window.clearTimeout(timeout); });
   window.addEventListener('load', finish, { once: true });
+})();
+"""
+
+ADMIN_FEED_METRICS_WIDGET_HTML = """
+  <div class="card" id="feedMetricsCard">
+    <h2>Feed Statistics (Operational View)</h2>
+    <form id="feedMetricsFilters" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.5rem;align-items:end">
+      <label>Window
+        <select id="feedMetricsWindow">
+          <option value="24h">24h</option>
+          <option value="7d" selected>7d</option>
+          <option value="30d">30d</option>
+        </select>
+      </label>
+      <label>Datasource
+        <select id="feedMetricsDatasource">
+          <option value="all">all</option>
+          <option value="abusech">abusech</option>
+          <option value="malwarebazaar">malwarebazaar</option>
+          <option value="mwdb">mwdb</option>
+          <option value="misp">misp</option>
+          <option value="crowdsec">crowdsec</option>
+        </select>
+      </label>
+      <label>Status
+        <select id="feedMetricsStatusFilter">
+          <option value="all">all</option>
+          <option value="OK">OK</option>
+          <option value="WARNING">WARNING</option>
+          <option value="ERROR">ERROR</option>
+          <option value="DISABLED">DISABLED</option>
+          <option value="NOT_CONFIGURED">NOT_CONFIGURED</option>
+        </select>
+      </label>
+      <label>Search
+        <input type="text" id="feedMetricsSearch" placeholder="source id / display name"/>
+      </label>
+      <label>Per page
+        <select id="feedMetricsPageSize">
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+      <div style="display:flex;gap:.5rem">
+        <button type="button" id="feedMetricsRefreshBtn">Refresh</button>
+        <button type="button" id="feedMetricsCsvBtn">CSV visible</button>
+      </div>
+    </form>
+    <div id="feedMetricsSummary" class="metrics-grid" aria-live="polite"></div>
+    <div class="mini-chart-wrap">
+      <svg id="feedMetricsChart" viewBox="0 0 800 120" role="img" aria-label="Feed fetched volume trend"></svg>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Feed</th>
+          <th>Runs</th>
+          <th>Err rate</th>
+          <th>Fetched</th>
+          <th>Avg dur ms</th>
+          <th>P95 ms</th>
+        </tr>
+      </thead>
+      <tbody id="feedMetricsBody"><tr><td colspan="7">Loading...</td></tr></tbody>
+    </table>
+    <p id="feedMetricsPager">Page 1/1</p>
+    <p id="feedMetricsStatus" role="status" aria-live="polite"></p>
+  </div>
+"""
+
+ADMIN_FEED_METRICS_WIDGET_SCRIPT = """
+(function () {
+  const root = document.getElementById('feedMetricsCard');
+  if (!root) { return; }
+  const state = {
+    items: [],
+    filtered: [],
+    page: 1,
+    pageSize: 10,
+    summary: {},
+    timeseries: []
+  };
+
+  function esc(v) {
+    return String(v || '').replace(/[&<>\"']/g, function (ch) {
+      if (ch === '&') return '&amp;';
+      if (ch === '<') return '&lt;';
+      if (ch === '>') return '&gt;';
+      if (ch === '\"') return '&quot;';
+      return '&#39;';
+    });
+  }
+  function num(v, fallback) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return n;
+  }
+  function fmtPct(v) {
+    const n = num(v, null);
+    return n === null ? '-' : n.toFixed(2) + '%';
+  }
+  function fmtNum(v) {
+    const n = num(v, null);
+    return n === null ? '-' : String(Math.round(n));
+  }
+  function statusChip(status) {
+    const val = String(status || 'UNKNOWN').toUpperCase();
+    const cls = val.toLowerCase();
+    return '<span class=\"status-chip ' + esc(cls) + '\">' + esc(val) + '</span>';
+  }
+  function setStatus(msg, isError) {
+    const el = document.getElementById('feedMetricsStatus');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.style.color = isError ? '#991b1b' : '#166534';
+  }
+
+  function currentFilters() {
+    return {
+      window: (document.getElementById('feedMetricsWindow') || {}).value || '7d',
+      datasource: (document.getElementById('feedMetricsDatasource') || {}).value || 'all',
+      status: (document.getElementById('feedMetricsStatusFilter') || {}).value || 'all',
+      q: ((document.getElementById('feedMetricsSearch') || {}).value || '').trim().toLowerCase(),
+      pageSize: Math.max(1, parseInt(((document.getElementById('feedMetricsPageSize') || {}).value || '10'), 10) || 10)
+    };
+  }
+
+  function applyFilters() {
+    const f = currentFilters();
+    state.pageSize = f.pageSize;
+    state.filtered = (state.items || []).filter(function (item) {
+      if (f.status !== 'all' && String(item.status || '').toUpperCase() !== f.status.toUpperCase()) return false;
+      if (f.q) {
+        const hay = (String(item.source_id || '') + ' ' + String(item.display_name || '') + ' ' + String(item.source_type || '')).toLowerCase();
+        if (hay.indexOf(f.q) < 0) return false;
+      }
+      return true;
+    });
+    const pages = Math.max(1, Math.ceil(state.filtered.length / state.pageSize));
+    if (state.page > pages) state.page = pages;
+  }
+
+  function renderSummary() {
+    const s = state.summary || {};
+    const cards = [
+      ['Runs', fmtNum(s.runs_total)],
+      ['Availability', fmtPct(s.availability_pct)],
+      ['Error rate', fmtPct(s.error_rate_pct)],
+      ['Fetched total', fmtNum(s.fetched_total)]
+    ];
+    const html = cards.map(function (it) {
+      return '<div class=\"metric-card\"><div class=\"label\">' + esc(it[0]) + '</div><div class=\"value\">' + esc(it[1]) + '</div></div>';
+    }).join('');
+    const out = document.getElementById('feedMetricsSummary');
+    if (out) out.innerHTML = html || '';
+  }
+
+  function renderChart() {
+    const svg = document.getElementById('feedMetricsChart');
+    if (!svg) return;
+    const points = (state.timeseries || []).map(function (x) { return num(x.fetched_total, 0); });
+    if (!points.length) {
+      svg.innerHTML = '<text x=\"8\" y=\"20\" font-size=\"12\">No data for selected window.</text>';
+      return;
+    }
+    let maxV = 1;
+    for (let i = 0; i < points.length; i += 1) {
+      if (points[i] > maxV) maxV = points[i];
+    }
+    const w = 800;
+    const h = 120;
+    const pad = 8;
+    const dx = points.length > 1 ? (w - 2 * pad) / (points.length - 1) : 0;
+    const coords = points.map(function (v, i) {
+      const x = pad + (i * dx);
+      const y = h - pad - ((v / maxV) * (h - 2 * pad));
+      return x.toFixed(2) + ',' + y.toFixed(2);
+    }).join(' ');
+    svg.innerHTML = '<polyline fill=\"none\" stroke=\"#0ea5e9\" stroke-width=\"2\" points=\"' + coords + '\" />'
+      + '<text x=\"8\" y=\"16\" font-size=\"11\">Fetched trend (window)</text>'
+      + '<text x=\"8\" y=\"112\" font-size=\"11\">0</text>'
+      + '<text x=\"760\" y=\"16\" font-size=\"11\">' + esc(String(maxV)) + '</text>';
+  }
+
+  function visibleRows() {
+    const start = (state.page - 1) * state.pageSize;
+    return state.filtered.slice(start, start + state.pageSize);
+  }
+
+  function renderTable() {
+    const rows = visibleRows();
+    const body = document.getElementById('feedMetricsBody');
+    if (!body) return;
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan=\"7\">No feed metrics for current filters.</td></tr>';
+    } else {
+      body.innerHTML = rows.map(function (item) {
+        const feed = esc(item.display_name || item.source_id || '-') + '<br/><small>' + esc(item.source_id || '-') + ' / ' + esc(item.source_type || '-') + '</small>';
+        return '<tr>'
+          + '<td>' + statusChip(item.status) + '</td>'
+          + '<td>' + feed + '</td>'
+          + '<td>' + esc(fmtNum(item.runs)) + '</td>'
+          + '<td>' + esc(fmtPct(item.error_rate_pct)) + '</td>'
+          + '<td>' + esc(fmtNum(item.fetched_total)) + '</td>'
+          + '<td>' + esc(fmtNum(item.duration_avg_ms)) + '</td>'
+          + '<td>' + esc(fmtNum(item.duration_p95_ms)) + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+    const pages = Math.max(1, Math.ceil(state.filtered.length / state.pageSize));
+    const pager = document.getElementById('feedMetricsPager');
+    if (pager) {
+      pager.innerHTML = 'Page ' + state.page + '/' + pages
+        + ' <button type=\"button\" id=\"feedMetricsPrevBtn\"' + (state.page <= 1 ? ' disabled' : '') + '>Prev</button>'
+        + ' <button type=\"button\" id=\"feedMetricsNextBtn\"' + (state.page >= pages ? ' disabled' : '') + '>Next</button>'
+        + ' <small>(' + state.filtered.length + ' feeds)</small>';
+      const prev = document.getElementById('feedMetricsPrevBtn');
+      const next = document.getElementById('feedMetricsNextBtn');
+      if (prev) prev.addEventListener('click', function () { state.page = Math.max(1, state.page - 1); renderTable(); });
+      if (next) next.addEventListener('click', function () { state.page = Math.min(pages, state.page + 1); renderTable(); });
+    }
+  }
+
+  function toCsv(rows) {
+    const headers = ['status', 'source_id', 'display_name', 'source_type', 'runs', 'error_rate_pct', 'fetched_total', 'duration_avg_ms', 'duration_p95_ms'];
+    const lines = [headers.join(',')];
+    rows.forEach(function (r) {
+      const cols = [
+        r.status, r.source_id, r.display_name, r.source_type, r.runs,
+        r.error_rate_pct, r.fetched_total, r.duration_avg_ms, r.duration_p95_ms
+      ].map(function (v) {
+        const raw = String(v == null ? '' : v);
+        return '\"' + raw.replace(/\"/g, '\"\"') + '\"';
+      });
+      lines.push(cols.join(','));
+    });
+    return lines.join('\\n');
+  }
+
+  function downloadVisibleCsv() {
+    const rows = visibleRows();
+    if (!rows.length) {
+      setStatus('No visible rows to export.', true);
+      return;
+    }
+    const blob = new Blob([toCsv(rows) + '\\n'], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'feed-metrics-visible.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus('Exported CSV for ' + rows.length + ' visible rows.', false);
+  }
+
+  async function loadMetrics() {
+    const f = currentFilters();
+    const query = new URLSearchParams();
+    query.set('window', f.window);
+    query.set('datasource', f.datasource);
+    try {
+      const resp = await fetch('/api/feeds/metrics?' + query.toString(), { cache: 'no-store' });
+      const data = await resp.json();
+      state.items = data.items || [];
+      state.summary = data.summary || {};
+      state.timeseries = data.timeseries || [];
+      state.page = 1;
+      applyFilters();
+      renderSummary();
+      renderChart();
+      renderTable();
+      setStatus('Metrics loaded for window=' + f.window + '.', false);
+    } catch (err) {
+      state.items = [];
+      state.filtered = [];
+      state.summary = {};
+      state.timeseries = [];
+      renderSummary();
+      renderChart();
+      renderTable();
+      setStatus('Failed to load feed metrics.', true);
+    }
+  }
+
+  ['feedMetricsWindow', 'feedMetricsDatasource', 'feedMetricsStatusFilter', 'feedMetricsSearch', 'feedMetricsPageSize'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', function () {
+      applyFilters();
+      renderTable();
+    });
+    if (id === 'feedMetricsSearch') {
+      el.addEventListener('input', function () {
+        applyFilters();
+        renderTable();
+      });
+    }
+  });
+  const refreshBtn = document.getElementById('feedMetricsRefreshBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', loadMetrics);
+  const csvBtn = document.getElementById('feedMetricsCsvBtn');
+  if (csvBtn) csvBtn.addEventListener('click', downloadVisibleCsv);
+
+  loadMetrics();
 })();
 """
 

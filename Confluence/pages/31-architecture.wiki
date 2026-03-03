@@ -190,6 +190,7 @@ schedule.every(10).minutes.do(update_all_feeds)
 *Error Handling:*
 * Exponential backoff for transient errors
 * CircuitBreaker ({{app/services/common.py}}) — opens after N consecutive failures, recovers after cooldown; used by abusech, mwdb, misp
+* ExternalFeedConnector ({{app/services/common.py}}) — shared request wrapper used by connectors to apply consistent throttle + retry behavior
 * Failed feed updates don't block others
 * Errors logged with structured context
 * {{feed_stats.last_fetch_error}} tracking

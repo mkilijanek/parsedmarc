@@ -46,6 +46,10 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Skip TLS certificate verification for outbound HTTP requests" in html
     assert "Organization CA bundle path" in html
     assert "curl -k equivalent" in html
+    assert "Feed Statistics (Operational View)" in html
+    assert "CSV visible" in html
+    assert "id=\"feedMetricsChart\"" in html
+    assert "/logs?feed=" in html
 
 
 def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):
@@ -158,11 +162,11 @@ def test_abusech_configure_shows_service_selectors(client, sample_indicators):
     html = response.get_data(as_text=True)
     assert "ThreatFox" in html
     assert "URLhaus" in html
-    assert "Bazaar" in html
     assert "FeodoTracker" in html
     assert "YARAify" in html
     assert "Custom filter" in html
     assert "Base URL" not in html
+    assert "Bazaar tags" not in html
 
 
 def test_feed_test_connection_endpoint_redirects(client, sample_indicators):

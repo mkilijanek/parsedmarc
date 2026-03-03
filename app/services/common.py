@@ -265,6 +265,112 @@ def build_feed_session(*, source: str) -> requests.Session:
     return session
 
 
+class ExternalFeedConnector:
+    """Shared HTTP wrapper for feed connectors.
+
+    Centralizes throttle + retry policy and keeps call sites consistent across
+    feed services.
+    """
+
+    def __init__(
+        self,
+        *,
+        source: str,
+        session: requests.Session | None = None,
+        retry_fn: Callable[..., Any] | None = None,
+    ) -> None:
+        self.source = source
+        self._session = session
+        self._retry_fn = retry_fn
+
+    def _session_or_new(self) -> tuple[requests.Session, bool]:
+        if self._session is not None:
+            return self._session, False
+        return build_feed_session(source=self.source), True
+
+    def request_json(
+        self,
+        *,
+        method: str,
+        url: str,
+        timeout_s: int,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        retry_attempts: int = 4,
+        retry_base_delay_s: float = 1.0,
+        throttle_source: str | None = None,
+    ) -> dict[str, Any]:
+        session, owns_session = self._session_or_new()
+        try:
+            def _do() -> dict[str, Any]:
+                throttle_external_request(source=(throttle_source or self.source))
+                resp = session.request(
+                    method.upper(),
+                    url,
+                    params=params,
+                    data=data,
+                    json=json_body,
+                    headers=headers,
+                    timeout=timeout_s,
+                )
+                resp.raise_for_status()
+                payload = resp.json() if resp.content else {}
+                if not isinstance(payload, dict):
+                    raise RuntimeError("Unexpected non-object JSON response")
+                return payload
+
+            retry_fn = self._retry_fn or retry_with_backoff
+            return retry_fn(
+                _do,
+                max_attempts=max(1, retry_attempts),
+                base_delay=max(0.1, retry_base_delay_s),
+            )
+        finally:
+            if owns_session:
+                session.close()
+
+    def request_text(
+        self,
+        *,
+        method: str,
+        url: str,
+        timeout_s: int,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        retry_attempts: int = 4,
+        retry_base_delay_s: float = 1.0,
+        throttle_source: str | None = None,
+    ) -> str:
+        session, owns_session = self._session_or_new()
+        try:
+            def _do() -> str:
+                throttle_external_request(source=(throttle_source or self.source))
+                resp = session.request(
+                    method.upper(),
+                    url,
+                    params=params,
+                    data=data,
+                    json=json_body,
+                    headers=headers,
+                    timeout=timeout_s,
+                )
+                resp.raise_for_status()
+                return resp.text
+
+            retry_fn = self._retry_fn or retry_with_backoff
+            return retry_fn(
+                _do,
+                max_attempts=max(1, retry_attempts),
+                base_delay=max(0.1, retry_base_delay_s),
+            )
+        finally:
+            if owns_session:
+                session.close()
+
 def get_feed_proxies(*, source: str) -> dict[str, str] | None:
     suffix = _source_env_suffix(source)
     all_proxy = os.getenv(f"FEED_PROXY_URL_{suffix}", "").strip()
