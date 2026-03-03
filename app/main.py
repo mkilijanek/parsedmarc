@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import json
+import html
 import os
 import base64
 import hashlib
 import hmac
+import re
 import secrets
 import time
 import uuid
@@ -49,7 +51,12 @@ from .security import validate_search_query, enforce_allowed_hosts, get_client_i
 from .query_parser import parse_kibana_query, Term, Token
 from .formatters import FORMATTERS
 from .services.correlation import query_correlations
-from .services.common import configure_requests_tls_verify_from_env, standardized_update_result, sum_update_result
+from .services.common import (
+    configure_requests_tls_verify_from_env,
+    standardized_update_result,
+    sum_update_result,
+    redact_proxy_credentials,
+)
 from .routes import register_health_blueprint
 
 from .metrics import (
@@ -363,6 +370,80 @@ def create_app() -> Flask:
             logger.warning("runtime_settings_bootstrap_failed", exc_info=True)
         finally:
             db.close()
+
+    def _extract_title_from_html(body: str) -> str:
+        if not body:
+            return ""
+        m = re.search(r"<title[^>]*>(.*?)</title>", body, flags=re.IGNORECASE | re.DOTALL)
+        if m:
+            return html.unescape(re.sub(r"\s+", " ", m.group(1)).strip())[:200]
+        m2 = re.search(
+            r"<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>",
+            body,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if m2:
+            return html.unescape(re.sub(r"\s+", " ", m2.group(1)).strip())[:200]
+        return ""
+
+    def _proxy_test_expected_match(target_key: str, title: str) -> bool:
+        t = (title or "").lower()
+        if target_key == "mwdb":
+            return ("mwdb" in t) or ("malware" in t)
+        if target_key == "abusech":
+            return "abuse.ch" in t
+        if target_key == "certpl":
+            return ("cert" in t) or ("cert.pl" in t)
+        return True
+
+    def _run_proxy_test() -> List[Dict[str, Any]]:
+        targets = [
+            {"key": "mwdb", "name": "MWDB", "url": "https://mwdb.cert.pl"},
+            {"key": "abusech", "name": "abuse.ch", "url": "https://abuse.ch"},
+            {"key": "certpl", "name": "CERT.PL", "url": "https://cert.pl"},
+        ]
+        out: List[Dict[str, Any]] = []
+        for target in targets:
+            t0 = time.time()
+            row: Dict[str, Any] = {
+                "target": target["name"],
+                "url": target["url"],
+                "status": "ERROR",
+                "http": None,
+                "latency_ms": None,
+                "title": "",
+                "notes": "",
+                "error": "",
+            }
+            try:
+                resp = requests.get(target["url"], timeout=(5, 10))
+                row["http"] = int(resp.status_code)
+                row["latency_ms"] = int((time.time() - t0) * 1000)
+                content_type = str(resp.headers.get("Content-Type") or "")
+                title = _extract_title_from_html(resp.text or "")
+                row["title"] = title
+                title_ok = _proxy_test_expected_match(target["key"], title)
+                status_code_ok = int(resp.status_code) < 400
+                content_type_ok = bool(content_type.strip())
+                if status_code_ok and title_ok and content_type_ok:
+                    row["status"] = "OK"
+                elif status_code_ok:
+                    row["status"] = "WARNING"
+                else:
+                    row["status"] = "ERROR"
+                notes = []
+                if not content_type_ok:
+                    notes.append("missing Content-Type")
+                if not title_ok:
+                    notes.append("title mismatch")
+                row["notes"] = ", ".join(notes) if notes else "ok"
+            except Exception as exc:
+                row["latency_ms"] = int((time.time() - t0) * 1000)
+                row["status"] = "ERROR"
+                row["error"] = redact_proxy_credentials(str(exc))
+                row["notes"] = "request failed"
+            out.append(row)
+        return out
 
     def _source_templates() -> Dict[str, Dict[str, Any]]:
         return {
@@ -1194,8 +1275,8 @@ def create_app() -> Flask:
         )
         return bool(token) and hmac.compare_digest(token, expected)
 
-        _bootstrap_runtime_settings()
-        configure_requests_tls_verify_from_env()
+    _bootstrap_runtime_settings()
+    configure_requests_tls_verify_from_env()
 
     def _db_try_advisory_lock(db: Session, lock_id: int) -> bool:
         bind = db.get_bind()
@@ -2106,6 +2187,15 @@ def create_app() -> Flask:
                 "sentinel_client_secret_masked": _mask_secret(_get_setting(db, "sentinel.client_secret", cfg.AZURE_SENTINEL_CLIENT_SECRET, secret=True)),
                 "sentinel_cert_private_key_masked": _mask_secret(_get_setting(db, "sentinel.cert_private_key_pem", cfg.AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM, secret=True)),
             }
+            proxy_test_raw = _get_setting(db, "proxy.last_test_result", "")
+            proxy_test_results: List[Dict[str, Any]] = []
+            if proxy_test_raw:
+                try:
+                    parsed = json.loads(proxy_test_raw)
+                    if isinstance(parsed, list):
+                        proxy_test_results = [p for p in parsed if isinstance(p, dict)]
+                except Exception:
+                    proxy_test_results = []
             scheduler_heartbeat = _get_setting(db, "scheduler.heartbeat", "")
             recent_sync_jobs = list(
                 db.scalars(
@@ -2116,6 +2206,24 @@ def create_app() -> Flask:
             db.close()
 
         status_msg = request.args.get("msg", "")
+        proxy_test_rows_html = "".join(
+            [
+                (
+                    "<tr>"
+                    f"<td>{_esc(str(row.get('target') or ''))}</td>"
+                    f"<td>{_esc(str(row.get('status') or ''))}</td>"
+                    f"<td>{_esc(str(row.get('http') if row.get('http') is not None else '-'))}</td>"
+                    f"<td>{_esc(str(row.get('latency_ms') if row.get('latency_ms') is not None else '-'))}</td>"
+                    f"<td>{_esc(str(row.get('title') or ''))}</td>"
+                    f"<td>{_esc(str(row.get('notes') or ''))}</td>"
+                    "</tr>"
+                )
+                for row in proxy_test_results
+            ]
+        )
+        if not proxy_test_rows_html:
+            proxy_test_rows_html = "<tr><td colspan='6'>No proxy test results yet.</td></tr>"
+        proxy_test_raw_json = _esc(json.dumps(proxy_test_results, ensure_ascii=True))
         feed_rows_html = "".join(
             [
                 (
@@ -2393,6 +2501,19 @@ def create_app() -> Flask:
       <p><label>Chunk size <input type="text" name="sentinel_chunk_size" value="{_esc(proxy_conf['sentinel_chunk_size'])}" placeholder="100"/></label></p>
       <button type="submit">Save configuration</button>
     </form>
+    <form method="post" action="/admin/proxy-test" style="margin-top:.8rem">
+      <button type="submit">Test proxy</button>
+    </form>
+    <h3>Proxy Test Results</h3>
+    <table>
+      <thead><tr><th>Target</th><th>Status</th><th>HTTP</th><th>Latency ms</th><th>Title</th><th>Notes</th></tr></thead>
+      <tbody>{proxy_test_rows_html}</tbody>
+    </table>
+    <details style="margin-top:.6rem">
+      <summary>Raw results</summary>
+      <pre id="proxyTestRaw">{proxy_test_raw_json}</pre>
+    </details>
+    <button type="button" id="copyProxyResultsBtn">Copy results</button>
     <p><strong>Sentinel quick export:</strong>
       <code>curl -X POST /api/sentinel/export?q=source:mwdb&amp;type=all&amp;tlp=all</code>
     </p>
@@ -2471,6 +2592,29 @@ def create_app() -> Flask:
         }}
       }});
     }});
+    const copyProxyResultsBtn = document.getElementById('copyProxyResultsBtn');
+    if (copyProxyResultsBtn) {{
+      copyProxyResultsBtn.addEventListener('click', async () => {{
+        const raw = document.getElementById('proxyTestRaw');
+        const txt = raw ? raw.textContent || '' : '';
+        try {{
+          if (navigator.clipboard && window.isSecureContext) {{
+            await navigator.clipboard.writeText(txt);
+          }} else {{
+            const ta = document.createElement('textarea');
+            ta.value = txt;
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }}
+          alert('Proxy test results copied.');
+        }} catch (e) {{
+          alert('Copy failed.');
+        }}
+      }});
+    }}
   </script>
 </body>
 </html>
@@ -2512,6 +2656,24 @@ def create_app() -> Flask:
         except Exception as e:
             db.rollback()
             return redirect(url_for("admin_panel", msg=f"Configuration save failed: {e}"))
+        finally:
+            db.close()
+
+    @app.post("/admin/proxy-test")
+    @limiter.limit("10 per minute")
+    def admin_proxy_test():
+        db = _db()
+        try:
+            _write_proxy_env(db)
+            results = _run_proxy_test()
+            _set_setting(db, "proxy.last_test_result", json.dumps(results, separators=(",", ":")))
+            db.commit()
+            _audit("admin_proxy_test", "app_settings", None, {"targets": len(results)})
+            status = "ok" if all(str(r.get("status")) == "OK" for r in results) else "warning"
+            return redirect(url_for("admin_panel", msg=f"Proxy test completed ({status})."))
+        except Exception as e:
+            db.rollback()
+            return redirect(url_for("admin_panel", msg=f"Proxy test failed: {redact_proxy_credentials(str(e))}"))
         finally:
             db.close()
 

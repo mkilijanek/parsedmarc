@@ -371,6 +371,17 @@ REQUESTS_SKIP_TLS_VERIFY=false
 - `REQUESTS_SKIP_TLS_VERIFY=true`: insecure fallback (equivalent to `curl -k`), use only temporarily.
 - Admin UI (`/admin`) can persist proxy settings in DB (`proxy.http_url`, `proxy.https_url`, `proxy.no_proxy`, `proxy.ca_bundle_path`, `proxy.skip_tls_verify`); worker/app bootstrap these values at runtime.
 
+Optional per-feed proxy override (advanced):
+
+```bash
+FEED_PROXY_URL_MWDB=http://proxy-for-mwdb.local:8080
+FEED_PROXY_URL_ABUSECH=http://proxy-for-abusech.local:8080
+FEED_HTTP_PROXY_MWDB=http://proxy-http.local:8080
+FEED_HTTPS_PROXY_MWDB=http://proxy-https.local:8080
+```
+
+Name format: `FEED_PROXY_URL_<SOURCE>` (or `FEED_HTTP_PROXY_<SOURCE>`, `FEED_HTTPS_PROXY_<SOURCE>`) where source is uppercase with non-alphanumeric chars replaced by `_` (for example `abusech`, `mwdb`).
+
 ### CORS_ORIGINS
 
 **Type:** Comma-separated origins  

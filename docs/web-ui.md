@@ -122,9 +122,18 @@ Global admin configuration includes outbound proxy controls:
 - `Organization CA bundle path` (maps to `REQUESTS_CA_BUNDLE`)
 - `Trusted proxy count`
 - `Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)`
+- `Test proxy` action (checks `mwdb.cert.pl`, `abuse.ch`, `cert.pl` and stores result table)
 
 `Skip TLS certificate verification` is intended for troubleshooting only. For production,
 prefer proper CA trust (`REQUESTS_CA_BUNDLE`) instead of disabling verification.
+
+`Test proxy` stores a result snapshot with:
+- target
+- status (`OK` / `WARNING` / `ERROR`)
+- HTTP status
+- latency
+- page title (anti-captive-portal sanity check)
+- notes/error details
 
 ### Layout
 

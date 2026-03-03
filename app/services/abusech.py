@@ -25,7 +25,13 @@ from ..metrics import (
     quality_dedup_merged_total,
 )
 from ..models import FeedStats, Indicator
-from .common import retry_with_backoff, throttle_external_request, _circuit_breaker, standardized_update_result
+from .common import (
+    retry_with_backoff,
+    throttle_external_request,
+    _circuit_breaker,
+    standardized_update_result,
+    get_feed_proxies,
+)
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -107,9 +113,11 @@ def _post_json_with_retry(
     retry_attempts: int,
     retry_base_delay_s: float,
 ) -> Dict[str, Any]:
+    proxies = get_feed_proxies(source="abusech")
+
     def _do() -> Dict[str, Any]:
         throttle_external_request(source="abusech_api")
-        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_s)
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_s, proxies=proxies)
         resp.raise_for_status()
         data = resp.json()
         if not isinstance(data, dict):
@@ -130,9 +138,11 @@ def _get_text_with_retry(
     retry_attempts: int,
     retry_base_delay_s: float,
 ) -> str:
+    proxies = get_feed_proxies(source="abusech")
+
     def _do() -> str:
         throttle_external_request(source="abusech_feed")
-        resp = requests.get(url, timeout=timeout_s)
+        resp = requests.get(url, timeout=timeout_s, proxies=proxies)
         resp.raise_for_status()
         return resp.text
 
@@ -481,9 +491,16 @@ def fetch_hunting_fplist(
             retry_base_delay_s=retry_base_delay_s,
         )
     else:
+        proxies = get_feed_proxies(source="abusech")
         def _do_text() -> str:
             throttle_external_request(source="abusech_hunting")
-            resp = requests.post(api_url, headers=_abusech_headers(auth_key), json=payload, timeout=timeout_s)
+            resp = requests.post(
+                api_url,
+                headers=_abusech_headers(auth_key),
+                json=payload,
+                timeout=timeout_s,
+                proxies=proxies,
+            )
             resp.raise_for_status()
             return resp.text
         text_data = retry_with_backoff(

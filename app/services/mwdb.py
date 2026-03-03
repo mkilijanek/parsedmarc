@@ -13,7 +13,14 @@ from ..config import Config
 from ..db import SessionLocal
 from ..metrics import quality_normalized_total, quality_dropped_invalid_total, quality_dedup_merged_total
 from ..models import FeedStats, Indicator
-from .common import throttle_external_request, retry_with_backoff, _circuit_breaker, _dep_status, standardized_update_result
+from .common import (
+    throttle_external_request,
+    retry_with_backoff,
+    _circuit_breaker,
+    _dep_status,
+    standardized_update_result,
+    build_feed_session,
+)
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -28,7 +35,7 @@ def fetch_mwdb_organizations(*, base_url: str, auth_key: str, timeout_s: int = 1
     endpoints = ["/api/organization", "/api/user/organizations", "/api/user"]
     found: List[Dict[str, str]] = []
     seen = set()
-    with requests.Session() as session:
+    with build_feed_session(source="mwdb") as session:
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         for path in endpoints:
             try:
@@ -72,7 +79,7 @@ def test_mwdb_connection(*, base_url: str, auth_key: str, timeout_s: int = 10) -
     if not auth_key:
         raise ValueError("MWDB auth key is required")
     base_url = base_url.rstrip("/")
-    with requests.Session() as session:
+    with build_feed_session(source="mwdb") as session:
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         throttle_external_request(source="mwdb")
         resp = session.get(f"{base_url}/api/object", params={"count": "1"}, timeout=timeout_s)
@@ -298,7 +305,7 @@ def fetch_mwdb_by_tags(
                 "request_params": dict(last_request_params),
             })
 
-    with requests.Session() as session:
+    with build_feed_session(source="mwdb") as session:
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         while True:
             params: Dict[str, str] = {"count": str(min(chunk_size, 1000))}

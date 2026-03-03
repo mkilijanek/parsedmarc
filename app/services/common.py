@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import random
+import re
 import threading
 import time
 from collections import deque
@@ -230,6 +231,53 @@ def configure_requests_tls_verify_from_env() -> None:
             logger.info("requests_tls_verify_restored")
 
 
+_PROXY_CRED_RE = re.compile(r"(https?://)([^:/@\s]+):([^/@\s]+)@")
+
+
+def redact_proxy_credentials(text: str) -> str:
+    if not text:
+        return text
+    return _PROXY_CRED_RE.sub(r"\1***:***@", text)
+
+
+def build_feed_session(*, source: str) -> requests.Session:
+    """Build requests Session honoring global env and optional per-feed overrides.
+
+    Optional per-feed env overrides:
+    - FEED_PROXY_URL_<SOURCE>
+    - FEED_HTTP_PROXY_<SOURCE>
+    - FEED_HTTPS_PROXY_<SOURCE>
+    where SOURCE is uppercased with non-alnum replaced by underscore.
+    """
+    session = requests.Session()
+    session.trust_env = True
+    suffix = _source_env_suffix(source)
+    all_proxy = os.getenv(f"FEED_PROXY_URL_{suffix}", "").strip()
+    http_proxy = os.getenv(f"FEED_HTTP_PROXY_{suffix}", "").strip() or all_proxy
+    https_proxy = os.getenv(f"FEED_HTTPS_PROXY_{suffix}", "").strip() or all_proxy
+    proxies: dict[str, str] = {}
+    if http_proxy:
+        proxies["http"] = http_proxy
+    if https_proxy:
+        proxies["https"] = https_proxy
+    if proxies:
+        session.proxies.update(proxies)
+    return session
+
+
+def get_feed_proxies(*, source: str) -> dict[str, str] | None:
+    suffix = _source_env_suffix(source)
+    all_proxy = os.getenv(f"FEED_PROXY_URL_{suffix}", "").strip()
+    http_proxy = os.getenv(f"FEED_HTTP_PROXY_{suffix}", "").strip() or all_proxy
+    https_proxy = os.getenv(f"FEED_HTTPS_PROXY_{suffix}", "").strip() or all_proxy
+    proxies: dict[str, str] = {}
+    if http_proxy:
+        proxies["http"] = http_proxy
+    if https_proxy:
+        proxies["https"] = https_proxy
+    return proxies or None
+
+
 def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay: float = 1.0, max_delay: float = 30.0, jitter: float = 0.2) -> T:
     """Exponential backoff with jitter for transient failures."""
     retriable_4xx = {408, 425, 429}
@@ -257,6 +305,7 @@ def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay
             delta = sleep * jitter
             sleep = max(0.1, sleep + random.uniform(0, delta))
             extra = {"attempt": attempt, "sleep_s": round(sleep, 3), "error": str(e), "error_type": e.__class__.__name__}
+            extra["error"] = redact_proxy_credentials(str(extra.get("error", "")))
             if isinstance(e, ProxyError):
                 extra["network_hint"] = "proxy_error"
             elif isinstance(e, SSLError):

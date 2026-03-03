@@ -212,6 +212,32 @@ def test_admin_settings_persist_proxy_skip_tls_verify(client, sample_indicators,
     assert str(row_ca.value) == "/etc/ssl/certs/org-ca.pem"
 
 
+def test_admin_proxy_test_runs_and_persists_results(client, sample_indicators, test_db):
+    class _Resp:
+        def __init__(self, url: str):
+            self.status_code = 200
+            self.headers = {"Content-Type": "text/html"}
+            if "mwdb" in url:
+                self.text = "<html><head><title>MWDB Malware Database</title></head><body></body></html>"
+            elif "abuse.ch" in url:
+                self.text = "<html><head><title>abuse.ch</title></head><body></body></html>"
+            else:
+                self.text = "<html><head><title>CERT Polska</title></head><body></body></html>"
+
+        def raise_for_status(self):
+            return None
+
+    with patch("app.main.requests.get", side_effect=lambda url, timeout=None: _Resp(url)):
+        resp = client.post("/admin/proxy-test", follow_redirects=True)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Proxy test completed" in html
+    assert "Proxy Test Results" in html
+    row = test_db.query(AppSetting).filter(AppSetting.key == "proxy.last_test_result").one_or_none()
+    assert row is not None
+    assert "MWDB" in str(row.value)
+
+
 def test_admin_logs_tab_and_api(client, sample_indicators):
     page = client.get("/logs")
     assert page.status_code == 200
