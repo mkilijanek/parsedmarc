@@ -1,6 +1,6 @@
 # API Documentation
 
-Status: updated for `1.1.x` (2026-03-01).
+Status: updated for `1.3.0` (2026-03-03).
 
 ## Overview
 
@@ -40,6 +40,28 @@ Request example:
 Response:
 - `202 Accepted` with queued/reused job metadata (`job_id`, `feed_source_id`, `created`)
 - `400` for invalid source or incomplete config
+
+### Admin Proxy Diagnostics
+
+#### `POST /admin/proxy-test`
+
+Runs outbound proxy diagnostics against:
+- `https://mwdb.cert.pl`
+- `https://abuse.ch`
+- `https://cert.pl`
+
+Behavior:
+- Uses the same runtime HTTP stack/proxy settings as feed connectors.
+- Stores latest results in `proxy.last_test_result` setting.
+- Redirects back to `/admin` with status message.
+
+Result columns shown in Admin UI:
+- `Target`
+- `Status` (`OK` / `WARNING` / `ERROR`)
+- `HTTP`
+- `Latency ms`
+- `Title`
+- `Notes`
 
 ### Azure Sentinel Export (Microsoft Graph)
 

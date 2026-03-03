@@ -3,7 +3,7 @@ h1. Security
 {info:title=Documentation Metadata}
 Purpose: Security posture, controls, and recommended hardening.\\
 Source file: {code}SECURITY.md{code}\\
-Generated (UTC): 2026-03-02 21:53:25Z
+Generated (UTC): 2026-03-03 07:53:11Z
 {info}
 
 h2. Content

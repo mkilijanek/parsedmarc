@@ -395,18 +395,21 @@ node_disk_io
 
 ### Health Checks
 
-**Endpoint:** `/health`
+**Endpoints:**
+- `/healthz` (liveness, no external calls)
+- `/readyz` (readiness, DB+Redis)
+- `/deps` (external dependency snapshot, cached)
+- `/health` (legacy combined check)
 
 **Checks:**
-- Database connectivity
-- Redis availability
-- MISP API reachability
-- CrowdSec API key validity
+- Liveness: process + HTTP stack
+- Readiness: database connectivity and Redis availability
+- Dependency snapshot: last known status for external feeds/services
 
 **Docker Healthcheck:**
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -fsS http://localhost:8080/health || exit 1
+  CMD curl -fsS http://localhost:8080/readyz || exit 1
 ```
 
 ---

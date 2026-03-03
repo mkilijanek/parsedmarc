@@ -48,6 +48,8 @@ services:
       no_proxy: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
       REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
       REQUESTS_SKIP_TLS_VERIFY: ${REQUESTS_SKIP_TLS_VERIFY:-false}
+      FEED_PROXY_URL_MWDB: ${FEED_PROXY_URL_MWDB:-}
+      FEED_PROXY_URL_ABUSECH: ${FEED_PROXY_URL_ABUSECH:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,6 +86,8 @@ services:
       no_proxy: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis}
       REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
       REQUESTS_SKIP_TLS_VERIFY: ${REQUESTS_SKIP_TLS_VERIFY:-false}
+      FEED_PROXY_URL_MWDB: ${FEED_PROXY_URL_MWDB:-}
+      FEED_PROXY_URL_ABUSECH: ${FEED_PROXY_URL_ABUSECH:-}
 
       # DB
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-threatfeed}:${POSTGRES_PASSWORD:-threatfeed}@postgres:5432/${POSTGRES_DB:-threatfeed}

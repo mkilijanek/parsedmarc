@@ -3,7 +3,7 @@ h1. Data Sources
 {info:title=Documentation Metadata}
 Purpose: Supported feeds and ingestion behavior.\\
 Source file: {code}docs/data-sources.md{code}\\
-Generated (UTC): 2026-03-02 21:53:25Z
+Generated (UTC): 2026-03-03 07:53:11Z
 {info}
 
 h2. Content

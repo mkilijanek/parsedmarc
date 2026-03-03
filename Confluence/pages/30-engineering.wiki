@@ -3,7 +3,7 @@ h1. Engineering
 {info:title=Documentation Metadata}
 Purpose: Engineering-oriented architecture and delivery topics.\\
 Source file: {code}docs/architecture.md{code}\\
-Generated (UTC): 2026-03-02 21:53:25Z
+Generated (UTC): 2026-03-03 07:53:11Z
 {info}
 
 h2. Content
@@ -403,18 +403,21 @@ h3. Logging
 
 h3. Health Checks
 
-*Endpoint:* {{/health}}
+*Endpoints:*
+* {{/healthz}} (liveness, no external calls)
+* {{/readyz}} (readiness, DB+Redis)
+* {{/deps}} (external dependency snapshot, cached)
+* {{/health}} (legacy combined check)
 
 *Checks:*
-* Database connectivity
-* Redis availability
-* MISP API reachability
-* CrowdSec API key validity
+* Liveness: process + HTTP stack
+* Readiness: database connectivity and Redis availability
+* Dependency snapshot: last known status for external feeds/services
 
 *Docker Healthcheck:*
 {code:language=dockerfile}
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -fsS http://localhost:8080/health || exit 1
+  CMD curl -fsS http://localhost:8080/readyz || exit 1
 {code}
 
 ---

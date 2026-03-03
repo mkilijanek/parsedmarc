@@ -49,6 +49,18 @@ class AbuseChService {
     -_parse_ioc_data(raw)
 }
 
+class SentinelGraphService {
+    +graph_access_token(...): str
+    +build_graph_indicator(row): Dict
+    +push_indicators_to_graph(...): Dict
+}
+
+class ProxyDiagnosticsService {
+    +run_proxy_test(): List<Dict>
+    +extract_title_from_html(body): str
+    +proxy_test_expected_match(target, title): bool
+}
+
 class CorrelationService {
     +query_correlations(limit: int): List
     +refresh_correlation_snapshots()
@@ -91,6 +103,8 @@ class Config {
     +CROWDSEC_API_KEY: str
     +REQUESTS_CA_BUNDLE: str
     +REQUESTS_SKIP_TLS_VERIFY: bool
+    +FEED_PROXY_URL_<SOURCE>: str
+    +AZURE_SENTINEL_*: str
     --
     +get_setting(key): str
 }
@@ -108,6 +122,8 @@ MISPService ..> Config
 MalwareBazaarService ..> Config
 MWDBService ..> Config
 AbuseChService ..> Config
+SentinelGraphService ..> Config
+ProxyDiagnosticsService ..> Config
 ExportService ..> Config
 QueryParser ..> Config
 
