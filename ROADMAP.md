@@ -147,6 +147,26 @@ Refactor + connector interface standardization + performance gating.
 
 ---
 
+## Milestone 1.4.0 — Full Route Modularization (Carry-over)
+
+**Goal**
+Dowieźć pełną modularizację routingu jako kontynuację po 1.3.0.
+
+**Scope**
+- przenieść pozostałe grupy endpointów z `app/main.py` do modułów `app/routes/*`
+- zostawić `app/main.py` jako app factory + wiring
+- zachować 100% kompatybilność URL i zachowania
+
+**Issues**
+- #119 Complete modularization of `app/main.py` into domain blueprints
+
+**Definition of Done**
+- `app/main.py` nie zawiera logiki biznesowej endpointów
+- testy regresji endpointów są zielone
+- dokumentacja architektury i Confluence odzwierciedla nowy podział
+
+---
+
 ## Dependencies
 
 ### Dependency graph (text)
@@ -197,3 +217,4 @@ Refactor + connector interface standardization + performance gating.
 | 1.2.2 | Observability & "0 Fetched" Determinism | diagnose 0 fetched | #61 #56 #58 #57 + NEW tests + NEW stats persistence |
 | 1.2.3 | Deployment & Ops Hardening | RHEL/Nginx/F5/SELinux runbooks | #62 + NEW 502 guide |
 | 1.3.0 | Connector Architecture & Modularization | refactor + standard contract | #60 #39 #40 #41 #42 #43 #50 #44 |
+| 1.4.0 | Full Route Modularization (Carry-over) | finalize blueprint split | #119 |
