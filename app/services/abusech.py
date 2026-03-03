@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
-import requests
+import requests  # kept for compatibility with existing test patches (app.services.abusech.requests)
 from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -26,11 +26,9 @@ from ..metrics import (
 )
 from ..models import FeedStats, Indicator
 from .common import (
-    retry_with_backoff,
-    throttle_external_request,
     _circuit_breaker,
     standardized_update_result,
-    get_feed_proxies,
+    ExternalFeedConnector,
 )
 from .quality import canonicalize_row, dedup_rows
 
@@ -113,21 +111,16 @@ def _post_json_with_retry(
     retry_attempts: int,
     retry_base_delay_s: float,
 ) -> Dict[str, Any]:
-    proxies = get_feed_proxies(source="abusech")
-
-    def _do() -> Dict[str, Any]:
-        throttle_external_request(source="abusech_api")
-        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_s, proxies=proxies)
-        resp.raise_for_status()
-        data = resp.json()
-        if not isinstance(data, dict):
-            raise RuntimeError("Unexpected non-object JSON response")
-        return data
-
-    return retry_with_backoff(
-        _do,
-        max_attempts=max(1, retry_attempts),
-        base_delay=max(0.1, retry_base_delay_s),
+    connector = ExternalFeedConnector(source="abusech")
+    return connector.request_json(
+        method="POST",
+        url=url,
+        headers=headers,
+        json_body=payload,
+        timeout_s=timeout_s,
+        retry_attempts=max(1, retry_attempts),
+        retry_base_delay_s=max(0.1, retry_base_delay_s),
+        throttle_source="abusech_api",
     )
 
 
@@ -138,18 +131,14 @@ def _get_text_with_retry(
     retry_attempts: int,
     retry_base_delay_s: float,
 ) -> str:
-    proxies = get_feed_proxies(source="abusech")
-
-    def _do() -> str:
-        throttle_external_request(source="abusech_feed")
-        resp = requests.get(url, timeout=timeout_s, proxies=proxies)
-        resp.raise_for_status()
-        return resp.text
-
-    return retry_with_backoff(
-        _do,
-        max_attempts=max(1, retry_attempts),
-        base_delay=max(0.1, retry_base_delay_s),
+    connector = ExternalFeedConnector(source="abusech")
+    return connector.request_text(
+        method="GET",
+        url=url,
+        timeout_s=timeout_s,
+        retry_attempts=max(1, retry_attempts),
+        retry_base_delay_s=max(0.1, retry_base_delay_s),
+        throttle_source="abusech_feed",
     )
 
 
@@ -491,22 +480,16 @@ def fetch_hunting_fplist(
             retry_base_delay_s=retry_base_delay_s,
         )
     else:
-        proxies = get_feed_proxies(source="abusech")
-        def _do_text() -> str:
-            throttle_external_request(source="abusech_hunting")
-            resp = requests.post(
-                api_url,
-                headers=_abusech_headers(auth_key),
-                json=payload,
-                timeout=timeout_s,
-                proxies=proxies,
-            )
-            resp.raise_for_status()
-            return resp.text
-        text_data = retry_with_backoff(
-            _do_text,
-            max_attempts=max(1, retry_attempts),
-            base_delay=max(0.1, retry_base_delay_s),
+        connector = ExternalFeedConnector(source="abusech")
+        text_data = connector.request_text(
+            method="POST",
+            url=api_url,
+            headers=_abusech_headers(auth_key),
+            json_body=payload,
+            timeout_s=timeout_s,
+            retry_attempts=max(1, retry_attempts),
+            retry_base_delay_s=max(0.1, retry_base_delay_s),
+            throttle_source="abusech_hunting",
         )
     now = datetime.now(tz=timezone.utc)
 

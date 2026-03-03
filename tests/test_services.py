@@ -1035,35 +1035,27 @@ class TestAbuseChHelpers:
 
 
 class TestAbuseChFetchers:
-    @patch("app.services.abusech.requests.get")
-    def test_fetch_urlhaus_urls(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.text = "# comment\nhttps://evil.example/a\n\nhttps://evil.example/b\n"
-        mock_get.return_value = mock_response
+    @patch("app.services.abusech.ExternalFeedConnector.request_text")
+    def test_fetch_urlhaus_urls(self, mock_request_text):
+        mock_request_text.return_value = "# comment\nhttps://evil.example/a\n\nhttps://evil.example/b\n"
 
         rows = list(fetch_urlhaus_urls(url="https://urlhaus.abuse.ch/downloads/text_online/", limit=10))
         assert len(rows) == 2
         assert rows[0]["ioc_type"] == "url"
         assert rows[0]["source"] == "urlhaus"
 
-    @patch("app.services.abusech.requests.get")
-    def test_fetch_feodotracker_ips(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.text = "# comment\n1.1.1.1\nnot-an-ip\n8.8.8.8,foo\n"
-        mock_get.return_value = mock_response
+    @patch("app.services.abusech.ExternalFeedConnector.request_text")
+    def test_fetch_feodotracker_ips(self, mock_request_text):
+        mock_request_text.return_value = "# comment\n1.1.1.1\nnot-an-ip\n8.8.8.8,foo\n"
 
         rows = list(fetch_feodotracker_ips(url="https://feodotracker.abuse.ch/downloads/ipblocklist.txt", limit=10))
         assert len(rows) == 2
         assert all(r["ioc_type"] == "ip" for r in rows)
         assert rows[0]["source"] == "feodotracker"
 
-    @patch("app.services.abusech.requests.post")
-    def test_fetch_yaraify_lookup_hashes(self, mock_post):
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {
+    @patch("app.services.abusech.ExternalFeedConnector.request_json")
+    def test_fetch_yaraify_lookup_hashes(self, mock_request_json):
+        mock_request_json.return_value = {
             "query_status": "ok",
             "data": [{
                 "sha256_hash": "c" * 64,
@@ -1071,7 +1063,6 @@ class TestAbuseChFetchers:
                 "task_id": "task-1",
             }]
         }
-        mock_post.return_value = mock_response
 
         rows = list(fetch_yaraify_lookup_hashes(
             api_url="https://yaraify-api.abuse.ch/api/v1/",
