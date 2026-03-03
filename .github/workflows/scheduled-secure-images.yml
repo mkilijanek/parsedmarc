@@ -22,7 +22,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
 
@@ -30,10 +30,14 @@ jobs:
         id: version
         run: |
           if [ -n "${{ github.event.inputs.parsedmarc_version }}" ]; then
-            echo "VERSION=${{ github.event.inputs.parsedmarc_version }}" >> $GITHUB_OUTPUT
+            VERSION="${{ github.event.inputs.parsedmarc_version }}"
           else
-            echo "VERSION=${DEFAULT_PARSEDMARC_VERSION}" >> $GITHUB_OUTPUT
+            VERSION="${DEFAULT_PARSEDMARC_VERSION}"
           fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          # Allow optional hotfix suffix in image tag while installing base parsedmarc semver from PyPI.
+          PARSEDMARC_VERSION="$(echo "${VERSION}" | sed -E 's/-h[0-9]+$//')"
+          echo "PARSEDMARC_VERSION=${PARSEDMARC_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Compute reproducible timestamps
         id: repro
@@ -45,20 +49,20 @@ jobs:
           echo "BUILD_DATE=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push (standard)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
           file: Dockerfile
@@ -68,7 +72,7 @@ jobs:
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ steps.version.outputs.VERSION }}
           build-args: |
-            PARSEDMARC_VERSION=${{ steps.version.outputs.VERSION }}
+            PARSEDMARC_VERSION=${{ steps.version.outputs.PARSEDMARC_VERSION }}
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
@@ -76,7 +80,7 @@ jobs:
           provenance: true
 
       - name: Build and push (distroless hardened)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
           file: Dockerfile.hardened
@@ -86,7 +90,7 @@ jobs:
             ${{ env.IMAGE }}:distroless
             ${{ env.IMAGE }}:${{ steps.version.outputs.VERSION }}-distroless
           build-args: |
-            PARSEDMARC_VERSION=${{ steps.version.outputs.VERSION }}
+            PARSEDMARC_VERSION=${{ steps.version.outputs.PARSEDMARC_VERSION }}
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
