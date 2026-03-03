@@ -38,6 +38,7 @@ def _get_secret_key() -> str:
 @dataclass(frozen=True)
 class Config:
     # Core
+    APP_ENV: str = field(default_factory=lambda: _env_str("APP_ENV", "development").strip().lower())
     SECRET_KEY: str = field(default_factory=_get_secret_key)
     LOG_LEVEL: str = field(default_factory=lambda: _env_str("LOG_LEVEL", "INFO").upper())
     REQUESTS_PER_SECOND_MAX: int = field(default_factory=lambda: _env_int("REQUESTS_PER_SECOND_MAX", 1000000))
@@ -154,6 +155,7 @@ class Config:
     # Security
     ALLOWED_HOSTS: str = field(default_factory=lambda: _env_str("ALLOWED_HOSTS", "*"))
     CORS_ORIGINS: str = field(default_factory=lambda: _env_str("CORS_ORIGINS", "*"))
+    SECURITY_ALLOW_PERMISSIVE_DEFAULTS: bool = field(default_factory=lambda: _env_bool("SECURITY_ALLOW_PERMISSIVE_DEFAULTS", False))
     METRICS_AUTH_TOKEN: str = field(default_factory=lambda: _env_str("METRICS_AUTH_TOKEN", ""))
     ADMIN_DANGEROUS_OPS: bool = field(default_factory=lambda: _env_bool("ADMIN_DANGEROUS_OPS", False))
     ADMIN_API_TOKEN: str = field(default_factory=lambda: _env_str("ADMIN_API_TOKEN", ""))

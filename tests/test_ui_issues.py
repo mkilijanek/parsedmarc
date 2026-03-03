@@ -49,7 +49,9 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Feed Statistics (Operational View)" in html
     assert "CSV visible" in html
     assert "id=\"feedMetricsChart\"" in html
+    assert "id=\"feedAvailabilityChart\"" in html
     assert "/logs?feed=" in html
+    assert "Raw stats:" in html
 
 
 def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):

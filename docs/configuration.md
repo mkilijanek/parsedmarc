@@ -331,6 +331,16 @@ ALLOWED_HOSTS=localhost,threatfeed.example.com,10.0.0.5
 ALLOWED_HOSTS=*
 ```
 
+### APP_ENV
+
+**Type:** String (`development` | `production`)  
+**Default:** `development`  
+**Purpose:** Runtime mode switch for production safety checks.
+
+```bash
+APP_ENV=production
+```
+
 ### TRUSTED_PROXY_COUNT
 
 **Type:** Integer  
@@ -391,6 +401,19 @@ Name format: `FEED_PROXY_URL_<SOURCE>` (or `FEED_HTTP_PROXY_<SOURCE>`, `FEED_HTT
 ```bash
 CORS_ORIGINS=https://dashboard.example.com,https://app.example.com
 ```
+
+### SECURITY_ALLOW_PERMISSIVE_DEFAULTS
+
+**Type:** Boolean  
+**Default:** `false`  
+**Purpose:** Emergency override for permissive `ALLOWED_HOSTS=*` / `CORS_ORIGINS=*` in production.
+
+```bash
+# only for temporary break-glass usage
+SECURITY_ALLOW_PERMISSIVE_DEFAULTS=true
+```
+
+When `APP_ENV=production` and this flag is `false`, startup fails if `ALLOWED_HOSTS` or `CORS_ORIGINS` remains `*`.
 
 ---
 

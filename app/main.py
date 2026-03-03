@@ -96,6 +96,7 @@ def _aggregate_fetched_count(result_data: Any) -> int:
 def create_app() -> Flask:
     cfg = Config()
     setup_logging(cfg.LOG_LEVEL)
+    is_production = cfg.APP_ENV in {"prod", "production"}
 
     # Warn once per container start (avoid duplicate logs from multiple Gunicorn workers).
     should_warn = True
@@ -111,6 +112,11 @@ def create_app() -> Flask:
             logger.warning("security_permissive_allowed_hosts", extra={"value": cfg.ALLOWED_HOSTS, "recommendation": "Set ALLOWED_HOSTS to specific hosts in production"})
         if cfg.CORS_ORIGINS == "*":
             logger.warning("security_permissive_cors_origins", extra={"value": cfg.CORS_ORIGINS, "recommendation": "Set CORS_ORIGINS to specific origins in production"})
+    if is_production and not cfg.SECURITY_ALLOW_PERMISSIVE_DEFAULTS:
+        if cfg.ALLOWED_HOSTS == "*":
+            raise RuntimeError("SECURITY ERROR: ALLOWED_HOSTS cannot be '*' in production. Set explicit hosts or SECURITY_ALLOW_PERMISSIVE_DEFAULTS=true.")
+        if cfg.CORS_ORIGINS == "*":
+            raise RuntimeError("SECURITY ERROR: CORS_ORIGINS cannot be '*' in production. Set explicit origins or SECURITY_ALLOW_PERMISSIVE_DEFAULTS=true.")
 
     app = Flask(__name__)
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
@@ -2148,6 +2154,12 @@ def create_app() -> Flask:
             page_feed_items = filtered_items[offset : offset + limit]
             datasource_options = sorted({str(item["source_type"]) for item in all_feed_items})
             feed_rows = db.scalars(select(FeedStats).order_by(FeedStats.source.asc(), FeedStats.source_id.asc())).all()
+            raw_limit = min(200, max(10, int(request.args.get("raw_limit", "50"))))
+            raw_offset = max(0, int(request.args.get("raw_offset", "0")))
+            raw_total = len(feed_rows)
+            if raw_offset >= raw_total and raw_total > 0:
+                raw_offset = max(0, ((raw_total - 1) // raw_limit) * raw_limit)
+            raw_page = list(feed_rows)[raw_offset : raw_offset + raw_limit]
             settings_count = int(db.scalar(select(func.count()).select_from(AppSetting)) or 0)
             proxy_conf = {
                 "proxy_http_url": _get_setting(db, "proxy.http_url", os.getenv("HTTP_PROXY", "")),
@@ -2214,7 +2226,7 @@ def create_app() -> Flask:
                     f"<td>{_esc(str(row.last_fetch_error or ''))}</td>"
                     "</tr>"
                 )
-                for row in feed_rows
+                for row in raw_page
             ]
         )
         if not feed_rows_html:
@@ -2235,6 +2247,22 @@ def create_app() -> Flask:
             for k, v in kwargs.items():
                 q[str(k)] = v
             return urlencode(q)
+
+        raw_prev_offset = max(0, raw_offset - raw_limit)
+        raw_next_offset = raw_offset + raw_limit
+        raw_has_prev = raw_offset > 0
+        raw_has_next = raw_next_offset < raw_total
+        raw_start = (raw_offset + 1) if raw_total > 0 else 0
+        raw_end = min(raw_offset + raw_limit, raw_total)
+        raw_prev_link = f"/admin?{_admin_query(raw_offset=raw_prev_offset, raw_limit=raw_limit)}"
+        raw_next_link = f"/admin?{_admin_query(raw_offset=raw_next_offset, raw_limit=raw_limit)}"
+        raw_prev_html = f"<a href='{raw_prev_link}'>Previous</a>" if raw_has_prev else "Previous"
+        raw_next_html = f"<a href='{raw_next_link}'>Next</a>" if raw_has_next else "Next"
+        raw_pager_html = (
+            f"<p><strong>Raw stats:</strong> showing {raw_start}-{raw_end} of {raw_total}. "
+            f"{raw_prev_html} | "
+            f"{raw_next_html}</p>"
+        )
 
         source_ctrl_html = "".join(
             [
@@ -2538,6 +2566,7 @@ def create_app() -> Flask:
   {ADMIN_FEED_METRICS_WIDGET_HTML}
   <div class="card">
     <h2>Feed Statistics (Raw Last Status)</h2>
+    {raw_pager_html}
     <table>
       <thead><tr><th>Source</th><th>Source ID</th><th>Last Status</th><th>Last Update</th><th>Last Error</th></tr></thead>
       <tbody>{feed_rows_html}</tbody>
@@ -3934,6 +3963,9 @@ ADMIN_FEED_METRICS_WIDGET_HTML = """
     <div class="mini-chart-wrap">
       <svg id="feedMetricsChart" viewBox="0 0 800 120" role="img" aria-label="Feed fetched volume trend"></svg>
     </div>
+    <div class="mini-chart-wrap">
+      <svg id="feedAvailabilityChart" viewBox="0 0 800 120" role="img" aria-label="Feed availability trend"></svg>
+    </div>
     <table>
       <thead>
         <tr>
@@ -4066,6 +4098,33 @@ ADMIN_FEED_METRICS_WIDGET_SCRIPT = """
       + '<text x=\"8\" y=\"112\" font-size=\"11\">0</text>'
       + '<text x=\"760\" y=\"16\" font-size=\"11\">' + esc(String(maxV)) + '</text>';
   }
+  function renderAvailabilityChart() {
+    const svg = document.getElementById('feedAvailabilityChart');
+    if (!svg) return;
+    const points = (state.timeseries || []).map(function (x) {
+      const runs = num(x.runs, 0);
+      const ok = num(x.success_runs, 0);
+      if (runs <= 0) return 0;
+      return (ok / runs) * 100.0;
+    });
+    if (!points.length) {
+      svg.innerHTML = '<text x=\"8\" y=\"20\" font-size=\"12\">No availability data for selected window.</text>';
+      return;
+    }
+    const w = 800;
+    const h = 120;
+    const pad = 8;
+    const dx = points.length > 1 ? (w - 2 * pad) / (points.length - 1) : 0;
+    const coords = points.map(function (v, i) {
+      const x = pad + (i * dx);
+      const y = h - pad - ((v / 100.0) * (h - 2 * pad));
+      return x.toFixed(2) + ',' + y.toFixed(2);
+    }).join(' ');
+    svg.innerHTML = '<polyline fill=\"none\" stroke=\"#22c55e\" stroke-width=\"2\" points=\"' + coords + '\" />'
+      + '<text x=\"8\" y=\"16\" font-size=\"11\">Availability trend (%)</text>'
+      + '<text x=\"8\" y=\"112\" font-size=\"11\">0%</text>'
+      + '<text x=\"752\" y=\"16\" font-size=\"11\">100%</text>';
+  }
 
   function visibleRows() {
     const start = (state.page - 1) * state.pageSize;
@@ -4155,6 +4214,7 @@ ADMIN_FEED_METRICS_WIDGET_SCRIPT = """
       applyFilters();
       renderSummary();
       renderChart();
+      renderAvailabilityChart();
       renderTable();
       setStatus('Metrics loaded for window=' + f.window + '.', false);
     } catch (err) {
@@ -4164,6 +4224,7 @@ ADMIN_FEED_METRICS_WIDGET_SCRIPT = """
       state.timeseries = [];
       renderSummary();
       renderChart();
+      renderAvailabilityChart();
       renderTable();
       setStatus('Failed to load feed metrics.', true);
     }

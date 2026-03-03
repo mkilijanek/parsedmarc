@@ -24,6 +24,7 @@ from app.security import (
     enforce_allowed_hosts,
     get_client_ip,
 )
+from app.main import create_app
 from conftest import assert_security_headers, assert_no_sql_injection
 
 
@@ -218,6 +219,38 @@ class TestClientIPExtraction:
                 ip = get_client_ip()
                 # Should use remote_addr, not X-Forwarded-For
                 assert ip == "1.2.3.4"
+
+
+class TestProductionSecurityConfig:
+    """Production safety checks for permissive host/CORS defaults."""
+
+    def test_production_rejects_wildcard_hosts_and_cors(self):
+        with patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "production",
+                "ALLOWED_HOSTS": "*",
+                "CORS_ORIGINS": "*",
+                "SECURITY_ALLOW_PERMISSIVE_DEFAULTS": "false",
+            },
+            clear=False,
+        ):
+            with pytest.raises(RuntimeError, match="ALLOWED_HOSTS cannot be '\\*'"):
+                create_app()
+
+    def test_production_allows_override_for_permissive_defaults(self):
+        with patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "production",
+                "ALLOWED_HOSTS": "*",
+                "CORS_ORIGINS": "*",
+                "SECURITY_ALLOW_PERMISSIVE_DEFAULTS": "true",
+            },
+            clear=False,
+        ):
+            app = create_app()
+            assert isinstance(app, Flask)
 
     def test_get_client_ip_malformed_header(self):
         """Test handling of malformed X-Forwarded-For header."""
