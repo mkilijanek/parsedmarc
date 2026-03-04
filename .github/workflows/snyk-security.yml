@@ -15,6 +15,9 @@ permissions:
 
 jobs:
   snyk:
+    # Dependabot pull_request runs do not have access to SNYK_TOKEN.
+    # Keep Snyk security scanning active on push/schedule/manual runs.
+    if: ${{ github.event_name != 'pull_request' || github.actor != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
