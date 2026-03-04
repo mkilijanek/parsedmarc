@@ -8,10 +8,10 @@ on:
       parsedmarc_version:
         description: 'Parsedmarc version'
         required: false
-        default: '9.1.0'
+        default: '9.1.1'
 
 env:
-  DEFAULT_PARSEDMARC_VERSION: 9.1.0
+  DEFAULT_PARSEDMARC_VERSION: 9.1.1
   IMAGE: ghcr.io/mkilijanek/parsedmarc
 
 jobs:
