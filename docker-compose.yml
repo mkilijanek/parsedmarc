@@ -1,0 +1,45 @@
+services:
+  msgraph-token-refresh:
+    build:
+      context: ./msgraph-token-refresh
+    container_name: msgraph-token-refresh
+    restart: unless-stopped
+    environment:
+      TENANT_ID: ${TENANT_ID}
+      CLIENT_ID: ${CLIENT_ID}
+      GRAPH_URL: ${GRAPH_URL:-https://graph.microsoft.com}
+      TOKEN_PATH: /tokens/.token.json
+      REFRESH_SECONDS: ${REFRESH_SECONDS:-3300}
+    volumes:
+      - msgraph_tokens:/tokens
+    secrets:
+      - msgraph_client_secret
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /tokens/.token.json"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  parsedmarc:
+    image: ${PARSEDMARC_IMAGE:-ghcr.io/mkilijanek/parsedmarc:9.1.2}
+    container_name: parsedmarc
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      msgraph-token-refresh:
+        condition: service_healthy
+    command: ["-c", "/home/parsedmarc/ini/parsedmarc.ini"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./ini:/home/parsedmarc/ini:ro
+      - msgraph_tokens:/tokens:ro
+
+secrets:
+  msgraph_client_secret:
+    file: ./secrets/msgraph_client_secret.txt
+
+volumes:
+  msgraph_tokens:
