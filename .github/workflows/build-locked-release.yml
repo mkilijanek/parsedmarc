@@ -1,6 +1,10 @@
 name: build-locked-release
 
 on:
+  push:
+    tags:
+      - '*.*.*'
+      - '*.*.*-h*'
   release:
     types: [ published ]
 

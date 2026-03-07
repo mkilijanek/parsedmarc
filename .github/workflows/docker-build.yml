@@ -1,6 +1,10 @@
 name: Build and Publish Docker Images (Reproducible Metadata)
 
 on:
+  push:
+    tags:
+      - '*.*.*'
+      - '*.*.*-h*'
   release:
     types: [published]
 
