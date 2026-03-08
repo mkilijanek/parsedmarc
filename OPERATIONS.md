@@ -25,6 +25,7 @@ Recommended pattern:
 - Upstream may not always surface sink write failures as non-zero exit codes.
 - For one-shot/batch executions, wrap parsedmarc with `scripts/run-parsedmarc-safe.sh`.
 - The wrapper preserves parsedmarc output and forces non-zero exit for known sink error markers.
+- The wrapper now preserves original non-zero parsedmarc exit codes when no sink marker is present.
 
 Example:
 ```sh
@@ -34,3 +35,8 @@ Example:
 Notes:
 - The wrapper is a defensive mitigation, not a replacement for upstream fixes.
 - Keep mailbox delete/move behavior conservative until sink reliability is verified.
+
+Validation:
+```sh
+./scripts/test-run-parsedmarc-safe.sh
+```

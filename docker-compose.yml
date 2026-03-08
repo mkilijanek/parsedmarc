@@ -1,0 +1,37 @@
+services:
+  msgraph-token-refresh:
+    image: ${MSGRAPH_TOKEN_REFRESH_IMAGE:-ghcr.io/mkilijanek/msgraph-token-refresh:latest}
+    restart: unless-stopped
+    environment:
+      TENANT_ID: ${TENANT_ID}
+      CLIENT_ID: ${CLIENT_ID}
+      MAILBOX: ${MAILBOX}
+      TOKEN_PATH: /tokens/.token.json
+      REFRESH_INTERVAL: ${REFRESH_INTERVAL:-300}
+    volumes:
+      - msgraph_tokens:/tokens
+    secrets:
+      - msgraph_client_secret
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /tokens/.token.json"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  parsedmarc:
+    image: ${PARSEDMARC_IMAGE:-ghcr.io/mkilijanek/parsedmarc:latest}
+    restart: unless-stopped
+    depends_on:
+      msgraph-token-refresh:
+        condition: service_healthy
+    volumes:
+      - ./ini:/home/parsedmarc/ini:ro
+      - msgraph_tokens:/tokens:ro
+
+volumes:
+  msgraph_tokens:
+
+secrets:
+  msgraph_client_secret:
+    file: ./secrets/msgraph_client_secret.txt

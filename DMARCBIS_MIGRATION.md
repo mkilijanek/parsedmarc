@@ -18,3 +18,4 @@ Start migration execution when upstream ships a stable release containing PR #65
 ## Decision log
 
 - 2026-03-03: checklist created; waiting for upstream merge/release.
+- 2026-03-08: upstream PR #659 still open; no image/default-version change applied yet.
