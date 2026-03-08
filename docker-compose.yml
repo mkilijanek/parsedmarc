@@ -8,6 +8,7 @@ services:
       TENANT_ID: ${TENANT_ID}
       CLIENT_ID: ${CLIENT_ID}
       GRAPH_URL: ${GRAPH_URL:-https://graph.microsoft.com}
+      MAILBOX: ${MAILBOX}
       TOKEN_PATH: /tokens/.token.json
       REFRESH_SECONDS: ${REFRESH_SECONDS:-3300}
     volumes:
@@ -19,6 +20,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   parsedmarc:
     image: ${PARSEDMARC_IMAGE:-ghcr.io/mkilijanek/parsedmarc:9.1.2}
