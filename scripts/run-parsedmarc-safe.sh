@@ -9,7 +9,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if ! parsedmarc "$@" >"$tmp" 2>&1; then
+if parsedmarc "$@" >"$tmp" 2>&1; then
+  status=0
+else
   status=$?
 fi
 
