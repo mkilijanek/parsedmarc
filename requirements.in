@@ -1,2 +1,6 @@
+<<<<<<< HEAD
 parsedmarc==9.1.0
+=======
+parsedmarc==9.1.2
+>>>>>>> 7b6f563 (chore: align defaults with upstream parsedmarc 9.1.2)
 urllib3>=2.6.3
