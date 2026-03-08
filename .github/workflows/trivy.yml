@@ -115,17 +115,7 @@ jobs:
         id: sarif_category
         shell: bash
         run: |
-          case "${{ matrix.target.name }}" in
-            latest)
-              echo "value=trivy-latest" >> "$GITHUB_OUTPUT"
-              ;;
-            distroless)
-              echo "value=trivy-hardened" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "value=trivy-published-${{ matrix.target.name }}" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
+          echo "value=trivy-published-${{ matrix.target.name }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload SARIF to GitHub Security
         if: steps.image_check.outputs.exists == 'true'
@@ -133,3 +123,11 @@ jobs:
         with:
           sarif_file: trivy-${{ matrix.target.name }}.sarif
           category: ${{ steps.sarif_category.outputs.value }}
+
+      # Compatibility upload to retire historical alerts created before explicit categories.
+      - name: Upload SARIF (legacy category)
+        if: steps.image_check.outputs.exists == 'true' && matrix.target.name == 'latest'
+        uses: github/codeql-action/upload-sarif@c793b717bc78562f491db7b0e93a3a178b099162
+        with:
+          sarif_file: trivy-${{ matrix.target.name }}.sarif
+          category: .github/workflows/trivy.yml:trivy
