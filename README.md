@@ -1,6 +1,6 @@
 # Threat Intelligence Feed Aggregator
 
-Updated for release line `1.2.x` (2026-03-02).
+Updated for release line `1.4.0` (2026-03-10).
 
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
@@ -15,7 +15,7 @@ Production-ready threat feed aggregation and export service:
 - Unified light/dark theme across overview, indicators, admin, logs, and feed forms
 - MISP integration is disabled by default and can be enabled from Admin feed controls
 
-## Release Highlights (1.2.x)
+## Release Highlights (1.4.0)
 
 - Runtime schema creation removed from app startup.
 - Alembic migrations introduced (`scripts/db-migrate.sh`, `migrate` compose service).
@@ -32,6 +32,10 @@ Production-ready threat feed aggregation and export service:
 - **Prometheus job backlog metrics** — `sync_jobs_queued`, `sync_jobs_running`, `export_jobs_pending` Gauges refreshed on each `/metrics` scrape.
 - **Export file cleanup** — scheduled job at 03:00 UTC removes stale files from `EXPORT_JOB_DIR` (prevents unbounded `/tmp` growth).
 - **CircuitBreaker** for MWDB, MISP, and abuse.ch — configurable fail threshold and cooldown; state logged with `circuit_open`/`circuit_recovered` events.
+- **Connector standardization** — shared resilience/request behavior across abuse.ch and MalwareBazaar connectors.
+- **Sentinel Graph export** — async export job flow for Microsoft Graph TI submission.
+- **Full route modularization** — public, health, admin, API and log endpoints extracted from `app/main.py` into `app/routes/*`.
+- **Health probe contract finalization** — operational probes now consistently distinguish `healthz` liveness from `readyz` readiness.
 
 ## Quickstart (Docker Compose)
 

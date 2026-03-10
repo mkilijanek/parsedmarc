@@ -1,6 +1,6 @@
 # API Documentation
 
-Status: updated for `1.3.1` (2026-03-03).
+Status: updated for `1.4.0` (2026-03-10).
 
 ## Overview
 
