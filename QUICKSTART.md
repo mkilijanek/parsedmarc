@@ -155,7 +155,8 @@ docker-compose exec db psql -U threatfeed
 ## 🎯 Kluczowe Endpointy
 
 ### API
-- `GET /health` - Health check
+- `GET /healthz` - Liveness check
+- `GET /readyz` - Readiness check
 - `GET /api/stats` - Statystyki systemu
 - `GET /indicators` - Wszystkie wskaźniki (web UI)
 - `GET /indicators/<format>` - Export w formatach:
@@ -210,7 +211,8 @@ curl -k https://localhost:7003/indicators/elasticsearch
 ### Health Checks
 ```bash
 # Szybki check
-curl -k https://localhost:7003/health | jq
+curl -k https://localhost:7003/healthz | jq
+curl -k https://localhost:7003/readyz | jq
 
 # Docker health
 docker-compose ps

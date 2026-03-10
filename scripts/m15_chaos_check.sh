@@ -9,7 +9,7 @@ RUN_PACKET_LOSS="${RUN_PACKET_LOSS:-false}"
 APP_SERVICE="${APP_SERVICE:-app}"
 
 echo "[M15 chaos] baseline checks..."
-curl -fsS "${BASE_URL}/health" >/dev/null
+curl -fsS "${BASE_URL}/healthz" >/dev/null
 curl -fsS "${BASE_URL}/indicators?limit=10" >/dev/null
 curl -fsS "${BASE_URL}/indicators/json?limit=10" >/dev/null
 
@@ -21,23 +21,24 @@ sleep 2
 curl -fsS "${BASE_URL}/indicators?limit=10" >/dev/null
 curl -fsS "${BASE_URL}/indicators/json?limit=10" >/dev/null
 curl -fsS "${BASE_URL}/correlations?min_sources=2&limit=20" >/dev/null
-curl -fsS "${BASE_URL}/health" >/dev/null
+curl -fsS "${BASE_URL}/healthz" >/dev/null
 
 echo "[M15 chaos] start redis..."
 ${COMPOSE_CMD} start redis >/dev/null
 sleep 2
 
-curl -fsS "${BASE_URL}/health" >/dev/null
+curl -fsS "${BASE_URL}/healthz" >/dev/null
 curl -fsS "${BASE_URL}/metrics" >/dev/null || true
 
 if [ "${RUN_DB_RESTART}" = "true" ]; then
   echo "[M15 chaos] restart postgres..."
   ${COMPOSE_CMD} stop postgres >/dev/null || true
   sleep 2
-  curl -fsS "${BASE_URL}/health" >/dev/null || true
+  curl -fsS "${BASE_URL}/healthz" >/dev/null || true
   ${COMPOSE_CMD} start postgres >/dev/null || true
   sleep 3
-  curl -fsS "${BASE_URL}/health" >/dev/null
+  curl -fsS "${BASE_URL}/healthz" >/dev/null
+  curl -fsS "${BASE_URL}/readyz" >/dev/null
   curl -fsS "${BASE_URL}/indicators?limit=10" >/dev/null
 fi
 
@@ -48,7 +49,7 @@ if [ "${RUN_REDIS_PAUSE}" = "true" ]; then
   curl -fsS "${BASE_URL}/indicators?limit=10" >/dev/null || true
   ${COMPOSE_CMD} unpause redis >/dev/null || true
   sleep 1
-  curl -fsS "${BASE_URL}/health" >/dev/null
+  curl -fsS "${BASE_URL}/healthz" >/dev/null
 fi
 
 if [ "${RUN_PACKET_LOSS}" = "true" ]; then
@@ -56,7 +57,7 @@ if [ "${RUN_PACKET_LOSS}" = "true" ]; then
   set +e
   ${COMPOSE_CMD} exec -T "${APP_SERVICE}" sh -lc "command -v tc >/dev/null && tc qdisc add dev eth0 root netem loss 15% delay 200ms"
   sleep 2
-  curl -fsS "${BASE_URL}/health" >/dev/null || true
+  curl -fsS "${BASE_URL}/healthz" >/dev/null || true
   ${COMPOSE_CMD} exec -T "${APP_SERVICE}" sh -lc "command -v tc >/dev/null && tc qdisc del dev eth0 root netem"
   set -e
 fi

@@ -38,11 +38,11 @@ if [[ -z "${published}" ]]; then
 fi
 host_port="${published##*:}"
 
-echo "[deploy] Waiting for app health..."
+echo "[deploy] Waiting for app readiness..."
 attempts=60
 for i in $(seq 1 "${attempts}"); do
-  if curl -fsS "http://127.0.0.1:${host_port}/health" >/dev/null 2>&1; then
-    echo "[deploy] Service is healthy: http://127.0.0.1:${host_port}/health"
+  if curl -fsS "http://127.0.0.1:${host_port}/readyz" >/dev/null 2>&1; then
+    echo "[deploy] Service is ready: http://127.0.0.1:${host_port}/readyz"
     exit 0
   fi
   sleep 2

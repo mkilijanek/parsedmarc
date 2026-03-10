@@ -58,7 +58,8 @@ docker compose up -d --build app worker
 
 4) Validate:
 ```bash
-curl http://localhost:7003/health
+curl http://localhost:7003/healthz
+curl http://localhost:7003/readyz
 curl http://localhost:7003/indicators
 curl http://localhost:7003/indicators/arcsight | head
 ```
@@ -67,12 +68,15 @@ Optional TLS edge (`nginx` profile):
 ```bash
 ./scripts/setup-ssl.sh
 docker compose --profile edge up -d nginx
-curl -k https://localhost:7003/health
+curl -k https://localhost:7003/healthz
+curl -k https://localhost:7003/readyz
 ```
 
 ## Endpoints
 
-- `GET /health` – health + integration checks
+- `GET /healthz` – liveness probe (no external calls)
+- `GET /readyz` – readiness probe (DB + Redis)
+- `GET /health` – legacy health summary
 - `GET /` – status overview
 - `GET /indicators` – unified view (HTML)
 - `GET /indicators/<fmt>` – export (TXT/CSV/JSON/XML + vendor formats)

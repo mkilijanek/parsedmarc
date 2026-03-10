@@ -39,7 +39,7 @@ curl -k https://localhost:7003/health
 6. Setup monitoring
 
 ### Monitoring
-- Health: https://your-domain:7003/health
+- Health: https://your-domain:7003/healthz
 - Readiness: https://your-domain:7003/readyz
 - Logs: docker compose logs -f
 - Stats: https://your-domain:7003/api/stats

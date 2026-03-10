@@ -29,8 +29,11 @@ Reliability, health endpoint semantics, F5/Nginx compatibility.
 - [x] `/readyz` checks **DB + Redis only**
 - [x] `/health` uses **cached summary only** (no live external calls)
 - [x] Worker never exits due to MISP dependency failures
-- [ ] F5 monitor points to `/healthz`
+- [x] F5 monitor points to `/healthz`
 - [x] Deployment docs updated (monitor endpoints + expectations)
+
+**Status**
+- Done on 2026-03-10.
 
 **Definition of Done**
 - Simulated MISP outage does not stop service; port **8004 stays listening**

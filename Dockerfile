@@ -30,7 +30,7 @@ ENV PATH=/home/appuser/.local/bin:$PATH \
 USER appuser
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -fsS http://localhost:8080/health || exit 1
+    CMD curl -fsS http://localhost:8080/healthz || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${APP_PORT:-8080} --workers ${WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-120} --worker-class ${GUNICORN_WORKER_CLASS:-sync} 'app.main:create_app()'"]
