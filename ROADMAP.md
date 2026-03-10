@@ -160,6 +160,9 @@ Dowieźć pełną modularizację routingu jako kontynuację po 1.3.0.
 **Issues**
 - #119 Complete modularization of `app/main.py` into domain blueprints
 
+**Status**
+- Done on 2026-03-10.
+
 **Definition of Done**
 - `app/main.py` nie zawiera logiki biznesowej endpointów
 - testy regresji endpointów są zielone

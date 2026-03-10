@@ -1,6 +1,6 @@
 # Architecture
 
-Status: updated for `1.1.x` (2026-03-01).
+Status: updated for `1.4.0` (2026-03-10).
 
 ## Overview
 
@@ -58,14 +58,17 @@ The Threat Feed Aggregator follows a **database-first** architecture where Postg
 - Audit logging
 
 **Key Files:**
-- `app/main.py` - Main Flask application, endpoints
+- `app/main.py` - App factory and wiring only
+- `app/routes/public.py` - Public HTML/export routes
+- `app/routes/ops.py` - Admin/API/log routes
+- `app/routes/health.py` - Health/readiness/dependency routes
 - `app/webui.py` - Web UI Blueprint
 - `app/security.py` - Security middleware and validation
 - `app/formatters.py` - Export format implementations
 
 **Characteristics:**
 - Stateless design for horizontal scalability
-- Minimal business logic (offloaded to database)
+- `app/main.py` contains no endpoint business logic after 1.4.0 route extraction
 - Immutable configuration (dataclass)
 - Structured logging with context
 
