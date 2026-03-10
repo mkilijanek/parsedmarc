@@ -76,12 +76,21 @@ jobs:
             echo "IMAGE_REF=${BASE}:${{ matrix.target.tag }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GHCR with retry
+        shell: bash
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin; then
+              exit 0
+            fi
+
+            if [ "${attempt}" -eq 5 ]; then
+              echo "GHCR login failed after ${attempt} attempts"
+              exit 1
+            fi
+
+            sleep $((attempt * 5))
+          done
 
       - name: Check image exists in GHCR
         id: image_check
