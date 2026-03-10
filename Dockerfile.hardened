@@ -5,7 +5,7 @@
 ############################
 FROM python:3.14-slim@sha256:6a27522252aef8432841f224d9baaa6e9fce07b07584154fa0b9a96603af7456 AS builder
 
-ARG PARSEDMARC_VERSION=9.1.2
+ARG PARSEDMARC_VERSION=9.2.0
 ARG VCS_REF=""
 ARG BUILD_DATE=""
 ARG SOURCE_DATE_EPOCH=""
@@ -24,7 +24,7 @@ RUN python -m venv "${VENV_PATH}" \
 ############################
 FROM gcr.io/distroless/python3-debian12:nonroot@sha256:3aa5d1eb6e9f83a4ed806174bb40296e04758ab95f53b61f976d3df2b57ca289
 
-ARG PARSEDMARC_VERSION=9.1.2
+ARG PARSEDMARC_VERSION=9.2.0
 ARG VCS_REF=""
 ARG BUILD_DATE=""
 ARG SOURCE_DATE_EPOCH=""

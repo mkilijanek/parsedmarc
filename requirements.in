@@ -1,2 +1,2 @@
-parsedmarc==9.1.2
+parsedmarc==9.2.0
 urllib3>=2.6.3
