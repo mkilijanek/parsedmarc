@@ -1,0 +1,18 @@
+# Przykładowy plik. Uzupełnij pełną konfigurację parsedmarc zgodnie z własnym środowiskiem.
+# Uwaga: ten repo dodaje jedynie integrację docker-compose z msgraph-token-refresh.
+# Parametry sekcji [msgraph] zależą od używanej wersji/implementacji parsedmarc.
+
+[mailbox]
+# host = outlook.office365.com
+# port = 993
+# ssl = true
+# auth_method = oauth2
+# username = alerts@example.com
+
+[msgraph]
+# auth_method = ClientSecret
+# tenant_id = <TENANT_ID>
+# client_id = <CLIENT_ID>
+# client_secret = <CLIENT_SECRET>
+# mailbox = alerts@example.com
+# token_file = /tokens/.token.json
