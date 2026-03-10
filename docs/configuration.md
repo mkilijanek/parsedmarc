@@ -331,6 +331,16 @@ ALLOWED_HOSTS=localhost,threatfeed.example.com,10.0.0.5
 ALLOWED_HOSTS=*
 ```
 
+### APP_ENV
+
+**Type:** String (`development` | `production`)  
+**Default:** `development`  
+**Purpose:** Runtime mode switch for production safety checks.
+
+```bash
+APP_ENV=production
+```
+
 ### TRUSTED_PROXY_COUNT
 
 **Type:** Integer  
@@ -369,7 +379,18 @@ REQUESTS_SKIP_TLS_VERIFY=false
 **Notes:**
 - `REQUESTS_CA_BUNDLE`: preferred for TLS interception environments (secure).
 - `REQUESTS_SKIP_TLS_VERIFY=true`: insecure fallback (equivalent to `curl -k`), use only temporarily.
-- Admin UI (`/admin`) can persist proxy settings in DB; worker/app bootstrap these values at runtime.
+- Admin UI (`/admin`) can persist proxy settings in DB (`proxy.http_url`, `proxy.https_url`, `proxy.no_proxy`, `proxy.ca_bundle_path`, `proxy.skip_tls_verify`); worker/app bootstrap these values at runtime.
+
+Optional per-feed proxy override (advanced):
+
+```bash
+FEED_PROXY_URL_MWDB=http://proxy-for-mwdb.local:8080
+FEED_PROXY_URL_ABUSECH=http://proxy-for-abusech.local:8080
+FEED_HTTP_PROXY_MWDB=http://proxy-http.local:8080
+FEED_HTTPS_PROXY_MWDB=http://proxy-https.local:8080
+```
+
+Name format: `FEED_PROXY_URL_<SOURCE>` (or `FEED_HTTP_PROXY_<SOURCE>`, `FEED_HTTPS_PROXY_<SOURCE>`) where source is uppercase with non-alphanumeric chars replaced by `_` (for example `abusech`, `mwdb`).
 
 ### CORS_ORIGINS
 
@@ -380,6 +401,19 @@ REQUESTS_SKIP_TLS_VERIFY=false
 ```bash
 CORS_ORIGINS=https://dashboard.example.com,https://app.example.com
 ```
+
+### SECURITY_ALLOW_PERMISSIVE_DEFAULTS
+
+**Type:** Boolean  
+**Default:** `false`  
+**Purpose:** Emergency override for permissive `ALLOWED_HOSTS=*` / `CORS_ORIGINS=*` in production.
+
+```bash
+# only for temporary break-glass usage
+SECURITY_ALLOW_PERMISSIVE_DEFAULTS=true
+```
+
+When `APP_ENV=production` and this flag is `false`, startup fails if `ALLOWED_HOSTS` or `CORS_ORIGINS` remains `*`.
 
 ---
 

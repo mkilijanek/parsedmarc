@@ -3,7 +3,7 @@ h1. Getting Started
 {info:title=Documentation Metadata}
 Purpose: Entry point for installation and first-run setup.\\
 Source file: {code}README.md{code}\\
-Generated (UTC): 2026-03-02 17:29:40Z
+Generated (UTC): 2026-03-03 09:11:26Z
 {info}
 
 h2. Content
@@ -31,7 +31,7 @@ h2. Release Highlights (1.2.x)
 * Scheduler/manual sync refactored to enqueue jobs ({{/api/sync}} -> {{202}} with job metadata).
 * Logs API supports {{job_id}} filtering.
 * Feed configuration extended:
-* abuse.ch service selectors ({{threatfox}}, {{urlhaus}}, {{bazaar}}, {{feodotracker}}, {{yaraify}})
+* abuse.ch service selectors ({{threatfox}}, {{urlhaus}}, {{feodotracker}}, {{yaraify}})
 * MWDB: organizations, tags, days/no-time-limit, optional custom filter.
 * MISP safety guard:
 * sync timeout watchdog ({{MISP_SYNC_TIMEOUT_S}}, default {{30s}})

@@ -1,17 +1,22 @@
 # UML Diagrams for IOC Threat Intelligence Service
 
-Status: refreshed for release `1.2.6` (2026-03-02).
+Status: refreshed for release `1.3.1` (2026-03-03).
 
 This directory contains UML source and generated diagram artifacts aligned with current scheduler, admin sync-job controls, and deployment/runtime behavior.
 
-## 1.2.6 Updates
+## 1.3.1 Updates
 
 - Sync job lifecycle includes `cancel_requested` and `cancelled` states.
 - Sync sequence includes admin actions: retry failed/cancelled jobs and cancel queued/running jobs.
 - Deployment and component diagrams include sync-job control surface and worker refresh jobs.
 - Deployment/component/class diagrams include outbound proxy + TLS controls
   (`REQUESTS_CA_BUNDLE`, `REQUESTS_SKIP_TLS_VERIFY`).
-- Diagram set is now part of 1.2.x release documentation scope.
+- Deployment notes include Admin-configured proxy settings
+  (`proxy.ca_bundle_path`, `proxy.skip_tls_verify`).
+- Component/deployment diagrams include Sentinel Graph export path.
+- Component/deployment/class diagrams include proxy diagnostics (`/admin/proxy-test`).
+- Proxy override support documented in diagrams (`FEED_PROXY_URL_<SOURCE>`).
+- Diagram set is part of 1.3.x release documentation scope.
 
 ## File Structure
 

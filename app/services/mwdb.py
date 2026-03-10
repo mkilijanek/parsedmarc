@@ -13,7 +13,15 @@ from ..config import Config
 from ..db import SessionLocal
 from ..metrics import quality_normalized_total, quality_dropped_invalid_total, quality_dedup_merged_total
 from ..models import FeedStats, Indicator
-from .common import throttle_external_request, retry_with_backoff, _circuit_breaker, _dep_status
+from .common import (
+    throttle_external_request,
+    retry_with_backoff,
+    _circuit_breaker,
+    _dep_status,
+    standardized_update_result,
+    build_feed_session,
+    ExternalFeedConnector,
+)
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -28,7 +36,7 @@ def fetch_mwdb_organizations(*, base_url: str, auth_key: str, timeout_s: int = 1
     endpoints = ["/api/organization", "/api/user/organizations", "/api/user"]
     found: List[Dict[str, str]] = []
     seen = set()
-    with requests.Session() as session:
+    with build_feed_session(source="mwdb") as session:
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         for path in endpoints:
             try:
@@ -72,7 +80,7 @@ def test_mwdb_connection(*, base_url: str, auth_key: str, timeout_s: int = 10) -
     if not auth_key:
         raise ValueError("MWDB auth key is required")
     base_url = base_url.rstrip("/")
-    with requests.Session() as session:
+    with build_feed_session(source="mwdb") as session:
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         throttle_external_request(source="mwdb")
         resp = session.get(f"{base_url}/api/object", params={"count": "1"}, timeout=timeout_s)
@@ -298,7 +306,8 @@ def fetch_mwdb_by_tags(
                 "request_params": dict(last_request_params),
             })
 
-    with requests.Session() as session:
+    with build_feed_session(source="mwdb") as session:
+        connector = ExternalFeedConnector(source="mwdb", session=session, retry_fn=retry_with_backoff)
         session.headers.update({"Authorization": f"Bearer {auth_key}"})
         while True:
             params: Dict[str, str] = {"count": str(min(chunk_size, 1000))}
@@ -324,16 +333,14 @@ def fetch_mwdb_by_tags(
                 },
             )
 
-            def _do():
-                throttle_external_request(source="mwdb")
-                resp = session.get(f"{base_url}/api/object", params=params, timeout=timeout_s)
-                resp.raise_for_status()
-                return resp.json()
             try:
-                data = retry_with_backoff(
-                    _do,
-                    max_attempts=max(1, retry_attempts),
-                    base_delay=max(0.1, retry_base_delay_s),
+                data = connector.request_json(
+                    method="GET",
+                    url=f"{base_url}/api/object",
+                    params=params,
+                    timeout_s=timeout_s,
+                    retry_attempts=max(1, retry_attempts),
+                    retry_base_delay_s=max(0.1, retry_base_delay_s),
                 )
             except requests.HTTPError as exc:
                 status = getattr(getattr(exc, "response", None), "status_code", None)
@@ -475,7 +482,12 @@ def update_mwdb_indicators() -> Dict[str, int]:
 
     if _circuit_breaker.is_open("mwdb"):
         logger.warning("mwdb_circuit_open_skipping")
-        return {"skipped": 1, "fetched": 0}
+        return standardized_update_result(
+            fetched=0,
+            deactivated=0,
+            errors=0,
+            details={"skipped": 1, "reason": "circuit_open"},
+        )
 
     tags = _parse_tag_list(cfg.MWDB_TAGS)
     mode = "tags" if tags else "recent"
@@ -614,7 +626,16 @@ def update_mwdb_indicators() -> Dict[str, int]:
         _circuit_breaker.record_success("mwdb")
         _dep_status.update("mwdb", "ok")
         logger.info("mwdb_updated", extra={"fetched": len(rows), "tags": len(tags), "mode": mode})
-        return {"fetched": len(rows)}
+        return standardized_update_result(
+            fetched=len(rows),
+            deactivated=0,
+            errors=0,
+            details={
+                "tags": tags,
+                "mode": mode,
+                "telemetry": fetch_telemetry,
+            },
+        )
     except Exception as e:
         db.rollback()
         _circuit_breaker.record_failure(

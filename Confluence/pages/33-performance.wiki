@@ -3,7 +3,7 @@ h1. Performance
 {info:title=Documentation Metadata}
 Purpose: Benchmarking methods and performance tuning.\\
 Source file: {code}docs/performance.md{code}\\
-Generated (UTC): 2026-03-02 17:29:40Z
+Generated (UTC): 2026-03-03 09:11:26Z
 {info}
 
 h2. Content

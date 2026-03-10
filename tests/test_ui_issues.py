@@ -44,7 +44,14 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Problems only" in html
     assert "Danger Zone" in html
     assert "Skip TLS certificate verification for outbound HTTP requests" in html
+    assert "Organization CA bundle path" in html
     assert "curl -k equivalent" in html
+    assert "Feed Statistics (Operational View)" in html
+    assert "CSV visible" in html
+    assert "id=\"feedMetricsChart\"" in html
+    assert "id=\"feedAvailabilityChart\"" in html
+    assert "/logs?feed=" in html
+    assert "Raw stats:" in html
 
 
 def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):
@@ -157,11 +164,11 @@ def test_abusech_configure_shows_service_selectors(client, sample_indicators):
     html = response.get_data(as_text=True)
     assert "ThreatFox" in html
     assert "URLhaus" in html
-    assert "Bazaar" in html
     assert "FeodoTracker" in html
     assert "YARAify" in html
     assert "Custom filter" in html
     assert "Base URL" not in html
+    assert "Bazaar tags" not in html
 
 
 def test_feed_test_connection_endpoint_redirects(client, sample_indicators):
@@ -196,6 +203,7 @@ def test_admin_settings_persist_proxy_skip_tls_verify(client, sample_indicators,
             "proxy_http_url": "http://proxy.local:8080",
             "proxy_https_url": "http://proxy.local:8080",
             "proxy_no_proxy": "localhost,127.0.0.1",
+            "proxy_ca_bundle_path": "/etc/ssl/certs/org-ca.pem",
             "proxy_skip_tls_verify": "1",
             "trusted_proxy_count": "1",
         },
@@ -205,6 +213,35 @@ def test_admin_settings_persist_proxy_skip_tls_verify(client, sample_indicators,
     row = test_db.query(AppSetting).filter(AppSetting.key == "proxy.skip_tls_verify").one_or_none()
     assert row is not None
     assert str(row.value) == "1"
+    row_ca = test_db.query(AppSetting).filter(AppSetting.key == "proxy.ca_bundle_path").one_or_none()
+    assert row_ca is not None
+    assert str(row_ca.value) == "/etc/ssl/certs/org-ca.pem"
+
+
+def test_admin_proxy_test_runs_and_persists_results(client, sample_indicators, test_db):
+    class _Resp:
+        def __init__(self, url: str):
+            self.status_code = 200
+            self.headers = {"Content-Type": "text/html"}
+            if "mwdb" in url:
+                self.text = "<html><head><title>MWDB Malware Database</title></head><body></body></html>"
+            elif "abuse.ch" in url:
+                self.text = "<html><head><title>abuse.ch</title></head><body></body></html>"
+            else:
+                self.text = "<html><head><title>CERT Polska</title></head><body></body></html>"
+
+        def raise_for_status(self):
+            return None
+
+    with patch("app.main.requests.get", side_effect=lambda url, timeout=None: _Resp(url)):
+        resp = client.post("/admin/proxy-test", follow_redirects=True)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Proxy test completed" in html
+    assert "Proxy Test Results" in html
+    row = test_db.query(AppSetting).filter(AppSetting.key == "proxy.last_test_result").one_or_none()
+    assert row is not None
+    assert "MWDB" in str(row.value)
 
 
 def test_admin_logs_tab_and_api(client, sample_indicators):

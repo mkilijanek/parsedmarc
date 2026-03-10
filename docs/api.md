@@ -1,6 +1,6 @@
 # API Documentation
 
-Status: updated for `1.1.x` (2026-03-01).
+Status: updated for `1.3.1` (2026-03-03).
 
 ## Overview
 
@@ -40,6 +40,45 @@ Request example:
 Response:
 - `202 Accepted` with queued/reused job metadata (`job_id`, `feed_source_id`, `created`)
 - `400` for invalid source or incomplete config
+
+### Admin Proxy Diagnostics
+
+#### `POST /admin/proxy-test`
+
+Runs outbound proxy diagnostics against:
+- `https://mwdb.cert.pl`
+- `https://abuse.ch`
+- `https://cert.pl`
+
+Behavior:
+- Uses the same runtime HTTP stack/proxy settings as feed connectors.
+- Stores latest results in `proxy.last_test_result` setting.
+- Redirects back to `/admin` with status message.
+
+Result columns shown in Admin UI:
+- `Target`
+- `Status` (`OK` / `WARNING` / `ERROR`)
+- `HTTP`
+- `Latency ms`
+- `Title`
+- `Notes`
+
+### Azure Sentinel Export (Microsoft Graph)
+
+#### `POST /api/sentinel/export`
+
+Starts async export job that sends filtered IOC set to Microsoft Graph Threat Intelligence API.
+
+Query parameters:
+- `q`, `type`, `tlp`, `source`, `min_conf`, `max_conf`, `limit`, `offset` (same as `/indicators`)
+- Optional overrides: `auth_mode=client_secret|certificate`, `tenant_id`, `client_id`, `scope`, `endpoint_url`, `cert_thumbprint`, `chunk_size`
+
+Response:
+- `202 Accepted` + `job_id`, `status_url`, `download_url`
+
+Notes:
+- Secrets are read from admin settings (`sentinel.client_secret`, `sentinel.cert_private_key_pem`) and are not returned by API.
+- Job report (`download_url`) contains `sent/failed/skipped/chunks` summary.
 
 ### Logs API
 

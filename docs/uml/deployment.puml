@@ -15,6 +15,8 @@ node "Docker Host" as DockerHost {
         [Gunicorn WSGI] as Gunicorn
         [Flask App + Admin UI] as Flask
         [Sync Job Control\n(retry/cancel/details)] as JobCtrl
+        [Proxy Test Action] as ProxyTest
+        [Sentinel Graph Export Job] as SentinelJob
         [Prometheus Metrics] as Metrics
     }
     
@@ -48,12 +50,15 @@ cloud "External APIs" as External {
     [MalwareBazaar] as Bazaar
     [MWDB] as MWDB
     [abuse.ch\nThreatFox, URLhaus, etc.] as AbuseCh
+    [Microsoft Graph\nThreat Intelligence API] as GraphAPI
 }
 
 ' Connections
 Nginx --> App : HTTP/HTTPS
 App --> Postgres : SQLAlchemy
 App --> Redis : redis-py
+ProxyTest --> External : HTTPS checks
+SentinelJob --> GraphAPI : HTTPS/JSON
 Worker --> Postgres : SQLAlchemy
 Worker --> Redis : redis-py
 Worker --> External : HTTPS/JSON
@@ -89,6 +94,10 @@ note bottom of App
   HTTP(S)_PROXY, NO_PROXY,
   REQUESTS_CA_BUNDLE,
   REQUESTS_SKIP_TLS_VERIFY
+  (also configurable from Admin DB settings:
+   proxy.ca_bundle_path / proxy.skip_tls_verify)
+  per-feed overrides:
+  FEED_PROXY_URL_<SOURCE>
 end note
 
 legend right

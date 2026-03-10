@@ -3,7 +3,7 @@ h1. Database
 {info:title=Documentation Metadata}
 Purpose: Schema, functions, and DB operational notes.\\
 Source file: {code}docs/database.md{code}\\
-Generated (UTC): 2026-03-02 17:29:40Z
+Generated (UTC): 2026-03-03 09:11:26Z
 {info}
 
 h2. Content

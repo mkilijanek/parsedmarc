@@ -1,6 +1,6 @@
 # Web UI Documentation
 
-Status: updated for `1.2.x` (2026-03-02).
+Status: updated for `1.3.1` (2026-03-03).
 
 ## Overview
 
@@ -19,6 +19,20 @@ System overview with statistics and quick links.
 - Feed statistics table
 - Quick links to exports
 - Shared dark/light theme toggle with persisted preference
+
+### Admin: `/admin`
+
+Operational admin controls for feeds, configuration and sync jobs.
+
+**Features:**
+- Feed management table with quick actions (`Run now`, `Enable/Disable`, `Configure`, `View logs`)
+- Operational feed metrics panel:
+  - window selector (`24h`, `7d`, `30d`)
+  - status/datasource/text filters
+  - status chips
+  - fetched trend mini-chart
+  - client-side pagination
+  - CSV export for visible rows
 
 ### Indicator Search: `/indicators`
 
@@ -119,11 +133,21 @@ Global admin configuration includes outbound proxy controls:
 - `HTTP proxy`
 - `HTTPS proxy`
 - `No proxy list`
+- `Organization CA bundle path` (maps to `REQUESTS_CA_BUNDLE`)
 - `Trusted proxy count`
 - `Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)`
+- `Test proxy` action (checks `mwdb.cert.pl`, `abuse.ch`, `cert.pl` and stores result table)
 
 `Skip TLS certificate verification` is intended for troubleshooting only. For production,
 prefer proper CA trust (`REQUESTS_CA_BUNDLE`) instead of disabling verification.
+
+`Test proxy` stores a result snapshot with:
+- target
+- status (`OK` / `WARNING` / `ERROR`)
+- HTTP status
+- latency
+- page title (anti-captive-portal sanity check)
+- notes/error details
 
 ### Layout
 

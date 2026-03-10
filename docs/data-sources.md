@@ -241,7 +241,7 @@ results without a query. The service now always sends a query, falling back to
 - YARAify (`https://yaraify-api.abuse.ch/api/v1/`)
 - FeodoTracker (`https://feodotracker.abuse.ch/downloads/ipblocklist.txt`)
 - Hunting API false-positive list (`https://hunting-api.abuse.ch/api/v1/`, query `get_fplist`)
-- Bazaar integration toggle (routes to MalwareBazaar tag ingestion)
+- MalwareBazaar remains a separate datasource (`source_type=malwarebazaar`) and does not use abuse.ch toggles.
 
 **Configuration:**
 ```bash
@@ -262,7 +262,7 @@ HUNTING_FPLIST_FORMAT=csv
 ```
 
 Admin feed configuration for `abusech` supports selectors:
-- `threatfox`, `urlhaus`, `bazaar`, `feodotracker`, `yaraify`
+- `threatfox`, `urlhaus`, `feodotracker`, `yaraify`
 - optional `custom filter` field (stored per feed)
 
 **IOC types:**

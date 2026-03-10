@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import os
 import random
+import re
 import threading
 import time
 from collections import deque
-from typing import Callable, TypeVar
+from typing import Any, Callable, TypeVar
 import warnings
 import requests
 from urllib3.exceptions import InsecureRequestWarning
@@ -230,6 +231,159 @@ def configure_requests_tls_verify_from_env() -> None:
             logger.info("requests_tls_verify_restored")
 
 
+_PROXY_CRED_RE = re.compile(r"(https?://)([^:/@\s]+):([^/@\s]+)@")
+
+
+def redact_proxy_credentials(text: str) -> str:
+    if not text:
+        return text
+    return _PROXY_CRED_RE.sub(r"\1***:***@", text)
+
+
+def build_feed_session(*, source: str) -> requests.Session:
+    """Build requests Session honoring global env and optional per-feed overrides.
+
+    Optional per-feed env overrides:
+    - FEED_PROXY_URL_<SOURCE>
+    - FEED_HTTP_PROXY_<SOURCE>
+    - FEED_HTTPS_PROXY_<SOURCE>
+    where SOURCE is uppercased with non-alnum replaced by underscore.
+    """
+    session = requests.Session()
+    session.trust_env = True
+    suffix = _source_env_suffix(source)
+    all_proxy = os.getenv(f"FEED_PROXY_URL_{suffix}", "").strip()
+    http_proxy = os.getenv(f"FEED_HTTP_PROXY_{suffix}", "").strip() or all_proxy
+    https_proxy = os.getenv(f"FEED_HTTPS_PROXY_{suffix}", "").strip() or all_proxy
+    proxies: dict[str, str] = {}
+    if http_proxy:
+        proxies["http"] = http_proxy
+    if https_proxy:
+        proxies["https"] = https_proxy
+    if proxies:
+        session.proxies.update(proxies)
+    return session
+
+
+class ExternalFeedConnector:
+    """Shared HTTP wrapper for feed connectors.
+
+    Centralizes throttle + retry policy and keeps call sites consistent across
+    feed services.
+    """
+
+    def __init__(
+        self,
+        *,
+        source: str,
+        session: requests.Session | None = None,
+        retry_fn: Callable[..., Any] | None = None,
+    ) -> None:
+        self.source = source
+        self._session = session
+        self._retry_fn = retry_fn
+
+    def _session_or_new(self) -> tuple[requests.Session, bool]:
+        if self._session is not None:
+            return self._session, False
+        return build_feed_session(source=self.source), True
+
+    def request_json(
+        self,
+        *,
+        method: str,
+        url: str,
+        timeout_s: int,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        retry_attempts: int = 4,
+        retry_base_delay_s: float = 1.0,
+        throttle_source: str | None = None,
+    ) -> dict[str, Any]:
+        session, owns_session = self._session_or_new()
+        try:
+            def _do() -> dict[str, Any]:
+                throttle_external_request(source=(throttle_source or self.source))
+                resp = session.request(
+                    method.upper(),
+                    url,
+                    params=params,
+                    data=data,
+                    json=json_body,
+                    headers=headers,
+                    timeout=timeout_s,
+                )
+                resp.raise_for_status()
+                payload = resp.json() if resp.content else {}
+                if not isinstance(payload, dict):
+                    raise RuntimeError("Unexpected non-object JSON response")
+                return payload
+
+            retry_fn = self._retry_fn or retry_with_backoff
+            return retry_fn(
+                _do,
+                max_attempts=max(1, retry_attempts),
+                base_delay=max(0.1, retry_base_delay_s),
+            )
+        finally:
+            if owns_session:
+                session.close()
+
+    def request_text(
+        self,
+        *,
+        method: str,
+        url: str,
+        timeout_s: int,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        retry_attempts: int = 4,
+        retry_base_delay_s: float = 1.0,
+        throttle_source: str | None = None,
+    ) -> str:
+        session, owns_session = self._session_or_new()
+        try:
+            def _do() -> str:
+                throttle_external_request(source=(throttle_source or self.source))
+                resp = session.request(
+                    method.upper(),
+                    url,
+                    params=params,
+                    data=data,
+                    json=json_body,
+                    headers=headers,
+                    timeout=timeout_s,
+                )
+                resp.raise_for_status()
+                return resp.text
+
+            retry_fn = self._retry_fn or retry_with_backoff
+            return retry_fn(
+                _do,
+                max_attempts=max(1, retry_attempts),
+                base_delay=max(0.1, retry_base_delay_s),
+            )
+        finally:
+            if owns_session:
+                session.close()
+
+def get_feed_proxies(*, source: str) -> dict[str, str] | None:
+    suffix = _source_env_suffix(source)
+    all_proxy = os.getenv(f"FEED_PROXY_URL_{suffix}", "").strip()
+    http_proxy = os.getenv(f"FEED_HTTP_PROXY_{suffix}", "").strip() or all_proxy
+    https_proxy = os.getenv(f"FEED_HTTPS_PROXY_{suffix}", "").strip() or all_proxy
+    proxies: dict[str, str] = {}
+    if http_proxy:
+        proxies["http"] = http_proxy
+    if https_proxy:
+        proxies["https"] = https_proxy
+    return proxies or None
+
+
 def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay: float = 1.0, max_delay: float = 30.0, jitter: float = 0.2) -> T:
     """Exponential backoff with jitter for transient failures."""
     retriable_4xx = {408, 425, 429}
@@ -257,6 +411,7 @@ def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay
             delta = sleep * jitter
             sleep = max(0.1, sleep + random.uniform(0, delta))
             extra = {"attempt": attempt, "sleep_s": round(sleep, 3), "error": str(e), "error_type": e.__class__.__name__}
+            extra["error"] = redact_proxy_credentials(str(extra.get("error", "")))
             if isinstance(e, ProxyError):
                 extra["network_hint"] = "proxy_error"
             elif isinstance(e, SSLError):
@@ -267,3 +422,64 @@ def retry_with_backoff(fn: Callable[[], T], *, max_attempts: int = 6, base_delay
                 extra["network_hint"] = "connection_error"
             logger.warning("retry_backoff", extra=extra)
             time.sleep(sleep)
+
+
+def standardized_update_result(
+    *,
+    fetched: int = 0,
+    deactivated: int = 0,
+    errors: int = 0,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "fetched": max(0, int(fetched or 0)),
+        "deactivated": max(0, int(deactivated or 0)),
+        "errors": max(0, int(errors or 0)),
+        "details": details or {},
+    }
+
+
+def sum_update_result(data: Any) -> dict[str, Any]:
+    fetched = 0
+    deactivated = 0
+    errors = 0
+
+    def _walk(node: Any) -> None:
+        nonlocal fetched, deactivated, errors
+        if isinstance(node, dict):
+            got_any = False
+            if "fetched" in node:
+                got_any = True
+                try:
+                    fetched_val = int(node.get("fetched", 0) or 0)
+                    if fetched_val > 0:
+                        fetched += fetched_val
+                except Exception:
+                    pass
+            if "deactivated" in node:
+                got_any = True
+                try:
+                    deactivated_val = int(node.get("deactivated", 0) or 0)
+                    if deactivated_val > 0:
+                        deactivated += deactivated_val
+                except Exception:
+                    pass
+            if "errors" in node:
+                got_any = True
+                try:
+                    err_val = int(node.get("errors", 0) or 0)
+                    if err_val > 0:
+                        errors += err_val
+                except Exception:
+                    pass
+            if got_any:
+                return
+            for value in node.values():
+                _walk(value)
+            return
+        if isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(data)
+    return standardized_update_result(fetched=fetched, deactivated=deactivated, errors=errors, details={})

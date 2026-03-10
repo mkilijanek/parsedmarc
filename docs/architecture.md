@@ -1,6 +1,6 @@
 # Architecture
 
-Status: updated for `1.1.x` (2026-03-01).
+Status: updated for `1.4.0` (2026-03-10).
 
 ## Overview
 
@@ -58,14 +58,17 @@ The Threat Feed Aggregator follows a **database-first** architecture where Postg
 - Audit logging
 
 **Key Files:**
-- `app/main.py` - Main Flask application, endpoints
+- `app/main.py` - App factory and wiring only
+- `app/routes/public.py` - Public HTML/export routes
+- `app/routes/ops.py` - Admin/API/log routes
+- `app/routes/health.py` - Health/readiness/dependency routes
 - `app/webui.py` - Web UI Blueprint
 - `app/security.py` - Security middleware and validation
 - `app/formatters.py` - Export format implementations
 
 **Characteristics:**
 - Stateless design for horizontal scalability
-- Minimal business logic (offloaded to database)
+- `app/main.py` contains no endpoint business logic after 1.4.0 route extraction
 - Immutable configuration (dataclass)
 - Structured logging with context
 
@@ -182,6 +185,7 @@ schedule.every(10).minutes.do(update_all_feeds)
 **Error Handling:**
 - Exponential backoff for transient errors
 - CircuitBreaker (`app/services/common.py`) — opens after N consecutive failures, recovers after cooldown; used by abusech, mwdb, misp
+- ExternalFeedConnector (`app/services/common.py`) — shared request wrapper used by connectors to apply consistent throttle + retry behavior
 - Failed feed updates don't block others
 - Errors logged with structured context
 - `feed_stats.last_fetch_error` tracking
@@ -395,18 +399,21 @@ node_disk_io
 
 ### Health Checks
 
-**Endpoint:** `/health`
+**Endpoints:**
+- `/healthz` (liveness, no external calls)
+- `/readyz` (readiness, DB+Redis)
+- `/deps` (external dependency snapshot, cached)
+- `/health` (legacy combined check)
 
 **Checks:**
-- Database connectivity
-- Redis availability
-- MISP API reachability
-- CrowdSec API key validity
+- Liveness: process + HTTP stack
+- Readiness: database connectivity and Redis availability
+- Dependency snapshot: last known status for external feeds/services
 
 **Docker Healthcheck:**
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -fsS http://localhost:8080/health || exit 1
+  CMD curl -fsS http://localhost:8080/readyz || exit 1
 ```
 
 ---

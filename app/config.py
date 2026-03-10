@@ -38,6 +38,7 @@ def _get_secret_key() -> str:
 @dataclass(frozen=True)
 class Config:
     # Core
+    APP_ENV: str = field(default_factory=lambda: _env_str("APP_ENV", "development").strip().lower())
     SECRET_KEY: str = field(default_factory=_get_secret_key)
     LOG_LEVEL: str = field(default_factory=lambda: _env_str("LOG_LEVEL", "INFO").upper())
     REQUESTS_PER_SECOND_MAX: int = field(default_factory=lambda: _env_int("REQUESTS_PER_SECOND_MAX", 1000000))
@@ -135,6 +136,16 @@ class Config:
     ABUSECH_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("ABUSECH_CIRCUIT_FAIL_THRESHOLD", 3))
     ABUSECH_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("ABUSECH_CIRCUIT_COOLDOWN_S", 300))
 
+    AZURE_SENTINEL_TENANT_ID: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_TENANT_ID", ""))
+    AZURE_SENTINEL_CLIENT_ID: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_CLIENT_ID", ""))
+    AZURE_SENTINEL_AUTH_MODE: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_AUTH_MODE", "client_secret"))
+    AZURE_SENTINEL_CLIENT_SECRET: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_CLIENT_SECRET", ""))
+    AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM", ""))
+    AZURE_SENTINEL_CERT_THUMBPRINT: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_CERT_THUMBPRINT", ""))
+    AZURE_SENTINEL_SCOPE: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_SCOPE", "https://graph.microsoft.com/.default"))
+    AZURE_SENTINEL_ENDPOINT_URL: str = field(default_factory=lambda: _env_str("AZURE_SENTINEL_ENDPOINT_URL", "https://graph.microsoft.com/beta/security/tiIndicators/submitTiIndicators"))
+    AZURE_SENTINEL_CHUNK_SIZE: int = field(default_factory=lambda: _env_int("AZURE_SENTINEL_CHUNK_SIZE", 100))
+
 
     # Worker
     ENABLE_BACKGROUND_JOBS: bool = field(default_factory=lambda: _env_bool("ENABLE_BACKGROUND_JOBS", True))
@@ -144,6 +155,7 @@ class Config:
     # Security
     ALLOWED_HOSTS: str = field(default_factory=lambda: _env_str("ALLOWED_HOSTS", "*"))
     CORS_ORIGINS: str = field(default_factory=lambda: _env_str("CORS_ORIGINS", "*"))
+    SECURITY_ALLOW_PERMISSIVE_DEFAULTS: bool = field(default_factory=lambda: _env_bool("SECURITY_ALLOW_PERMISSIVE_DEFAULTS", False))
     METRICS_AUTH_TOKEN: str = field(default_factory=lambda: _env_str("METRICS_AUTH_TOKEN", ""))
     ADMIN_DANGEROUS_OPS: bool = field(default_factory=lambda: _env_bool("ADMIN_DANGEROUS_OPS", False))
     ADMIN_API_TOKEN: str = field(default_factory=lambda: _env_str("ADMIN_API_TOKEN", ""))

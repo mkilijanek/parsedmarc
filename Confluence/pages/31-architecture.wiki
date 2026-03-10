@@ -3,12 +3,12 @@ h1. Architecture
 {info:title=Documentation Metadata}
 Purpose: System components, data flow, and design rationale.\\
 Source file: {code}docs/architecture.md{code}\\
-Generated (UTC): 2026-03-02 17:29:40Z
+Generated (UTC): 2026-03-03 09:11:26Z
 {info}
 
 h2. Content
 
-Status: updated for {{1.1.x}} (2026-03-01).
+Status: updated for {{1.4.0}} (2026-03-10).
 
 h2. Overview
 
@@ -66,14 +66,17 @@ h3. 1. Web Application Layer
 * Audit logging
 
 *Key Files:*
-* {{app/main.py}} - Main Flask application, endpoints
+* {{app/main.py}} - App factory and wiring only
+* {{app/routes/public.py}} - Public HTML/export routes
+* {{app/routes/ops.py}} - Admin/API/log routes
+* {{app/routes/health.py}} - Health/readiness/dependency routes
 * {{app/webui.py}} - Web UI Blueprint
 * {{app/security.py}} - Security middleware and validation
 * {{app/formatters.py}} - Export format implementations
 
 *Characteristics:*
 * Stateless design for horizontal scalability
-* Minimal business logic (offloaded to database)
+* {{app/main.py}} no longer contains endpoint business logic after 1.4.0 route extraction
 * Immutable configuration (dataclass)
 * Structured logging with context
 
@@ -190,6 +193,7 @@ schedule.every(10).minutes.do(update_all_feeds)
 *Error Handling:*
 * Exponential backoff for transient errors
 * CircuitBreaker ({{app/services/common.py}}) — opens after N consecutive failures, recovers after cooldown; used by abusech, mwdb, misp
+* ExternalFeedConnector ({{app/services/common.py}}) — shared request wrapper used by connectors to apply consistent throttle + retry behavior
 * Failed feed updates don't block others
 * Errors logged with structured context
 * {{feed_stats.last_fetch_error}} tracking
@@ -403,18 +407,21 @@ h3. Logging
 
 h3. Health Checks
 
-*Endpoint:* {{/health}}
+*Endpoints:*
+* {{/healthz}} (liveness, no external calls)
+* {{/readyz}} (readiness, DB+Redis)
+* {{/deps}} (external dependency snapshot, cached)
+* {{/health}} (legacy combined check)
 
 *Checks:*
-* Database connectivity
-* Redis availability
-* MISP API reachability
-* CrowdSec API key validity
+* Liveness: process + HTTP stack
+* Readiness: database connectivity and Redis availability
+* Dependency snapshot: last known status for external feeds/services
 
 *Docker Healthcheck:*
 {code:language=dockerfile}
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -fsS http://localhost:8080/health || exit 1
+  CMD curl -fsS http://localhost:8080/readyz || exit 1
 {code}
 
 ---
