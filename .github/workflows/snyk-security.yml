@@ -28,8 +28,26 @@ jobs:
       - name: Check out code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Set up Snyk CLI
-        uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # pinned SHA (same as snyk/actions/docker)
+      - name: Install Snyk CLI
+        shell: bash
+        run: |
+          VERSION=latest
+          BINARY=snyk-linux
+          BASE_URL="https://downloads.snyk.io/cli/${VERSION}"
+          FALLBACK_URL="https://static.snyk.io/cli/${VERSION}"
+
+          download_and_verify() {
+            local url="$1"
+            curl --fail --location --retry 2 --output "${BINARY}" "${url}/${BINARY}?utm_source=GITHUB_ACTIONS"
+            curl --fail --location --retry 2 --output "${BINARY}.sha256" "${url}/${BINARY}.sha256?utm_source=GITHUB_ACTIONS"
+            sha256sum -c "${BINARY}.sha256"
+          }
+
+          download_and_verify "${BASE_URL}" || download_and_verify "${FALLBACK_URL}"
+          chmod +x "${BINARY}"
+          sudo mv "${BINARY}" /usr/local/bin/snyk
+          rm -f "${BINARY}.sha256"
+          snyk version
 
       - name: Snyk auth
         env:
