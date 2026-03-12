@@ -75,7 +75,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push parsedmarc-locked:alpine
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           context: .
           file: Dockerfile-alpine.locked
@@ -92,7 +92,7 @@ jobs:
           provenance: true
 
       - name: Build and push parsedmarc-locked:debian
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           context: .
           file: Dockerfile-debian.locked
@@ -109,7 +109,7 @@ jobs:
           provenance: true
 
       - name: Build and push parsedmarc-locked:ubi
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           context: .
           file: Dockerfile-ubi.locked

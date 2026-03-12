@@ -55,7 +55,7 @@ jobs:
           if-no-files-found: error
 
       - name: Build check (locked-alpine)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           context: .
           file: Dockerfile-alpine.locked
@@ -67,7 +67,7 @@ jobs:
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
 
       - name: Build check (locked-debian distroless)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           context: .
           file: Dockerfile-debian.locked
@@ -79,7 +79,7 @@ jobs:
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
 
       - name: Build check (locked-ubi)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           context: .
           file: Dockerfile-ubi.locked
