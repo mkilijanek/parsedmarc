@@ -5,8 +5,6 @@ on:
     tags:
       - '*.*.*'
       - '*.*.*-h*'
-  release:
-    types: [published]
 
 permissions:
   contents: read
@@ -19,6 +17,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment:
+      name: production
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
