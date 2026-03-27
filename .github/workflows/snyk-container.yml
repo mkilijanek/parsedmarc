@@ -126,7 +126,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security
         if: steps.image_check.outputs.exists == 'true' && steps.sarif_check.outputs.found == 'true'
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc
         with:
           sarif_file: snyk-container-${{ matrix.target.name }}.sarif
           category: snyk-container-published-${{ matrix.target.name }}
