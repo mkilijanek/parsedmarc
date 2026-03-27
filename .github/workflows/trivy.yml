@@ -92,11 +92,31 @@ jobs:
         id: image_check
         shell: bash
         run: |
-          if docker manifest inspect "${{ steps.ref.outputs.IMAGE_REF }}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Image not available yet: ${{ steps.ref.outputs.IMAGE_REF }}"
+          IMAGE_REF="${{ steps.ref.outputs.IMAGE_REF }}"
+          ATTEMPTS=1
+          SLEEP_SECONDS=0
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            ATTEMPTS=20
+            SLEEP_SECONDS=30
+          fi
+
+          for attempt in $(seq 1 "${ATTEMPTS}"); do
+            if docker manifest inspect "${IMAGE_REF}" >/dev/null 2>&1; then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if [ "${attempt}" -lt "${ATTEMPTS}" ]; then
+              sleep "${SLEEP_SECONDS}"
+            fi
+          done
+
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          echo "Image not available yet: ${IMAGE_REF}"
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            exit 1
           fi
 
       - name: Pull published image
