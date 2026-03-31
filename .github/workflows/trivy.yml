@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security
         if: steps.image_check.outputs.exists == 'true'
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13
         with:
           sarif_file: trivy-${{ matrix.target.name }}.sarif
           category: ${{ steps.sarif_category.outputs.value }}
@@ -152,7 +152,7 @@ jobs:
       # Compatibility upload to retire historical alerts created before explicit categories.
       - name: Upload SARIF (legacy category)
         if: steps.image_check.outputs.exists == 'true' && matrix.target.name == 'latest'
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13
         with:
           sarif_file: trivy-${{ matrix.target.name }}.sarif
           category: .github/workflows/trivy.yml:trivy
