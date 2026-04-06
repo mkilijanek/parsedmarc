@@ -1,105 +1,153 @@
 # IOC Service Milestones
 
-This file translates the April 2026 project assessment into implementation milestones that can be tracked both locally and in GitHub milestones.
+This file translates the 2026-04-06 deep assessment into implementation milestones that can be tracked locally and mirrored in GitHub milestones.
 
 ## Planning Principles
 
-- Reduce codebase complexity before adding new end-user features.
-- Make the primary user path obvious before redesigning secondary interfaces.
-- Separate domain/use-case logic from transport and infrastructure code.
-- Treat connector decoupling and onboarding simplification as first-class deliverables.
+- Fix critical security and deployment risks before large refactors.
+- Remove architectural bottlenecks that block safe maintenance.
+- Converge schema, tests, and runtime behavior before adding new public surface.
+- Make product UX changes only after the system has clear ownership boundaries.
+
+## Priority Mapping From Assessment
+
+- Critical now:
+  - Admin authentication and authorization
+  - CSRF protection
+  - Stable `SECRET_KEY` handling in container/runtime
+- High next:
+  - Break up `app/main.py` and `app/routes/ops.py`
+  - Eliminate SQL/ORM schema drift
+  - Add PostgreSQL integration tests
+  - Move inline HTML into Jinja templates
+- Medium after that:
+  - API versioning and OpenAPI
+  - `.dockerignore`
+  - Config consolidation and dependency hygiene
 
 ## Version Plan
 
-### 1.5.0 — Modular Decomposition & Service Ownership
+### 1.4.2 — Security & Runtime Hardening
 
 Problem focus:
-- Monolithic `app/main.py` and `app/routes/ops.py`
+- Publicly reachable admin surface without authentication
+- Missing CSRF protection
+- Runtime `SECRET_KEY` auto-generation and unsafe operational defaults
+- Missing `.dockerignore`
+
+Implementation items:
+- Add authentication and authorization for `/admin` and privileged admin actions.
+- Introduce CSRF protection for HTML forms and state-changing routes.
+- Remove per-container `SECRET_KEY` auto-generation and require explicit secret provisioning.
+- Review dangerous admin operations and preserve auditability for destructive flows.
+- Add `.dockerignore` and tighten container build inputs.
+
+Definition of done:
+- Admin routes are not publicly usable without authentication.
+- POST admin flows are CSRF-protected.
+- Container startup fails fast when `SECRET_KEY` is not explicitly configured.
+- Docker build context excludes non-runtime noise by default.
+
+### 1.5.0 — Core Modularization & Template Extraction
+
+Problem focus:
+- `app/main.py` as God Object
+- Oversized `app/routes/ops.py`
+- HTML embedded as Python f-strings
 - Inconsistent placement of business logic
 
 Implementation items:
 - Split `app/routes/ops.py` into focused route modules: `admin`, `sync_jobs`, `settings`, `metrics`.
-- Remove remaining orchestration logic from `app/main.py` into route registration and dedicated services.
-- Introduce explicit use-case/service modules for sync orchestration, export orchestration, admin operations, and logs queries.
-- Define a consistent rule: routes validate/serialize, services execute business logic, adapters talk to infrastructure.
-- Add regression tests that enforce route-module boundaries.
+- Reduce `app/main.py` to app factory, composition root, and registration only.
+- Move HTML rendering into Jinja templates under `app/templates/`.
+- Extract crypto/settings/export/query helpers into dedicated modules or service packages.
+- Add regression tests that enforce module boundaries.
 
 Definition of done:
 - `app/main.py` is wiring-only.
-- `app/routes/ops.py` is reduced to a thin compatibility shim or removed.
-- New business logic lands only in service/use-case modules.
+- Inline HTML no longer lives in large route/business modules.
+- Route handlers delegate to typed services/use-cases instead of closures and dict-based dependency bags.
 
-### 1.5.1 — Onboarding, Configuration & Primary Interface
-
-Problem focus:
-- Heavy onboarding
-- Too much configuration to start
-- No clear primary interface
-
-Implementation items:
-- Create a "quickstart mode" with a minimal `.env` profile and sample local stack defaults.
-- Introduce configuration profiles: `minimal`, `production`, `integrations`.
-- Publish one canonical primary interface for first-time users and document fallback interfaces.
-- Add a single guided bootstrap flow in docs and scripts.
-- Reduce mandatory setup for demo and local development paths.
-
-Definition of done:
-- A new contributor can start the app from one documented path in under 15 minutes.
-- README and Quickstart clearly state the recommended interface.
-- Minimal local mode does not require configuring every feed/integration.
-
-### 1.6.0 — Domain Model & Use-Case Clarity
+### 1.5.1 — Database Convergence & PostgreSQL Validation
 
 Problem focus:
-- Weakly exposed domain model
-- Hard to understand core flows and use-cases
+- Dual SQL/ORM schema definitions
+- Risk of `ti.*` vs `public.*` divergence
+- No integration tests against real PostgreSQL
+- Weak relational integrity modeling
 
 Implementation items:
-- Introduce a `domain/` or equivalent package for core concepts: indicator lifecycle, feed run, sync job, export job, correlation group.
-- Document the top use-cases with sequence diagrams and short narratives.
-- Add a domain glossary to docs and align naming across API, services, and UI.
-- Isolate use-case-level orchestration from HTTP/CLI specifics.
-- Add architecture tests or conventions that protect domain/service boundaries.
+- Choose and document one schema source of truth, with the second layer generated or verified from it.
+- Reconcile Alembic, ORM models, SQL functions, triggers, views, and schema namespace usage.
+- Add PostgreSQL integration tests for triggers, views, JSONB, ARRAY, FTS, export SQL functions, and migrations.
+- Introduce missing foreign keys/relationships where they are part of the domain model.
+- Remove hardcoded export limits that bypass runtime configuration.
 
 Definition of done:
-- A new engineer can identify the core use-cases and data flow from one document tree.
-- Domain terms are consistent across code and documentation.
-- Core orchestration is readable without opening route handlers.
+- Schema initialization paths produce equivalent database behavior.
+- PostgreSQL-only features are exercised in CI/integration tests.
+- ORM and SQL schema drift is automatically detectable.
 
-### 1.6.1 — External Adapter Boundary
+### 1.6.0 — API & Configuration Modernization
+
+Problem focus:
+- No API versioning
+- No OpenAPI specification
+- Single giant `Config` object and duplicated env parsing
+- Dev/prod dependency separation missing
+
+Implementation items:
+- Introduce versioned API routes, starting with `/api/v1/`.
+- Publish an OpenAPI spec and keep it versioned with the implementation.
+- Refactor configuration into grouped sections such as database, security, feeds, and runtime.
+- Remove direct env parsing duplication outside the config layer.
+- Move the project toward `pyproject.toml` and split production vs development dependencies.
+
+Definition of done:
+- Public API has a stable, versioned contract.
+- Integrators have machine-readable API documentation.
+- Configuration has one source of truth with typed grouping.
+- Packaging/dependency management is modernized.
+
+### 1.6.1 — Integration Adapter Boundary & Runtime Resilience
 
 Problem focus:
 - External integrations too tightly embedded in implementation
+- Runtime mutation of process environment
+- Shared bootstrap logic duplicated
+- Missing DB retry/invalidation strategy
 
 Implementation items:
-- Introduce adapter interfaces/contracts for feed connectors and export targets.
-- Move provider-specific request/response mapping behind adapter implementations.
-- Add adapter test fixtures and fake provider harnesses.
-- Standardize connector capability metadata and registration.
-- Make connector replacement/extensibility possible without editing route or domain code.
+- Introduce explicit adapter contracts for feed connectors and export targets.
+- Move provider-specific mapping and transport details behind adapter implementations.
+- Eliminate runtime mutation of global `os.environ` for proxy behavior.
+- Consolidate shared proxy/bootstrap logic into one reusable module.
+- Add bounded retry patterns for selected DB operations and invalidate caches on state-changing flows.
 
 Definition of done:
-- New provider integrations follow one adapter template.
-- Domain/use-case code does not depend on provider-specific payload shapes.
-- Integration tests run against stable adapter contracts.
+- Provider integrations follow one adapter model.
+- Runtime behavior does not depend on mutable global environment changes.
+- Shared infra/bootstrap logic is not duplicated across app and worker.
+- Cache and retry behavior is explicit and test-covered.
 
 ### 1.7.0 — Product UX & Scope Rationalization
 
 Problem focus:
-- UI is too technical
-- Product scope may exceed real user needs
+- UI is operator-centric rather than product-centric
+- No clear primary interface
+- Scope may exceed high-value user workflows
 
 Implementation items:
-- Identify the top 3 operator and business workflows, then redesign the UI around them.
+- Identify the top 3 operator/business workflows and redesign UI around them.
 - Separate admin/debug UI from business-facing workflows.
-- Audit features by usage and maintenance cost; mark candidates for simplification or deprecation.
-- Rework navigation and terminology around primary tasks instead of internal implementation details.
+- State clearly which interface is primary for new users and integrators.
+- Audit features by maintenance cost and user value; mark candidates for simplification or deprecation.
 - Add UX acceptance criteria for search, export, sync visibility, and troubleshooting.
 
 Definition of done:
-- UI supports primary workflows without requiring operator-level knowledge.
-- Admin/debug capabilities are still available but clearly separated.
-- The roadmap explicitly marks what is core product scope vs optional power-user surface.
+- UI supports primary workflows without operator-level knowledge.
+- Admin/debug capabilities remain available but intentionally separated.
+- The roadmap distinguishes core product scope from power-user surface.
 
 ## Tracking Notes
 
