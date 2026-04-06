@@ -1,0 +1,53 @@
+Ocena projektu IOC Service – podsumowanie
+
+Mocne strony:
+- Projekt ma szeroki zakres funkcjonalny: ingest IOC, korelację, quality scoring, enrichment, API, Web UI, CLI, worker, monitoring i testy.
+- Widać podejście produkcyjne: Docker, docker-compose, migracje Alembic, CI/CD, monitoring oraz dokumentacja bezpieczeństwa.
+- Dokumentacja jest rozbudowana i ponadprzeciętna: architektura, API, runbook, konfiguracja, UML.
+- Testy obejmują wiele obszarów: API, security, database, services, UI.
+
+Najważniejsze wady merytoryczne:
+1. Monolityczna struktura kodu
+   - app/main.py i app/routes/ops.py są bardzo duże.
+   - To utrudnia utrzymanie, testowanie i rozwój projektu.
+
+2. Niespójny podział odpowiedzialności
+   - Część logiki znajduje się w services, część w routes, a część w main.
+   - Brakuje jednego spójnego miejsca dla logiki biznesowej.
+
+3. Słabo wyeksponowany model domenowy
+   - Projekt jest dobrze rozwinięty technicznie, ale mniej czytelny z perspektywy domeny.
+   - Trudno szybko zrozumieć główne use-case’y i przepływ danych.
+
+4. Integracje zewnętrzne są zbyt mocno zaszyte w implementacji
+   - Moduły integracyjne są rozbudowane i mogą być trudne do wymiany lub rozszerzenia.
+   - Warto mocniej oprzeć je o adaptery lub interfejsy.
+
+5. Ryzyko overengineeringu
+   - System robi bardzo dużo naraz.
+   - Pojawia się pytanie, czy cały zakres funkcji jest rzeczywiście potrzebny użytkownikowi końcowemu.
+
+Najważniejsze wady użytkowe:
+1. Trudny onboarding
+   - Mimo dobrej dokumentacji wejście w projekt wymaga poznania wielu elementów: Docker, DB, konfiguracja, sekrety.
+
+2. Web UI wygląda bardziej jak panel techniczny niż gotowy produkt
+   - Interfejs prawdopodobnie wspiera debugowanie i administrację, ale może nie być wygodny dla użytkownika biznesowego.
+
+3. Brak jasnego primary interface
+   - Projekt oferuje API, CLI i UI, ale nie wskazuje wyraźnie, która ścieżka jest podstawowa.
+
+4. Zbyt ciężka konfiguracja
+   - Rozbudowany .env zwiększa elastyczność, ale utrudnia szybki start.
+
+Ocena ogólna:
+- To ambitny, dojrzały inżyniersko projekt z dużym potencjałem.
+- Największy problem nie leży w braku funkcji, tylko w nadmiernej złożoności i przeciążeniu architektury.
+- Projekt wygląda mocno technicznie i infrastrukturalnie, ale wymaga uproszczenia, jeśli ma być łatwy w utrzymaniu i wygodny dla użytkownika.
+
+Najważniejsze rekomendacje:
+1. Rozbić duże pliki na mniejsze moduły.
+2. Ujednolicić logikę biznesową w warstwie services.
+3. Uprościć onboarding i konfigurację.
+4. Wyraźniej oddzielić warstwę domenową od technicznej.
+5. Dopracować Web UI pod realne scenariusze użytkownika.

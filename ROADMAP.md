@@ -200,6 +200,121 @@ Dowiezienie bezpiecznej integracji kodu z archiwum `ioc-service-refactored-v1.4.
 
 ---
 
+## Milestone 1.5.0 — Modular Decomposition & Service Ownership
+
+**Goal**
+Zmniejszyć złożoność kodu przez rozbicie monolitycznych modułów i jednoznaczne przeniesienie logiki biznesowej do warstwy services/use-cases.
+
+**Scope**
+- rozbić `app/routes/ops.py` na mniejsze moduły domenowe
+- zostawić `app/main.py` wyłącznie jako composition root
+- przenieść logikę orkiestracji z tras do usług aplikacyjnych
+- wprowadzić zasady odpowiedzialności: routes vs services vs adapters
+
+**Issues (planned)**
+- NEW-ISSUE: Split `app/routes/ops.py` into admin, sync-jobs, settings and metrics modules
+- NEW-ISSUE: Extract orchestration logic from routes into dedicated services/use-cases
+- NEW-ISSUE: Add architecture/regression tests for route and service boundaries
+
+**Definition of Done**
+- `app/main.py` nie zawiera logiki biznesowej
+- `app/routes/ops.py` staje się cienką warstwą lub znika
+- nowe use-case’y trafiają wyłącznie do services/use-cases
+
+---
+
+## Milestone 1.5.1 — Onboarding, Configuration & Primary Interface
+
+**Goal**
+Skrócić wejście w projekt i jasno wskazać podstawową ścieżkę korzystania z systemu.
+
+**Scope**
+- uprościć `.env` i dodać minimalny profil startowy
+- dodać jeden kanoniczny quickstart
+- wskazać primary interface dla nowych użytkowników
+- odseparować konfigurację demo/local od integracji produkcyjnych
+
+**Issues (planned)**
+- NEW-ISSUE: Introduce minimal local profile and guided bootstrap path
+- NEW-ISSUE: Reduce mandatory environment variables for local/demo mode
+- NEW-ISSUE: Document the recommended primary interface and fallback interfaces
+
+**Definition of Done**
+- nowy contributor uruchamia system w <15 minut jednym flow
+- README/Quickstart wskazują podstawowy interfejs
+- minimalny start nie wymaga pełnej konfiguracji feedów
+
+---
+
+## Milestone 1.6.0 — Domain Model & Use-Case Clarity
+
+**Goal**
+Uczytelnić model domenowy, główne use-case’y i przepływ danych, tak by projekt był zrozumiały nie tylko technicznie, ale i domenowo.
+
+**Scope**
+- wydzielić rdzeń domenowy i nazewnictwo use-case’ów
+- opisać lifecycle IOC, sync jobów, eksportu i korelacji
+- ujednolicić pojęcia między kodem, API i dokumentacją
+- dodać dokumenty/diagramy pokazujące przepływ danych end-to-end
+
+**Issues (planned)**
+- NEW-ISSUE: Introduce explicit domain/use-case package and glossary
+- NEW-ISSUE: Add use-case flow documentation and sequence diagrams
+- NEW-ISSUE: Align domain naming across code, docs and API payloads
+
+**Definition of Done**
+- główne use-case’y da się zrozumieć bez czytania handlerów HTTP
+- pojęcia domenowe są spójne w całym repo
+- istnieje jeden punkt wejścia do poznania modelu domenowego
+
+---
+
+## Milestone 1.6.1 — External Adapter Boundary
+
+**Goal**
+Ułatwić wymianę i rozszerzanie integracji zewnętrznych przez wyraźne adaptery i kontrakty.
+
+**Scope**
+- wprowadzić interfejsy/kontrakty adapterów dla connectorów i targetów eksportu
+- ukryć mapowanie payloadów providerów za adapterami
+- dodać fake adapters i test harness do integracji
+- znormalizować rejestrację i capability metadata integracji
+
+**Issues (planned)**
+- NEW-ISSUE: Define adapter contracts for feeds and export targets
+- NEW-ISSUE: Move provider-specific mapping behind adapter implementations
+- NEW-ISSUE: Add adapter fixtures and contract tests
+
+**Definition of Done**
+- nowa integracja powstaje według jednego szablonu adaptera
+- use-case/domain code nie zależy od szczegółów payloadów providerów
+- testy adapterów bronią kontraktu integracyjnego
+
+---
+
+## Milestone 1.7.0 — Product UX & Scope Rationalization
+
+**Goal**
+Przekształcić projekt z technicznego panelu w czytelniejszy produkt i ograniczyć funkcje o niskiej wartości względem kosztu utrzymania.
+
+**Scope**
+- wskazać top 3 scenariusze użytkownika i oprzeć o nie UI
+- rozdzielić interfejs biznesowy od admin/debug
+- przeprowadzić audyt funkcji pod kątem użycia i kosztu utrzymania
+- uporządkować nawigację wokół realnych workflow
+
+**Issues (planned)**
+- NEW-ISSUE: Redesign UI around primary workflows instead of technical modules
+- NEW-ISSUE: Separate business-facing UI from admin/debug tooling
+- NEW-ISSUE: Audit features for simplification, deprecation or scope reduction
+
+**Definition of Done**
+- UI wspiera podstawowe workflow bez wiedzy operatorskiej
+- admin/debug pozostaje dostępny, ale jest wyraźnie odseparowany
+- roadmap rozróżnia scope core vs power-user
+
+---
+
 ## Dependencies
 
 ### Dependency graph (text)
@@ -252,3 +367,8 @@ Dowiezienie bezpiecznej integracji kodu z archiwum `ioc-service-refactored-v1.4.
 | 1.3.0 | Connector Architecture & Modularization | refactor + standard contract | #60 #39 #40 #41 #42 #43 #50 #44 |
 | 1.4.0 | Full Route Modularization (Carry-over) | finalize blueprint split | #119 |
 | 1.4.1 | Archive Integration & Dependency Hygiene | safe archive import + dependabot hygiene | NEW logs split + NEW workflow deps + NEW archive review |
+| 1.5.0 | Modular Decomposition & Service Ownership | split monoliths + unify service boundaries | NEW ops split + NEW orchestration services + NEW boundary tests |
+| 1.5.1 | Onboarding, Configuration & Primary Interface | faster start + clear default path | NEW minimal profile + NEW bootstrap + NEW primary interface docs |
+| 1.6.0 | Domain Model & Use-Case Clarity | expose domain model and flows | NEW domain package + NEW glossary + NEW use-case diagrams |
+| 1.6.1 | External Adapter Boundary | decouple provider integrations | NEW adapter contracts + NEW mapping isolation + NEW contract tests |
+| 1.7.0 | Product UX & Scope Rationalization | business-ready workflows + scope pruning | NEW UI redesign + NEW admin split + NEW feature audit |

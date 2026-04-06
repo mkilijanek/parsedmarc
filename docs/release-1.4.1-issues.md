@@ -14,6 +14,7 @@ Date: 2026-04-06
 - No repository-scoped open Dependabot issues were returned by the GitHub connector at review time.
 - The release workflow still used outdated actions (`docker/login-action@v3`, `actions/upload-artifact@v4`); these were updated in `1.4.1`.
 - Dependabot automation was not configured in-tree; `.github/dependabot.yml` was added for GitHub Actions and pip dependencies.
+- During push, GitHub reported open Dependabot security alerts for `requests` and `cryptography` on the default branch; both were fixed immediately in a follow-up commit on `main`.
 
 ## Release Scope Chosen
 

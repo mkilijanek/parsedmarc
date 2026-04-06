@@ -1,5 +1,8 @@
 # IOC Service -- Roadmap (GitHub Milestones + Issue Checklist)
 
+> Note: the canonical active roadmap is maintained in `ROADMAP.md`.
+> Milestone planning details for upcoming versions are maintained in `MILESTONES.md`.
+
 Versioning scheme: A.B.C - C (patch): small fixes, minor improvements -
 B (minor): significant features and functional milestones - A (major):
 architectural changes or major stack evolution
