@@ -48,3 +48,59 @@
 1. Start milestone `1.4.2` with admin authentication design and CSRF protection approach.
 2. Add `.dockerignore` and remove implicit `SECRET_KEY` generation path.
 3. Update `change.log` after each code change, test run, and design decision during implementation.
+
+2026-04-07
+
+[current stage]
+- Revising roadmap and milestone definitions from a more detailed architectural/security analysis.
+- Goal: fill missing deliverables in `ROADMAP.md` and `MILESTONES.md`, then sync updated milestone descriptions to GitHub.
+
+[actions performed]
+- Reviewed the deeper analysis and compared it against the current roadmap/milestone set.
+- Identified missing roadmap coverage for:
+  - comprehensive admin audit logging,
+  - access control policy / RBAC framing,
+  - quality gates (ruff/mypy/coverage/radon),
+  - schema drift detection,
+  - PostgreSQL CI/integration coverage,
+  - adapter registry/capability metadata/contract tests,
+  - OpenAPI + versioned API migration path,
+  - dependency/project metadata modernization,
+  - UX split between business and admin/debug interfaces.
+
+[important commands]
+- `sed -n '1,260p' ROADMAP.md`
+- `sed -n '1,260p' MILESTONES.md`
+- `gh api repos/mkilijanek/ioc-service/milestones?state=open --jq '.[] | [.number,.title,.description] | @tsv'`
+
+[observations]
+- Current roadmap already captures the right milestone order, but not enough implementation detail from the deep review.
+- GitHub milestone descriptions were shorter than the deeper implementation scope and needed enrichment.
+- The old open GitHub milestones `1.3.0`, `1.4.0`, and `1.2.1` still reflect an older planning era; for now the revision focuses on the active forward plan (`1.4.2+`).
+
+[decisions]
+- Keep the current milestone ordering (`1.4.2` → `1.7.0`) but enrich each milestone with explicit gaps and deliverables from the analysis.
+- Treat quality gates and PostgreSQL validation as first-class work items, not informal follow-ups.
+- Treat adapter registry/discovery and capability metadata as part of `1.6.1`, not optional future polish.
+
+[actions performed]
+- Expanded `ROADMAP.md` milestone scopes and definitions of done with missing items from the analysis:
+  - `1.4.2`: admin audit trail, RBAC baseline, access-control framing
+  - `1.5.0`: quality gates for linting/typing/coverage/complexity
+  - `1.5.1`: schema drift detection in CI
+  - `1.6.0`: migration path for existing API clients and dependency/project metadata cleanup
+  - `1.6.1`: adapter registry/discovery, capability metadata, contract tests
+  - `1.7.0`: explicit primary interface and core-vs-power-user separation
+- Expanded `MILESTONES.md` with the same missing implementation items and done criteria.
+- Updated GitHub milestone descriptions for `1.4.2`, `1.5.0`, `1.5.1`, `1.6.0`, `1.6.1`, and `1.7.0` to match the richer roadmap.
+
+[important commands]
+- `python3 - <<'PY' ... gh api repos/mkilijanek/ioc-service/milestones/{id} -X PATCH ... PY`
+
+[observations]
+- The roadmap was directionally correct before this revision, but too shallow compared with the detailed architectural/security analysis.
+- The deeper analysis pushes two themes that needed stronger representation: security/auditability first, and adapter registry/contract testing as a real deliverable rather than a note.
+
+[next planned implementation steps]
+1. If requested, create GitHub issues under the revised milestones so the roadmap becomes executable issue-by-issue.
+2. Begin implementation of `1.4.2` and continue recording concrete commands, decisions, and mistakes here after every meaningful change.

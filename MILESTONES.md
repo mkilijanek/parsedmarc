@@ -34,6 +34,7 @@ Problem focus:
 - Missing CSRF protection
 - Runtime `SECRET_KEY` auto-generation and unsafe operational defaults
 - Missing `.dockerignore`
+- Weak/implicit admin audit trail and role model
 
 Implementation items:
 - Add authentication and authorization for `/admin` and privileged admin actions.
@@ -41,12 +42,14 @@ Implementation items:
 - Remove per-container `SECRET_KEY` auto-generation and require explicit secret provisioning.
 - Review dangerous admin operations and preserve auditability for destructive flows.
 - Add `.dockerignore` and tighten container build inputs.
+- Introduce a minimal RBAC model and standardized audit logging for admin actions.
 
 Definition of done:
 - Admin routes are not publicly usable without authentication.
 - POST admin flows are CSRF-protected.
 - Container startup fails fast when `SECRET_KEY` is not explicitly configured.
 - Docker build context excludes non-runtime noise by default.
+- Admin actions are audit-logged with actor, target, timestamp, source IP, and result.
 
 ### 1.5.0 — Core Modularization & Template Extraction
 
@@ -55,6 +58,7 @@ Problem focus:
 - Oversized `app/routes/ops.py`
 - HTML embedded as Python f-strings
 - Inconsistent placement of business logic
+- No automated protection against complexity regression
 
 Implementation items:
 - Split `app/routes/ops.py` into focused route modules: `admin`, `sync_jobs`, `settings`, `metrics`.
@@ -62,11 +66,13 @@ Implementation items:
 - Move HTML rendering into Jinja templates under `app/templates/`.
 - Extract crypto/settings/export/query helpers into dedicated modules or service packages.
 - Add regression tests that enforce module boundaries.
+- Add quality gates for linting, typing, coverage, and cyclomatic complexity.
 
 Definition of done:
 - `app/main.py` is wiring-only.
 - Inline HTML no longer lives in large route/business modules.
 - Route handlers delegate to typed services/use-cases instead of closures and dict-based dependency bags.
+- CI flags structural regression through quality and complexity thresholds.
 
 ### 1.5.1 — Database Convergence & PostgreSQL Validation
 
@@ -75,6 +81,7 @@ Problem focus:
 - Risk of `ti.*` vs `public.*` divergence
 - No integration tests against real PostgreSQL
 - Weak relational integrity modeling
+- No automated schema drift detection
 
 Implementation items:
 - Choose and document one schema source of truth, with the second layer generated or verified from it.
@@ -82,11 +89,13 @@ Implementation items:
 - Add PostgreSQL integration tests for triggers, views, JSONB, ARRAY, FTS, export SQL functions, and migrations.
 - Introduce missing foreign keys/relationships where they are part of the domain model.
 - Remove hardcoded export limits that bypass runtime configuration.
+- Add schema drift detection to CI/CD.
 
 Definition of done:
 - Schema initialization paths produce equivalent database behavior.
 - PostgreSQL-only features are exercised in CI/integration tests.
 - ORM and SQL schema drift is automatically detectable.
+- Inconsistent schema changes fail CI before merge.
 
 ### 1.6.0 — API & Configuration Modernization
 
@@ -95,6 +104,7 @@ Problem focus:
 - No OpenAPI specification
 - Single giant `Config` object and duplicated env parsing
 - Dev/prod dependency separation missing
+- No explicit migration story for existing clients
 
 Implementation items:
 - Introduce versioned API routes, starting with `/api/v1/`.
@@ -102,12 +112,14 @@ Implementation items:
 - Refactor configuration into grouped sections such as database, security, feeds, and runtime.
 - Remove direct env parsing duplication outside the config layer.
 - Move the project toward `pyproject.toml` and split production vs development dependencies.
+- Define compatibility and migration guidance for the unversioned API surface.
 
 Definition of done:
 - Public API has a stable, versioned contract.
 - Integrators have machine-readable API documentation.
 - Configuration has one source of truth with typed grouping.
 - Packaging/dependency management is modernized.
+- Existing API consumers have a documented migration path.
 
 ### 1.6.1 — Integration Adapter Boundary & Runtime Resilience
 
@@ -116,6 +128,7 @@ Problem focus:
 - Runtime mutation of process environment
 - Shared bootstrap logic duplicated
 - Missing DB retry/invalidation strategy
+- No registry/discovery or capability metadata for adapters
 
 Implementation items:
 - Introduce explicit adapter contracts for feed connectors and export targets.
@@ -123,12 +136,14 @@ Implementation items:
 - Eliminate runtime mutation of global `os.environ` for proxy behavior.
 - Consolidate shared proxy/bootstrap logic into one reusable module.
 - Add bounded retry patterns for selected DB operations and invalidate caches on state-changing flows.
+- Add adapter registry, capability metadata, discovery hooks, fake adapters, and contract tests.
 
 Definition of done:
 - Provider integrations follow one adapter model.
 - Runtime behavior does not depend on mutable global environment changes.
 - Shared infra/bootstrap logic is not duplicated across app and worker.
 - Cache and retry behavior is explicit and test-covered.
+- Adapters are discoverable, introspectable, and validated against one protocol.
 
 ### 1.7.0 — Product UX & Scope Rationalization
 
@@ -143,6 +158,7 @@ Implementation items:
 - State clearly which interface is primary for new users and integrators.
 - Audit features by maintenance cost and user value; mark candidates for simplification or deprecation.
 - Add UX acceptance criteria for search, export, sync visibility, and troubleshooting.
+- Explicitly map features into core product scope vs power-user/administrative surface.
 
 Definition of done:
 - UI supports primary workflows without operator-level knowledge.

@@ -211,18 +211,22 @@ Zamknąć krytyczne ryzyka bezpieczeństwa i uruchomieniowe przed dalszym refakt
 - usunąć auto-generowanie `SECRET_KEY` na starcie kontenera
 - doprecyzować bezpieczne zachowanie destrukcyjnych operacji i audit trail
 - dodać `.dockerignore` i ograniczyć kontekst buildu
+- dodać minimalny model ról/uprawnień oraz politykę access control dla operacji administracyjnych
 
 **Issues (planned)**
 - NEW-ISSUE: Protect `/admin` with authentication and authorization
 - NEW-ISSUE: Add CSRF protection for admin HTML flows
 - NEW-ISSUE: Require explicit `SECRET_KEY` provisioning in containers
 - NEW-ISSUE: Add `.dockerignore` and tighten image build context
+- NEW-ISSUE: Implement comprehensive admin audit trail and RBAC policy baseline
 
 **Definition of Done**
 - panel admina nie jest publicznie używalny bez logowania
 - formularze POST są chronione tokenami CSRF
 - kontener nie startuje z losowo generowanym `SECRET_KEY`
 - build Docker nie pakuje zbędnych plików repo
+- operacje admina mają spójny audit trail: kto, co, kiedy, z jakim wynikiem
+- istnieje jawny model ról/uprawnień dla panelu administracyjnego
 
 ---
 
@@ -237,18 +241,21 @@ Zmniejszyć złożoność kodu przez rozbicie monolitycznych modułów, usunięc
 - przenieść logikę orkiestracji z tras do usług aplikacyjnych
 - przenieść HTML z f-stringów do `app/templates/`
 - wprowadzić zasady odpowiedzialności: routes vs services vs adapters
+- dodać quality gates dla złożoności, coverage i typowania, żeby regresja architektoniczna była wykrywana automatycznie
 
 **Issues (planned)**
 - NEW-ISSUE: Split `app/routes/ops.py` into admin, sync-jobs, settings and metrics modules
 - NEW-ISSUE: Extract orchestration logic from routes into dedicated services/use-cases
 - NEW-ISSUE: Move inline HTML rendering into Jinja templates
 - NEW-ISSUE: Add architecture/regression tests for route and service boundaries
+- NEW-ISSUE: Add code quality gates (ruff/mypy/coverage/radon) for modularization regressions
 
 **Definition of Done**
 - `app/main.py` nie zawiera logiki biznesowej
 - `app/routes/ops.py` staje się cienką warstwą lub znika
 - HTML nie jest renderowany przez wielkie f-stringi w modułach aplikacyjnych
 - nowe use-case’y trafiają wyłącznie do services/use-cases
+- CI zgłasza przekroczenie ustalonych progów jakości i złożoności
 
 ---
 
@@ -263,16 +270,19 @@ Usunąć dualizm schematu SQL/ORM i dodać prawdziwą walidację zachowań Postg
 - dodać testy integracyjne z PostgreSQL dla triggerów, widoków, FTS, JSONB i funkcji eksportu
 - uzupełnić brakujące relacje/FK tam, gdzie są elementem modelu domenowego
 - usunąć zahardcodowane limity omijające runtime config
+- dodać automatyczne wykrywanie schema drift w CI/CD
 
 **Issues (planned)**
 - NEW-ISSUE: Reconcile SQL schema, ORM metadata and Alembic migrations
 - NEW-ISSUE: Add PostgreSQL integration test suite in CI
 - NEW-ISSUE: Add relational integrity constraints and config-aligned export limits
+- NEW-ISSUE: Detect schema drift automatically between SQL, ORM and migrations
 
 **Definition of Done**
 - oba sposoby inicjalizacji bazy dają równoważne zachowanie
 - PostgreSQL-only mechanizmy są testowane automatycznie
 - drift schematu między SQL a ORM jest wykrywalny
+- CI blokuje niespójne zmiany schematu
 
 ---
 
@@ -287,16 +297,19 @@ Ustabilizować kontrakt API i uprościć zarządzanie konfiguracją oraz zależn
 - rozbić konfigurację na logiczne sekcje zamiast jednej klasy 100+ pól
 - usunąć duplikację odczytu env poza warstwą config
 - przejść na nowocześniejsze zarządzanie zależnościami i rozdzielić dev/prod
+- opisać ścieżkę migracji ze starego API do wersjonowanego kontraktu
 
 **Issues (planned)**
 - NEW-ISSUE: Introduce versioned API surface and migration path
 - NEW-ISSUE: Publish and maintain OpenAPI specification
 - NEW-ISSUE: Refactor `Config` into grouped sections and modernize packaging
+- NEW-ISSUE: Separate production and development dependencies in project metadata
 
 **Definition of Done**
 - API ma stabilny, wersjonowany kontrakt
 - integratorzy mają formalną specyfikację
 - konfiguracja ma jedno źródło prawdy i sensowne grupowanie
+- istnieje jawna ścieżka kompatybilności/migracji dla istniejących klientów
 
 ---
 
@@ -313,18 +326,21 @@ Ułatwić wymianę integracji zewnętrznych i usunąć kruche zachowania runtime
 - usunąć mutowanie globalnego `os.environ` w runtime dla proxy/bootstrapu
 - scalić zduplikowaną logikę bootstrap/proxy między app i worker
 - doprecyzować retry/invalidation strategy dla DB/cache
+- wprowadzić registry/discovery mechanizm dla adapterów i testy kontraktowe dla wspólnego protokołu
 
 **Issues (planned)**
 - NEW-ISSUE: Define adapter contracts for feeds and export targets
 - NEW-ISSUE: Move provider-specific mapping behind adapter implementations
 - NEW-ISSUE: Add adapter fixtures and contract tests
 - NEW-ISSUE: Remove runtime env mutation and duplicate proxy bootstrap logic
+- NEW-ISSUE: Add adapter registry, capability metadata and discovery flow
 
 **Definition of Done**
 - nowa integracja powstaje według jednego szablonu adaptera
 - use-case/domain code nie zależy od szczegółów payloadów providerów
 - testy adapterów bronią kontraktu integracyjnego
 - runtime nie polega na globalnych mutacjach środowiska procesu
+- adaptery są rejestrowane i introspekcyjne przez wspólne capability metadata
 
 ---
 
@@ -338,16 +354,19 @@ Przekształcić projekt z technicznego panelu w czytelniejszy produkt i ogranicz
 - rozdzielić interfejs biznesowy od admin/debug
 - przeprowadzić audyt funkcji pod kątem użycia i kosztu utrzymania
 - uporządkować nawigację wokół realnych workflow
+- jasno wskazać primary interface dla nowych użytkowników i integratorów
 
 **Issues (planned)**
 - NEW-ISSUE: Redesign UI around primary workflows instead of technical modules
 - NEW-ISSUE: Separate business-facing UI from admin/debug tooling
 - NEW-ISSUE: Audit features for simplification, deprecation or scope reduction
+- NEW-ISSUE: Define and document the primary interface for onboarding and adoption
 
 **Definition of Done**
 - UI wspiera podstawowe workflow bez wiedzy operatorskiej
 - admin/debug pozostaje dostępny, ale jest wyraźnie odseparowany
 - roadmap rozróżnia scope core vs power-user
+- użytkownik wie, czy podstawową ścieżką jest UI, API czy CLI dla jego scenariusza
 
 ---
 
