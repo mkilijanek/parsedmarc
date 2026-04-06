@@ -1,0 +1,50 @@
+2026-04-06
+
+[context]
+- Purpose of this file: agent execution journal, not a release changelog.
+- It should capture commands run, observations, decisions, mistakes, lessons learned, and the current implementation stage.
+
+[current stage]
+- Planning and sequencing work for milestones `1.4.2` through `1.7.0`.
+- Milestone priority was reprioritized from deep assessment: security first, then modularization, then schema/API/UX work.
+
+[actions performed]
+- Added workflow guidance to `AGENTS.md` so implementation work must maintain `change.log`.
+- Created milestone planning artifacts and synchronized them with GitHub milestones.
+- Reprioritized roadmap based on deep assessment:
+  - `1.4.2` security and runtime hardening
+  - `1.5.0` core modularization and template extraction
+  - `1.5.1` database convergence and PostgreSQL validation
+  - `1.6.0` API and configuration modernization
+  - `1.6.1` integration adapter boundary and runtime resilience
+  - `1.7.0` product UX and scope rationalization
+
+[important commands]
+- `gh api repos/mkilijanek/ioc-service/milestones?state=open`
+- `git push origin main`
+- `PYTHONPATH=. .venv/bin/pytest -q`
+- `.venv/bin/pip install -r requirements.txt`
+
+[observations]
+- The repo contains both `ROADMAP.md` and `roadmap.md`; `ROADMAP.md` is being treated as canonical.
+- GitHub milestone state had drifted from the repo roadmap and needed manual synchronization.
+- GitHub security alerts for `requests` and `cryptography` may lag after push even when `requirements.txt` already contains patched versions.
+- `change.log` did not exist initially, so it had to be introduced and its purpose clarified.
+
+[decisions]
+- Use `change.log` as an execution ledger and memory aid, not just a static implementation plan.
+- Keep untracked `artifacts/` and `ioc-service-refactored-v1.4.0.zip` untouched.
+- Record lessons from command/escaping mistakes directly here so future work avoids repeating them.
+
+[mistakes and lessons]
+- Initial version of `change.log` was too plan-oriented and not a true work journal.
+  Lesson: default to logging concrete actions, commands, observations, and errors, not only future intentions.
+- A previous shell search mixed backticks inside a double-quoted command and produced shell noise (`command not found`).
+  Lesson: avoid unescaped backticks in shell strings; prefer single-quoted heredocs or simpler grep/rg patterns when searching for literal markdown fragments.
+- A previous test run failed because `.venv/bin/pytest` was executed without `PYTHONPATH=.`
+  Lesson: for this repo, prefer `PYTHONPATH=. .venv/bin/pytest -q` unless the script already sets import paths.
+
+[next planned implementation steps]
+1. Start milestone `1.4.2` with admin authentication design and CSRF protection approach.
+2. Add `.dockerignore` and remove implicit `SECRET_KEY` generation path.
+3. Update `change.log` after each code change, test run, and design decision during implementation.
