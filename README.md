@@ -1,6 +1,6 @@
 # Threat Intelligence Feed Aggregator
 
-Updated for release line `1.4.0` (2026-03-10).
+Updated for release line `1.4.1` (2026-04-06).
 
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
@@ -15,7 +15,7 @@ Production-ready threat feed aggregation and export service:
 - Unified light/dark theme across overview, indicators, admin, logs, and feed forms
 - MISP integration is disabled by default and can be enabled from Admin feed controls
 
-## Release Highlights (1.4.0)
+## Release Highlights (1.4.1)
 
 - Runtime schema creation removed from app startup.
 - Alembic migrations introduced (`scripts/db-migrate.sh`, `migrate` compose service).
@@ -36,6 +36,9 @@ Production-ready threat feed aggregation and export service:
 - **Sentinel Graph export** — async export job flow for Microsoft Graph TI submission.
 - **Full route modularization** — public, health, admin, API and log endpoints extracted from `app/main.py` into `app/routes/*`.
 - **Health probe contract finalization** — operational probes now consistently distinguish `healthz` liveness from `readyz` readiness.
+- **Logs route extraction** — `/logs` and `/api/logs` moved out of the ops module into a dedicated route module.
+- **Workflow dependency refresh** — release packaging now uses current action majors and CI waits on `/healthz`.
+- **Dependabot baseline added** — weekly checks enabled for GitHub Actions and Python dependencies.
 
 ## Quickstart (Docker Compose)
 

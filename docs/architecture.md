@@ -1,6 +1,6 @@
 # Architecture
 
-Status: updated for `1.4.0` (2026-03-10).
+Status: updated for `1.4.1` (2026-04-06).
 
 ## Overview
 
@@ -60,7 +60,8 @@ The Threat Feed Aggregator follows a **database-first** architecture where Postg
 **Key Files:**
 - `app/main.py` - App factory and wiring only
 - `app/routes/public.py` - Public HTML/export routes
-- `app/routes/ops.py` - Admin/API/log routes
+- `app/routes/ops.py` - Admin and sync/API routes
+- `app/routes/logs.py` - Logs UI and log API routes
 - `app/routes/health.py` - Health/readiness/dependency routes
 - `app/webui.py` - Web UI Blueprint
 - `app/security.py` - Security middleware and validation

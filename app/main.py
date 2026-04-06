@@ -57,7 +57,7 @@ from .services.common import (
     sum_update_result,
     redact_proxy_credentials,
 )
-from .routes import register_health_blueprint, register_ops_routes, register_public_routes
+from .routes import register_health_blueprint, register_logs_routes, register_ops_routes, register_public_routes
 
 from .metrics import (
     request_count,
@@ -1693,6 +1693,17 @@ def create_app() -> Flask:
             "correlation_groups_returned_total": correlation_groups_returned_total,
             "cache_access_total": cache_access_total,
             "db_query_duration_seconds": db_query_duration_seconds,
+        },
+    )
+
+    register_logs_routes(
+        app,
+        limiter=limiter,
+        cfg=cfg,
+        logger=logger,
+        deps={
+            "_db": _db,
+            "AppLog": AppLog,
         },
     )
 

@@ -1,10 +1,10 @@
 # UML Diagrams for IOC Threat Intelligence Service
 
-Status: refreshed for release `1.4.0` (2026-03-10).
+Status: refreshed for release `1.4.1` (2026-04-06).
 
 This directory contains UML source and generated diagram artifacts aligned with current scheduler, admin sync-job controls, and deployment/runtime behavior.
 
-## 1.4.0 Updates
+## 1.4.1 Updates
 
 - Sync job lifecycle includes `cancel_requested` and `cancelled` states.
 - Sync sequence includes admin actions: retry failed/cancelled jobs and cancel queued/running jobs.
@@ -16,7 +16,7 @@ This directory contains UML source and generated diagram artifacts aligned with 
 - Component/deployment diagrams include Sentinel Graph export path.
 - Component/deployment/class diagrams include proxy diagnostics (`/admin/proxy-test`).
 - Proxy override support documented in diagrams (`FEED_PROXY_URL_<SOURCE>`).
-- Diagram set is part of the 1.4.0 release documentation scope.
+- Diagram set is part of the 1.4.1 release documentation scope.
 
 ## File Structure
 
@@ -69,7 +69,7 @@ printf 'n\n' | ./generate-images.sh png
 printf 'n\n' | ./generate-images.sh svg
 ```
 
-Pre-generated artifacts for release `1.4.0` are included in:
+Pre-generated artifacts for release `1.4.1` are included in:
 - `docs/uml/generated/*.png`
 - `docs/uml/generated/*.svg`
 - `docs/uml/generated/index.html`

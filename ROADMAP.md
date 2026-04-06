@@ -173,6 +173,33 @@ Dowieźć pełną modularizację routingu jako kontynuację po 1.3.0.
 
 ---
 
+## Milestone 1.4.1 — Archive Integration & Dependency Hygiene
+
+**Goal**
+Dowiezienie bezpiecznej integracji kodu z archiwum `ioc-service-refactored-v1.4.0.zip` bez regresji względem aktualnego `main`.
+
+**Scope**
+- selektywna integracja zmian źródłowych z archiwum
+- dalszy podział routingu przez wydzielenie logów
+- odświeżenie workflow release/CI pod zaległe aktualizacje dependabota
+- zapisanie znanych issue z integracji archiwum
+
+**Issues**
+- NEW-ISSUE: Extract `/logs` and `/api/logs` from ops routes into a dedicated module
+- NEW-ISSUE: Update release workflow action dependencies flagged by dependabot
+- NEW-ISSUE: Record archive integration issues and excluded regressions
+
+**Status**
+- Done on 2026-04-06.
+
+**Definition of Done**
+- `app/routes/logs.py` przejmuje obsługę `/logs` i `/api/logs`
+- workflow CI używa `healthz` zamiast starego `/health` wait loop
+- workflow release nie używa przestarzałych akcji zgłaszanych przez dependabota
+- issue z integracji archiwum są zapisane w dokumentacji release
+
+---
+
 ## Dependencies
 
 ### Dependency graph (text)
@@ -224,3 +251,4 @@ Dowieźć pełną modularizację routingu jako kontynuację po 1.3.0.
 | 1.2.3 | Deployment & Ops Hardening | RHEL/Nginx/F5/SELinux runbooks | #62 + NEW 502 guide |
 | 1.3.0 | Connector Architecture & Modularization | refactor + standard contract | #60 #39 #40 #41 #42 #43 #50 #44 |
 | 1.4.0 | Full Route Modularization (Carry-over) | finalize blueprint split | #119 |
+| 1.4.1 | Archive Integration & Dependency Hygiene | safe archive import + dependabot hygiene | NEW logs split + NEW workflow deps + NEW archive review |
