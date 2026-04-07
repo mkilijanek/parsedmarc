@@ -4,6 +4,7 @@
 - Root Docker assets: `Dockerfile`, `Dockerfile.hardened`, and locked variants (`Dockerfile-*.locked`) define image flavors.
 - Runtime orchestration: `docker-compose.yml` wires `parsedmarc` with `msgraph-token-refresh`.
 - Configuration examples live in `.env.example` and `ini/parsedmarc.ini.example`.
+- Every repository operation (release bumps, environment changes, security fixes, etc.) must be logged in `change.log` with a justification so the file becomes the single source of operational context.
 - CI/security automation is in `.github/workflows/` (build checks, release publish, Trivy, Snyk).
 - Utility scripts: `build.sh` builds and optionally pushes `ghcr.io/mkilijanek/parsedmarc`.
 

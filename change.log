@@ -1,0 +1,9 @@
+# Change Log
+
+2026-04-07
+- Released `parsedmarc` 9.5.4: bumped Dockerfiles, compose, workflows, and requirements so base image and pull commands use the new version; tagged/published release for reproducible deployments.
+- Hardened CI and release automation: added `production` environment with branch/tag policies and wired `build-locked-release` & `docker-build` to require it; recorded reasoning for traceability.
+- Fixed automated scans: taught Trivy/Snyk release workflows to wait for published images before pulling so SARIF uploads (and the originating GitHub Code Scanning alerts) close reliably after new artifacts go live.
+- Documented that Trivy alerts CVE-2026-30922 were cleared by regenerating `requirements.lock` with `pyasn1==0.6.3` inside the lockfile-based builds.
+2026-04-07 (continued)
+- Updated `Dockerfile-ubi.locked` so the ubi9/python-312 builder/runtime stages now point at `sha256:7ba356eca7f476bcf9a8c51714e43353376d37e0bbd4e43ceec7b1bcc6ff9675`, which carries Python 3.12.12-4.el9_7.2 and resolves CVE-2026-4519 identified by Trivy.
