@@ -8,3 +8,7 @@
 2026-04-07 (continued)
 - Updated `Dockerfile-ubi.locked` so the ubi9/python-312 builder/runtime stages now point at `sha256:7ba356eca7f476bcf9a8c51714e43353376d37e0bbd4e43ceec7b1bcc6ff9675`, which carries Python 3.12.12-4.el9_7.2 and resolves CVE-2026-4519 identified by Trivy.
 - Triggered `build-locked-release` on `main` after the base bump so the signed locked images rebuild from the patched UBI Python base, and explicitly reran the Trivy/Snyk published-image scans to refresh SARIF results against the new artifacts.
+- Merged the pending Dependabot PRs for code scanning/sealing:
+  * `sigstore/cosign-installer` to 4.1.1 and `github/codeql-action` to 4.35.1 so the signing and analysis workflows use the newest releases.
+  * `docker/login-action` 4.1.0 plus the matching Docker workflow tweaks that rely on that action.
+  * The `python` base digest bumps plus `parsedmarc==9.6.0` so the runtime is on the latest release while the locked images rebuild from the patched builder.
