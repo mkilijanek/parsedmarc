@@ -73,6 +73,10 @@ Definition of done:
 - Container startup fails fast when `SECRET_KEY` is not explicitly configured.
 - Docker build context excludes non-runtime noise by default.
 - Admin actions are audit-logged with actor, target, timestamp, source IP, and result.
+- The admin authorization baseline is explicitly documented, including the current `admin` role and future extension path.
+
+Status:
+- Done on 2026-04-07.
 
 ### 1.5.0 — Core Modularization & Template Extraction
 
@@ -196,4 +200,4 @@ Definition of done:
 - Historical cleanup completed on 2026-04-07:
   - closed GitHub milestones: `1.1.x`, `1.2.1`, `1.3.0`, `1.4.0`
   - created missing GitHub releases for existing tags: `1.4.0`, `1.4.1`
-  - left `1.4.2`, `1.5.0`, `1.5.1`, `1.6.0`, `1.6.1`, `1.7.0` open because they are not yet fully delivered
+  - left `1.5.0`, `1.5.1`, `1.6.0`, `1.6.1`, `1.7.0` open because they are not yet fully delivered

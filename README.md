@@ -1,6 +1,6 @@
 # Threat Intelligence Feed Aggregator
 
-Updated for release line `1.4.1` (2026-04-06).
+Updated for release line `1.4.2` (2026-04-07).
 
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
@@ -15,7 +15,16 @@ Production-ready threat feed aggregation and export service:
 - Unified light/dark theme across overview, indicators, admin, logs, and feed forms
 - MISP integration is disabled by default and can be enabled from Admin feed controls
 
-## Release Highlights (1.4.1)
+## Release Highlights (1.4.2)
+
+- `/admin` is now session-protected behind explicit admin authentication.
+- State-changing admin flows are protected with CSRF tokens.
+- Admin actions now persist a stronger audit trail with actor attribution and action metadata.
+- Container startup no longer auto-generates `SECRET_KEY`; deployments must provide it explicitly.
+- `.dockerignore` now trims non-runtime build context.
+- Access-control baseline is documented in `docs/access-control.md`.
+
+## Previous Highlights (1.4.1)
 
 - Runtime schema creation removed from app startup.
 - Alembic migrations introduced (`scripts/db-migrate.sh`, `migrate` compose service).

@@ -1,6 +1,6 @@
 # Threat Feed Aggregator - Documentation
 
-Status: updated for `1.4.1` (2026-04-06).
+Status: updated for `1.4.2` (2026-04-07).
 
 Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed Aggregation system.
 

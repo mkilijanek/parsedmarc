@@ -263,6 +263,9 @@ Zamknąć krytyczne ryzyka bezpieczeństwa i uruchomieniowe przed dalszym refakt
 - operacje admina mają spójny audit trail: kto, co, kiedy, z jakim wynikiem
 - istnieje jawny model ról/uprawnień dla panelu administracyjnego
 
+**Status**
+- Done on 2026-04-07.
+
 ---
 
 ## Milestone 1.5.0 — Core Modularization & Template Extraction

@@ -519,3 +519,29 @@
   - a here-doc piped into a file first,
   - or another workflow that passes real multiline text, not escaped sequences.
 - This is the same class of failure as earlier shell-escaping mistakes: when formatting matters, prefer file-backed input over inline quoted strings.
+
+2026-04-07
+
+[current stage]
+- `1.4.2` release preparation after validation.
+
+[actions performed]
+- Committed the verified admin-hardening baseline in commit `4d1335a` (`feat(security): complete admin hardening baseline`).
+- Ran the focused `1.4.2` validation suite: `91 passed`.
+- Re-ran the full test suite on the corrected audit/session codepath: `486 passed`.
+- Marked `1.4.2` as done in local roadmap/milestone files.
+- Updated top-level release-line documentation from `1.4.1` to `1.4.2`.
+
+[important commands]
+- `git commit -m "feat(security): complete admin hardening baseline"`
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py`
+- `PYTHONPATH=. .venv/bin/pytest -q`
+
+[observations]
+- The only meaningful regression during closure was around SQLAlchemy session ownership in tests, not feature correctness. Passing the active DB session into `_audit(...)` removed that hidden coupling cleanly.
+- With the access-control document added, `1.4.2` now has both executable protections and an explicit operational contract.
+
+[next planned implementation steps]
+1. Commit the release-status/documentation follow-up.
+2. Push `main`.
+3. Create tag/release `1.4.2` and close GitHub milestone `1.4.2`.
