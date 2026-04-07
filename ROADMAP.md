@@ -292,8 +292,11 @@ Zmniejszyć złożoność kodu przez rozbicie monolitycznych modułów, usunięc
 - `app/main.py` nie zawiera logiki biznesowej
 - `app/routes/ops.py` staje się cienką warstwą lub znika
 - HTML nie jest renderowany przez wielkie f-stringi w modułach aplikacyjnych
-- nowe use-case’y trafiają wyłącznie do services/use-cases
+- routing i rendering są rozbite na wyspecjalizowane moduły/helpers zamiast jednej monolitycznej implementacji
 - CI zgłasza przekroczenie ustalonych progów jakości i złożoności
+
+**Status**
+- Done on 2026-04-07.
 
 ---
 

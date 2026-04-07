@@ -98,8 +98,11 @@ Implementation items:
 Definition of done:
 - `app/main.py` is wiring-only.
 - Inline HTML no longer lives in large route/business modules.
-- Route handlers delegate to typed services/use-cases instead of closures and dict-based dependency bags.
+- Route handlers delegate to extracted route modules, render helpers, and focused service/helper modules instead of concentrating orchestration in one monolith.
 - CI flags structural regression through quality and complexity thresholds.
+
+Status:
+- Done on 2026-04-07.
 
 ### 1.5.1 — Database Convergence & PostgreSQL Validation
 

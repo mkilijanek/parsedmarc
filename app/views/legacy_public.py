@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from urllib.parse import urlencode
 from typing import Any
+from urllib.parse import urlencode
 
 from flask import render_template
 
 from ..models import Indicator
-
 
 STARTUP_LOADER_STYLE = """
     .startup-loader { position: fixed; inset: 0; z-index: 9999; background: radial-gradient(circle at 20% 20%, #103040 0%, rgba(16,48,64,.55) 35%, transparent 70%), radial-gradient(circle at 80% 0%, #2a1f3f 0%, rgba(42,31,63,.45) 35%, transparent 70%), #05090f; display: flex; align-items: center; justify-content: center; padding: 20px; transition: opacity .35s ease, visibility .35s ease; }

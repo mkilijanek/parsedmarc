@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Admin Controls</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }
+    body[data-theme="light"] { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }
+    body[data-theme="dark"] { --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }
+    body:not([data-theme]) { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }
+    .topbar nav a { margin-right:.8rem; }
+    .card { border: 1px solid var(--line); border-radius: 16px; padding: 1rem; margin-bottom: 1rem; background: var(--card); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--line); padding: .5rem; text-align: left; vertical-align: top; }
+    input[type=text], input[type=password], select { width: 100%; padding: .45rem; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+    button { padding: .5rem .8rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+    fieldset { border: 1px solid var(--line); border-radius: 12px; margin: .75rem 0; padding: .75rem; }
+    .toast { border:1px solid var(--line); border-radius:10px; padding:.55rem .7rem; margin:.5rem 0 1rem; background:var(--card); }
+    .status-chip { display:inline-block; border:1px solid var(--line); border-radius:999px; font-size:.75rem; font-weight:600; padding:.15rem .5rem; white-space:nowrap; }
+    .status-chip.ok { background:#ecfdf3; color:#166534; }
+    .status-chip.warning { background:#fffbeb; color:#92400e; }
+    .status-chip.error { background:#fef2f2; color:#991b1b; }
+    .status-chip.disabled { background:#f1f5f9; color:#334155; }
+    .status-chip.not_configured { background:#fdf4ff; color:#7e22ce; }
+    .metrics-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.6rem; margin:.75rem 0; }
+    .metric-card { border:1px solid var(--line); border-radius:10px; padding:.55rem .7rem; }
+    .metric-card .label { font-size:.8rem; opacity:.75; }
+    .metric-card .value { font-size:1.05rem; font-weight:700; }
+    .mini-chart-wrap { border:1px solid var(--line); border-radius:10px; padding:.4rem; margin:.55rem 0 .75rem; }
+    .mini-chart-wrap svg { width:100%; height:120px; display:block; }
+  </style>
+</head>
+<body>
+  <header class="topbar" id="globalTopbar">
+    <nav>
+      <a href="/">Overview</a>
+      <a href="/indicators">Indicators</a>
+      <a href="/admin">Admin</a>
+      <a href="/logs">Logs</a>
+    </nav>
+    <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
+  </header>
+  <h1>Admin Controls</h1>
+  <p><strong>Stored settings:</strong> {{ settings_count }}</p>
+  <p><strong>Scheduler heartbeat:</strong> {{ scheduler_heartbeat or 'n/a' }}</p>
+  <div id="statusToast" class="toast" role="status" aria-live="polite">{{ status_msg }}</div>
+
+  <div class="card">
+    <h2>Configuration Panel (Global)</h2>
+    <form method="post" action="/admin/global-config">
+      <h3>Proxy Configuration</h3>
+      <p><label>HTTP proxy <input type="text" name="proxy_http_url" value="{{ proxy_conf['proxy_http_url'] }}" placeholder="http://proxy:8080"/></label></p>
+      <p><label>HTTPS proxy <input type="text" name="proxy_https_url" value="{{ proxy_conf['proxy_https_url'] }}" placeholder="http://proxy:8080"/></label></p>
+      <p><label>No proxy list <input type="text" name="proxy_no_proxy" value="{{ proxy_conf['proxy_no_proxy'] }}" placeholder="localhost,127.0.0.1,.internal"/></label></p>
+      <p><label>Organization CA bundle path <input type="text" name="proxy_ca_bundle_path" value="{{ proxy_conf['proxy_ca_bundle_path'] }}" placeholder="/etc/ssl/certs/org-ca.pem"/></label></p>
+      <p><label><input type="checkbox" name="proxy_skip_tls_verify" value="1" {% if proxy_skip_tls_verify_checked %}checked{% endif %}/> Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)</label></p>
+      <p><label>Trusted proxy count <input type="text" name="trusted_proxy_count" value="{{ proxy_conf['trusted_proxy_count'] }}" placeholder="0"/></label></p>
+      <h3>Azure Sentinel (Microsoft Graph)</h3>
+      <p><label>Tenant ID <input type="text" name="sentinel_tenant_id" value="{{ proxy_conf['sentinel_tenant_id'] }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></label></p>
+      <p><label>Client ID <input type="text" name="sentinel_client_id" value="{{ proxy_conf['sentinel_client_id'] }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></label></p>
+      <p><label>Auth mode
+        <select name="sentinel_auth_mode">
+          <option value="client_secret" {% if not sentinel_certificate_selected %}selected{% endif %}>client_secret</option>
+          <option value="certificate" {% if sentinel_certificate_selected %}selected{% endif %}>certificate</option>
+        </select>
+      </label></p>
+      <p><label>Client secret (leave blank to keep current: {{ proxy_conf['sentinel_client_secret_masked'] }}) <input type="password" name="sentinel_client_secret" value="" placeholder="Leave blank to keep current"/></label></p>
+      <p><label>Certificate private key PEM (leave blank to keep current: {{ proxy_conf['sentinel_cert_private_key_masked'] }}) <input type="password" name="sentinel_cert_private_key_pem" value="" placeholder="-----BEGIN PRIVATE KEY-----"/></label></p>
+      <p><label>Certificate thumbprint <input type="text" name="sentinel_cert_thumbprint" value="{{ proxy_conf['sentinel_cert_thumbprint'] }}" placeholder="hex thumbprint"/></label></p>
+      <p><label>Graph scope <input type="text" name="sentinel_scope" value="{{ proxy_conf['sentinel_scope'] }}" placeholder="https://graph.microsoft.com/.default"/></label></p>
+      <p><label>Graph endpoint URL <input type="text" name="sentinel_endpoint_url" value="{{ proxy_conf['sentinel_endpoint_url'] }}" placeholder="https://graph.microsoft.com/beta/security/tiIndicators/submitTiIndicators"/></label></p>
+      <p><label>Chunk size <input type="text" name="sentinel_chunk_size" value="{{ proxy_conf['sentinel_chunk_size'] }}" placeholder="100"/></label></p>
+      <button type="submit">Save configuration</button>
+    </form>
+    <form method="post" action="/admin/proxy-test" style="margin-top:.8rem">
+      <button type="submit">Test proxy</button>
+    </form>
+    <h3>Proxy Test Results</h3>
+    <table>
+      <thead><tr><th>Target</th><th>Status</th><th>HTTP</th><th>Latency ms</th><th>Title</th><th>Notes</th></tr></thead>
+      <tbody>{{ proxy_test_rows_html|safe }}</tbody>
+    </table>
+    <details style="margin-top:.6rem">
+      <summary>Raw results</summary>
+      <pre id="proxyTestRaw">{{ proxy_test_raw_json }}</pre>
+    </details>
+    <button type="button" id="copyProxyResultsBtn">Copy results</button>
+    <p><strong>Sentinel quick export:</strong>
+      <code>curl -X POST /api/sentinel/export?q=source:mwdb&amp;type=all&amp;tlp=all</code>
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Manual Synchronization and Feed Management</h2>
+    <h3>Add New Feed</h3>
+    <form method="post" action="/admin/feed/new">
+      <p><label>source_id <input type="text" name="source_id" placeholder="custom-feed-1" required></label></p>
+      <p><label>display_name <input type="text" name="display_name" placeholder="Custom Feed" required></label></p>
+      <p><label>source_type <input type="text" name="source_type" placeholder="misp|crowdsec|malwarebazaar|mwdb|abusech" required></label></p>
+      <p><label>base_url <input type="text" name="base_url" placeholder="https://source.example.local"></label></p>
+      <p><label>auth_type <input type="text" name="auth_type" placeholder="api_key"></label></p>
+      <p><label>schedule_cron <input type="text" name="schedule_cron" value="*/15 * * * *"></label></p>
+      <p><label><input type="checkbox" name="enabled" value="1" checked> enabled</label></p>
+      <button type="submit">Add feed</button>
+    </form>
+    <form method="post" action="/admin/sync">
+      <input type="hidden" name="source" value="all"/>
+      <button type="submit">Sync all enabled sources</button>
+    </form>
+    {{ feed_filter_controls|safe }}
+    <table>
+      <thead><tr><th>Source</th><th>Enabled</th><th>Schedule</th><th>Config Readiness</th><th>Last Run Status</th><th>Last Run At</th><th>Actions</th></tr></thead>
+      <tbody>{{ source_ctrl_html|safe }}</tbody>
+    </table>
+  </div>
+
+  {{ admin_feed_metrics_widget_html|safe }}
+  <div class="card">
+    <h2>Feed Statistics (Raw Last Status)</h2>
+    {{ raw_pager_html|safe }}
+    <table>
+      <thead><tr><th>Source</th><th>Source ID</th><th>Last Status</th><th>Last Update</th><th>Last Error</th></tr></thead>
+      <tbody>{{ feed_rows_html|safe }}</tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Recent Sync Jobs</h2>
+    <table>
+      <thead><tr><th>Job ID</th><th>Source</th><th>Trigger</th><th>Status</th><th>Created</th><th>Started</th><th>Finished</th><th>Actions</th></tr></thead>
+      <tbody>{{ recent_jobs_html|safe }}</tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Logs</h2>
+    <p><a href="/logs">Open logs tab</a></p>
+  </div>
+  {{ danger_zone_html|safe }}
+  <script>
+    const themeKey = 'ioc-theme';
+    const preferredTheme = localStorage.getItem(themeKey);
+    if (preferredTheme === 'dark' || preferredTheme === 'light') {
+      document.body.setAttribute('data-theme', preferredTheme);
+    }
+    const themeToggle = document.getElementById('themeToggleGlobal');
+    if (themeToggle) {
+      themeToggle.addEventListener('click', () => {
+        const curr = document.body.getAttribute('data-theme') || 'light';
+        const next = curr === 'dark' ? 'light' : 'dark';
+        document.body.setAttribute('data-theme', next);
+        localStorage.setItem(themeKey, next);
+      });
+    }
+    const toast = document.getElementById('statusToast');
+    if (toast && !toast.textContent.trim()) {
+      toast.style.display = 'none';
+    }
+    document.querySelectorAll('form').forEach((form) => {
+      form.addEventListener('submit', (evt) => {
+        const submitter = evt.submitter;
+        const buttons = form.querySelectorAll('button[type="submit"]');
+        buttons.forEach((btn) => btn.disabled = true);
+        if (submitter) {
+          submitter.dataset.originalText = submitter.textContent || '';
+          submitter.textContent = 'Processing...';
+        }
+      });
+    });
+    const copyProxyResultsBtn = document.getElementById('copyProxyResultsBtn');
+    if (copyProxyResultsBtn) {
+      copyProxyResultsBtn.addEventListener('click', async () => {
+        const raw = document.getElementById('proxyTestRaw');
+        const txt = raw ? raw.textContent || '' : '';
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(txt);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = txt;
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          alert('Proxy test results copied.');
+        } catch (e) {
+          alert('Copy failed.');
+        }
+      });
+    }
+    {{ admin_feed_metrics_widget_script|safe }}
+  </script>
+</body>
+</html>

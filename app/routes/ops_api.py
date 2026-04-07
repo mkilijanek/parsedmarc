@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
-from flask import jsonify, redirect, request, url_for
+from flask import jsonify, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 
@@ -126,66 +126,15 @@ def register_ops_api_routes(
             ]
         ) or "<tr><td colspan='5'>No logs for this job.</td></tr>"
 
-        return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Sync Job { _esc(job_id) }</title>
-<style>
-  :root {{ color-scheme: light dark; }}
-  body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }}
-  body[data-theme="light"] {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
-  body[data-theme="dark"] {{ --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }}
-  body:not([data-theme]) {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
-  .topbar {{ display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }}
-  .card {{ border: 1px solid var(--line); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; background: var(--card); }}
-  table {{ width:100%; border-collapse:collapse; }}
-  th, td {{ border-bottom:1px solid var(--line); padding:.45rem; text-align:left; vertical-align:top; }}
-  button {{ padding: .5rem .8rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }}
-</style>
-</head>
-<body>
-  <header class="topbar" id="globalTopbar">
-    <nav>
-      <a href="/">Overview</a>
-      <a href="/indicators">Indicators</a>
-      <a href="/admin">Admin</a>
-      <a href="/logs">Logs</a>
-    </nav>
-    <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
-  </header>
-  <div class="card">
-    <h1>Sync Job Details</h1>
-    <p><strong>Job ID:</strong> <code>{_esc(job.job_id)}</code></p>
-    <p><strong>Source:</strong> {_esc(job.feed_source_id)} | <strong>Trigger:</strong> {_esc(job.trigger_type)} | <strong>Status:</strong> {_esc(job.status)}</p>
-    <p><strong>Created:</strong> {_esc(str(job.created_at or ''))} | <strong>Started:</strong> {_esc(str(job.started_at or ''))} | <strong>Finished:</strong> {_esc(str(job.finished_at or ''))}</p>
-    <p><strong>Error:</strong> {_esc(str(job.error or ''))}</p>
-    <p><strong>Result:</strong> <code>{_esc(json.dumps(job.result_json or {}, ensure_ascii=True))}</code></p>
-    <p><strong>FeedRun status:</strong> {_esc(str(getattr(run, 'status', 'n/a')))} | <strong>Fetched:</strong> {_esc(str(getattr(run, 'fetched_count', 'n/a')))}</p>
-    <p><a href="/api/logs?job_id={_esc(job.job_id)}&limit=200">Open JSON logs for this job</a></p>
-  </div>
-  <div class="card">
-    <h2>Job Logs</h2>
-    <table>
-      <thead><tr><th>Time</th><th>Level</th><th>Component</th><th>Message</th><th>Metadata</th></tr></thead>
-      <tbody>{log_rows}</tbody>
-    </table>
-  </div>
-  <script>
-    const themeKey = 'ioc-theme';
-    const preferredTheme = localStorage.getItem(themeKey);
-    if (preferredTheme === 'dark' || preferredTheme === 'light') {{
-      document.body.setAttribute('data-theme', preferredTheme);
-    }}
-    const themeToggle = document.getElementById('themeToggleGlobal');
-    if (themeToggle) {{
-      themeToggle.addEventListener('click', () => {{
-        const curr = document.body.getAttribute('data-theme') || 'light';
-        const next = curr === 'dark' ? 'light' : 'dark';
-        document.body.setAttribute('data-theme', next);
-        localStorage.setItem(themeKey, next);
-      }});
-    }}
-  </script>
-</body></html>"""
+        return render_template(
+            "admin/sync_job_details.html",
+            job_id=job_id,
+            job=job,
+            job_result_json=_esc(json.dumps(job.result_json or {}, ensure_ascii=True)),
+            run_status=_esc(str(getattr(run, "status", "n/a"))),
+            run_fetched=_esc(str(getattr(run, "fetched_count", "n/a"))),
+            log_rows=log_rows,
+        )
 
     @app.post("/admin/sync-jobs/<job_id>/retry")
     @limiter.limit("20 per minute")
