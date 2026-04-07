@@ -7,7 +7,7 @@ import sys
 from typing import Any, Dict, List
 from urllib.parse import urlencode
 
-from flask import redirect, request, url_for
+from flask import redirect, render_template, request, url_for
 from sqlalchemy import delete, func, select
 
 from ..services.common import redact_proxy_credentials
@@ -787,134 +787,16 @@ def register_ops_admin_routes(
                 mwdb_orgs = _fetch_mwdb_orgs(values.get("base_url", ""), values.get("api_key", ""))
         finally:
             db.close()
-
-        fields_html = "".join(
-            [
-                (
-                    f"<p><label>{_esc(str(f['label']))} "
-                    + (
-                        f"<input type='checkbox' name='{_esc(str(f.get('input_name') or ''))}' value='1' {'checked' if f.get('checked') else ''}/>"
-                        if str(f.get("type") or "") == "checkbox"
-                        else (
-                            f"<input type='{'password' if f.get('secret') else 'text'}' "
-                            f"name='{_esc(str(f.get('input_name') or ''))}' "
-                            f"value='{_esc(str(f.get('value') or ''))}' "
-                            f"placeholder='{_esc(str(f.get('placeholder') or ''))}'/>"
-                        )
-                    )
-                    + "</label>"
-                    + (f" Current: {_esc(str(f.get('current_masked') or ''))}" if f.get("secret") else "")
-                    + "</p>"
-                )
-                for f in state["fields"]
-            ]
+        return render_template(
+            "admin/feed_configure.html",
+            source_id=source_id,
+            msg=msg,
+            feed=feed,
+            state=state,
+            mwdb_orgs=mwdb_orgs,
+            mwdb_selected_orgs=mwdb_selected_orgs,
+            mwdb_selected_group=mwdb_selected_group,
         )
-        orgs_html = ""
-        if state.get("source_type") == "mwdb":
-            if mwdb_orgs:
-                options = "".join(
-                    [
-                        (
-                            f"<label style='display:block'>"
-                            f"<input type='checkbox' name='mwdb_orgs' value='{_esc(str(o.get('id') or o.get('name') or ''))}' "
-                            f"{'checked' if str(o.get('id') or o.get('name') or '') in mwdb_selected_orgs else ''}/> "
-                            f"{_esc(str(o.get('name') or o.get('id') or ''))}</label>"
-                        )
-                        for o in mwdb_orgs
-                    ]
-                )
-                group_options = "<option value=''>(none — use TLP:GREEN for all)</option>" + "".join(
-                    f"<option value='{_esc(str(o.get('id') or o.get('name') or ''))}'"
-                    f"{' selected' if str(o.get('id') or o.get('name') or '') == mwdb_selected_group else ''}>"
-                    f"{_esc(str(o.get('name') or o.get('id') or ''))}</option>"
-                    for o in mwdb_orgs
-                )
-                orgs_html = (
-                    f"<fieldset><legend>MWDB organizations</legend>{options}</fieldset>"
-                    f"<fieldset><legend>My MWDB group (TLP:AMBER for group-visible indicators)</legend>"
-                    f"<p style='margin:.2rem 0 .5rem'>Indicators uploaded by this group will be tagged <strong>TLP:AMBER</strong>.</p>"
-                    f"<select name='mwdb_my_group'>{group_options}</select>"
-                    f"</fieldset>"
-                )
-            else:
-                orgs_html = "<p>MWDB organizations list is unavailable. Use <strong>Test connection</strong> first.</p>"
-        return f"""<!doctype html>
-<html lang='en'>
-<head>
-<meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/>
-<title>Configure { _esc(source_id) }</title>
-<style>
-  :root {{ color-scheme: light dark; }}
-  body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }}
-  body[data-theme="light"] {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
-  body[data-theme="dark"] {{ --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }}
-  body:not([data-theme]) {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
-  .topbar {{ display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }}
-  .topbar nav a {{ margin-right:.8rem; }}
-  .card {{ border:1px solid var(--line); border-radius:12px; padding:1rem; background:var(--card); }}
-  input, button {{ border:1px solid var(--line); border-radius:8px; padding:.4rem .5rem; background:var(--bg); color:var(--fg); }}
-  fieldset {{ border:1px solid var(--line); border-radius:10px; margin:.8rem 0; padding:.6rem; }}
-</style>
-</head>
-<body>
-<header class="topbar" id="globalTopbar">
-  <nav>
-    <a href="/">Overview</a>
-    <a href="/indicators">Indicators</a>
-    <a href="/admin">Admin</a>
-    <a href="/logs">Logs</a>
-  </nav>
-  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
-</header>
-<div class='card'>
-<h1>Configure feed: {_esc(source_id)}</h1>
-<p>{_esc(msg)}</p>
-<p>Status: {'OK' if state['ready'] else 'Incomplete: ' + _esc(', '.join(state['missing']))}</p>
-<form method='post' action='/admin/feed/{_esc(source_id)}/configure' id='feedConfigForm'>
-<p><label>Display name <input type='text' name='display_name' value='{_esc(feed.display_name)}' required/></label></p>
-<p><label>Schedule cron <input type='text' name='schedule_cron' value='{_esc(feed.schedule_cron)}'/></label></p>
-{fields_html}
-{orgs_html}
-<button type='submit' id='saveBtn'>Save settings</button>
-<button type='submit' formaction='/admin/feed/{_esc(source_id)}/test' formmethod='post' id='testBtn'>Test connection</button>
-<a href='/admin'>Back</a>
-</form>
-</div>
-<script>
-const themeKey = 'ioc-theme';
-const preferredTheme = localStorage.getItem(themeKey);
-if (preferredTheme === 'dark' || preferredTheme === 'light') {{
-  document.body.setAttribute('data-theme', preferredTheme);
-}} else {{
-  const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
-}}
-const themeToggle = document.getElementById('themeToggleGlobal');
-if (themeToggle) {{
-  themeToggle.addEventListener('click', () => {{
-    const curr = document.body.getAttribute('data-theme') || 'light';
-    const next = curr === 'dark' ? 'light' : 'dark';
-    document.body.setAttribute('data-theme', next);
-    localStorage.setItem(themeKey, next);
-  }});
-}}
-const form = document.getElementById('feedConfigForm');
-if (form) {{
-  form.addEventListener('submit', function (evt) {{
-    const submitter = evt.submitter;
-    const saveBtn = document.getElementById('saveBtn');
-    const testBtn = document.getElementById('testBtn');
-    if (saveBtn) saveBtn.disabled = true;
-    if (testBtn) testBtn.disabled = true;
-    if (submitter && submitter.id === 'testBtn') {{
-      submitter.textContent = 'Testing...';
-    }} else if (saveBtn) {{
-      saveBtn.textContent = 'Saving...';
-    }}
-  }});
-}}
-</script>
-</body></html>"""
 
     @app.post("/admin/feed/<source_id>/configure")
     @limiter.limit("20 per minute")

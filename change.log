@@ -703,3 +703,25 @@
 [next planned implementation steps]
 1. Commit and push the dead-code cleanup slice.
 2. Continue `1.5.0` by attacking the admin/configure HTML surface or extracting more operational UI rendering out of route modules.
+
+2026-04-07
+
+[current stage]
+- `1.5.0` admin configure template extraction.
+
+[actions performed]
+- Added [app/templates/admin/feed_configure.html](/home/kili/Repo/ioc-service/app/templates/admin/feed_configure.html).
+- Replaced the inline HTML implementation of `/admin/feed/<source_id>/configure` in [app/routes/ops_admin.py](/home/kili/Repo/ioc-service/app/routes/ops_admin.py) with `render_template(...)`.
+- Preserved the existing strings and form ids relied on by UI tests, including `Test connection`, `Save settings`, `feedConfigForm`, and MWDB-specific copy.
+
+[observations]
+- This is a good incremental admin-side template extraction because it is a single isolated page with a clear GET/POST boundary.
+- The route module shrank materially without forcing a broader admin layout refactor in the same patch.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_ui_issues.py tests/test_api.py tests/test_security.py tests/test_ops_contracts.py` -> `253 passed`
+- `PYTHONPATH=. .venv/bin/python -m py_compile app/routes/ops_admin.py` -> success
+
+[next planned implementation steps]
+1. Commit and push the feed-configure template slice.
+2. Continue `1.5.0` with the main `/admin` page or sync-job details page template extraction.
