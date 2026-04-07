@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Indicators</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }
+    body[data-theme="light"] { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --muted: #64748b; --line: #dbe1ea; }
+    body[data-theme="dark"] { --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --muted: #94a3b8; --line: #334155; }
+    body:not([data-theme]) { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --muted: #64748b; --line: #dbe1ea; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }
+    .topbar nav a { margin-right:.8rem; }
+    .toolbar { display: grid; grid-template-columns: 1fr; gap: .75rem; margin-bottom: 1rem; }
+    .filter-summary { position: sticky; top: 0; z-index: 2; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: .75rem; }
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+    input[type=text] { width: 100%; padding: .6rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+    select { padding: .5rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+    button { padding: .55rem .8rem; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+    button:focus, a:focus, input:focus, select:focus { outline: 3px solid #000; outline-offset: 2px; }
+    .card { border: 1px solid var(--line); border-radius: 16px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; background: var(--card); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--line); padding: 0.5rem; text-align: left; vertical-align: top; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .badge { display: inline-block; padding: .15rem .5rem; border-radius: 999px; border: 1px solid var(--line); font-size: .85rem; }
+    .tag { display: inline-block; padding: .1rem .45rem; border-radius: 999px; border: 1px solid var(--line); font-size: .8rem; margin-right: .25rem; margin-bottom: .15rem; }
+    .confbar { width: 140px; height: 12px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+    .confbar-in { height: 100%; background: var(--muted); }
+    .b-ip{} .b-domain{} .b-url{} .b-hash{} .b-email{} .b-other{}
+    .b-white{} .b-green{} .b-amber{} .b-red{}
+    .help { font-size: .95rem; }
+    .subtle { color: var(--muted); font-size: .9rem; }
+    .pager { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin: .75rem 0; }
+    .pager a, .pager span { padding:.35rem .6rem; border:1px solid var(--line); border-radius:8px; }
+    .status-live { min-height: 1.2rem; }
+    .skip-link { position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+    .skip-link:focus { left: 1rem; top: 1rem; width: auto; height: auto; background: var(--card); padding: .5rem; border: 1px solid var(--line); }
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+    }
+    @media (max-width: 760px) {
+      .row label { width: 100%; }
+      th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8) { display: none; }
+      .card { padding: .65rem; }
+    }
+{{ startup_loader_style|safe }}
+  </style>
+</head>
+<body>
+{{ startup_loader_markup|safe }}
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<header class="topbar" id="globalTopbar">
+  <nav>
+    <a href="/">Overview</a>
+    <a href="/indicators">Indicators</a>
+    <a href="/admin">Admin</a>
+    <a href="/logs">Logs</a>
+  </nav>
+  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
+</header>
+<main id="main-content" role="main">
+  <div class="card">
+    <h1>Unified Indicators</h1>
+    <p class="subtle">
+      <a href="/indicators" aria-label="Reset filters and show unfiltered results">Reset filters</a>
+    </p>
+    <div class="filter-summary" role="status" aria-live="polite">
+      {% if has_filters %}
+      <p><strong>Active filters:</strong> yes</p>
+      {% else %}
+      <p class="subtle">Active filters: none</p>
+      {% endif %}
+      <p class="subtle">Results: <strong>{{ total_count }}</strong> | Page <strong>{{ page }}</strong> of <strong>{{ total_pages }}</strong> | Limit <strong>{{ limit }}</strong></p>
+    </div>
+    <form method="get" action="/indicators" class="toolbar" aria-label="Indicator search and filters">
+      <label for="searchBox"><strong>Search</strong></label>
+      <input type="text" id="searchBox" name="q" value="{{ q or '' }}"
+             aria-label="Search indicators using Kibana syntax"
+             aria-describedby="search-syntax"
+             placeholder="e.g. value:192.168.* AND confidence:>70" />
+      <div class="row">
+        <label for="typeSel">Type</label>
+        <select id="typeSel" name="type" aria-label="Filter by indicator type">
+          {% for option in type_options %}
+          <option value='{{ option }}' {% if type_filter == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="tlpSel">TLP</label>
+        <select id="tlpSel" name="tlp" aria-label="Filter by TLP level">
+          {% for option in tlp_options %}
+          <option value='{{ option }}' {% if tlp == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="srcSel">Source</label>
+        <select id="srcSel" name="source" aria-label="Filter by source">
+          {% for option in source_options %}
+          <option value='{{ option }}' {% if source == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="minConf">Min conf</label>
+        <select id="minConf" name="min_conf" aria-label="Minimum confidence">
+          {% for option in min_conf_options %}
+          <option value='{{ option.value }}' {% if min_conf == option.match_value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="maxConf">Max conf</label>
+        <select id="maxConf" name="max_conf" aria-label="Maximum confidence">
+          {% for option in max_conf_options %}
+          <option value='{{ option.value }}' {% if max_conf == option.match_value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+
+        <button type="submit" aria-label="Apply search and filters">Apply</button>
+        <a href="/indicators" aria-label="Clear search and filters">Clear</a>
+        <a href="/indicators" aria-label="Return to unfiltered indicators view">Back to all indicators</a>
+      </div>
+    </form>
+
+    <div id="search-syntax" role="region" aria-label="Search syntax help" class="help">
+      <strong>Search Syntax (Kibana-like):</strong>
+      <ul>
+        <li><code>value:192.168.*</code> - Match IP pattern</li>
+        <li><code>confidence:>70</code> - Confidence greater than 70</li>
+        <li><code>tlp:RED</code> - Exact TLP match</li>
+        <li><code>type:ip AND confidence:>50</code> - Combined conditions</li>
+        <li><code>tags:apt</code> - Contains tag</li>
+      </ul>
+      <p><strong>Available fields:</strong> value, type, confidence, tlp, tags, source</p>
+      <p><strong>Operators:</strong> AND, OR, NOT, :, &gt;, &lt;, &gt;=, &lt;=, *, ?</p>
+    </div>
+
+    <p>Quick exports:
+      <a href="/indicators/txt{{ filter_suffix }}" aria-label="Export current filtered results as TXT">TXT</a> ·
+      <a href="/indicators/csv{{ filter_suffix }}" aria-label="Export current filtered results as CSV">CSV</a> ·
+      <a href="/indicators/json{{ filter_suffix }}" aria-label="Export current filtered results as JSON">JSON</a> ·
+      <a href="/indicators/fortigate{{ filter_suffix }}" aria-label="Export current filtered results as FortiGate list">FortiGate</a>
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="pager" aria-label="Pagination controls">
+      <a href="{{ prev_link }}" {% if offset <= 0 %}aria-disabled='true'{% endif %}>Prev</a>
+      <span>Page {{ page }}/{{ total_pages }}</span>
+      <a href="{{ next_link }}" {% if next_offset >= total_count %}aria-disabled='true'{% endif %}>Next</a>
+    </div>
+    <table role="table" aria-label="Threat indicators">
+      <thead>
+        <tr role="row">
+          <th role="columnheader" aria-sort="none">Indicator</th>
+          <th role="columnheader" aria-sort="none">Type</th>
+          <th role="columnheader" aria-sort="none">Confidence</th>
+          <th role="columnheader" aria-sort="none">TLP</th>
+          <th role="columnheader" aria-sort="none">Source</th>
+          <th role="columnheader" aria-sort="none">Formats</th>
+          <th role="columnheader" aria-sort="none">Tags</th>
+          <th role="columnheader" aria-sort="none">MISP Event</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if view_rows %}
+          {% for row in view_rows %}
+          <tr role="row">
+            <td role="cell"><code>{{ row.value }}</code></td>
+            <td role="cell">{{ row.type_badge|safe }}</td>
+            <td role="cell">
+              <div class='confbar' role='progressbar' aria-valuenow='{{ row.confidence }}' aria-valuemin='0' aria-valuemax='100' aria-label='Confidence {{ row.confidence }} percent'>
+                <div class='confbar-in' style='width:{{ row.confidence }}%'></div>
+              </div>
+            </td>
+            <td role="cell">{{ row.tlp_badge|safe }}</td>
+            <td role="cell">{{ row.source }}</td>
+            <td role="cell">{{ row.exports|safe }}</td>
+            <td role="cell">
+              {% for tag in row.tags %}
+              <span class='tag' aria-label='Tag {{ tag }}'>{{ tag }}</span>
+              {% endfor %}
+            </td>
+            <td role="cell">{{ row.misp_link|safe }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+        <tr role="row"><td role="cell" colspan="8">No results</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+    <div class="pager" aria-label="Pagination controls (bottom)">
+      <a href="{{ prev_link }}" {% if offset <= 0 %}aria-disabled='true'{% endif %}>Prev</a>
+      <span>Page {{ page }}/{{ total_pages }}</span>
+      <a href="{{ next_link }}" {% if next_offset >= total_count %}aria-disabled='true'{% endif %}>Next</a>
+    </div>
+  </div>
+</main>
+
+<script>
+  const themeKey = 'ioc-theme';
+  const preferredTheme = localStorage.getItem(themeKey);
+  if (preferredTheme === 'dark' || preferredTheme === 'light') {
+    document.body.setAttribute('data-theme', preferredTheme);
+  } else {
+    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
+  }
+
+  const themeToggle = document.getElementById('themeToggleGlobal');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      const curr = document.body.getAttribute('data-theme') || 'light';
+      const next = curr === 'dark' ? 'light' : 'dark';
+      document.body.setAttribute('data-theme', next);
+      localStorage.setItem(themeKey, next);
+    });
+  }
+
+  const searchBox = document.getElementById('searchBox');
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/') {
+      e.preventDefault();
+      searchBox.focus();
+    }
+    if (e.key === 'Escape') {
+      if (document.activeElement === searchBox) {
+        searchBox.value = '';
+        searchBox.blur();
+      }
+    }
+  });
+  {{ startup_loader_script|safe }}
+</script>
+</body>
+</html>

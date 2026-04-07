@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 from typing import Any, Dict, List, Optional, Tuple
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from flask import Flask, Response, jsonify, request, make_response, redirect, session, url_for, stream_with_context, send_file
+from flask import Flask, Response, jsonify, request, make_response, redirect, render_template, session, url_for, stream_with_context, send_file
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.exceptions import HTTPException
@@ -2024,96 +2024,15 @@ def _badge(label: str, cls: str, aria: str) -> str:
     return f"<span class='badge {cls}' aria-label='{_esc(aria)}'>{_esc(label)}</span>"
 
 def _render_index(total: int, active: int, feeds) -> str:
-    feed_rows = "".join([
-        f"<tr role='row'><td role='cell'>{_esc(f.source)}</td><td role='cell'>{_esc(str(f.source_id or ''))}</td><td role='cell'>{_esc(str(f.last_fetch_status or ''))}</td><td role='cell'>{_esc(str(f.last_update or ''))}</td></tr>"
-        for f in feeds
-    ])
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Threat Feed Aggregator</title>
-  <style>
-    :root {{ color-scheme: light dark; }}
-    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }}
-    body[data-theme="light"] {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
-    body[data-theme="dark"] {{ --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }}
-    body:not([data-theme]) {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }}
-    .topbar {{ display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }}
-    .topbar nav a {{ margin-right:.8rem; }}
-    .card {{ border: 1px solid var(--line); border-radius: 16px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; background: var(--card); }}
-    a {{ color: #0b5; }}
-    table {{ width: 100%; border-collapse: collapse; }}
-    th, td {{ border-bottom: 1px solid var(--line); padding: 0.5rem; text-align: left; }}
-    .skip-link {{ position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }}
-    .skip-link:focus {{ left: 1rem; top: 1rem; width: auto; height: auto; background: #fff; padding: .5rem; border: 1px solid #000; }}
-{STARTUP_LOADER_STYLE}
-  </style>
-</head>
-<body>
-{STARTUP_LOADER_MARKUP}
-<a href="#main-content" class="skip-link">Skip to main content</a>
-<header class="topbar" id="globalTopbar">
-  <nav>
-    <a href="/">Overview</a>
-    <a href="/indicators">Indicators</a>
-    <a href="/admin">Admin</a>
-    <a href="/logs">Logs</a>
-  </nav>
-  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
-</header>
-<main id="main-content" role="main">
-  <div class="card" role="region" aria-label="System overview">
-    <h1>Threat Feed Aggregator</h1>
-    <p>Total indicators: <strong>{total}</strong> | Active: <strong>{active}</strong></p>
-    <p><a href="/indicators" aria-label="Open unified indicators view">Open /indicators</a></p>
-    <p>Exports: 
-      <a href="/indicators/txt">TXT</a> · <a href="/indicators/csv">CSV</a> · <a href="/indicators/json">JSON</a> · <a href="/indicators/fortigate">FortiGate</a> ·
-      <a href="/indicators/arcsight">ArcSight</a> · <a href="/indicators/elasticsearch">Elasticsearch</a> · <a href="/indicators/splunk">Splunk</a>
-    </p>
-  </div>
-
-  <div class="card" role="region" aria-label="Feed statistics">
-    <h2>Feed stats</h2>
-    <table role="table" aria-label="Feed statistics table">
-      <thead>
-        <tr role="row">
-          <th role="columnheader">Source</th>
-          <th role="columnheader">Source ID</th>
-          <th role="columnheader">Last status</th>
-          <th role="columnheader">Last update</th>
-        </tr>
-      </thead>
-      <tbody>
-        {feed_rows}
-      </tbody>
-    </table>
-  </div>
-</main>
-<script>
-  const themeKey = 'ioc-theme';
-  const preferredTheme = localStorage.getItem(themeKey);
-  if (preferredTheme === 'dark' || preferredTheme === 'light') {{
-    document.body.setAttribute('data-theme', preferredTheme);
-  }} else {{
-    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
-  }}
-  const themeToggle = document.getElementById('themeToggleGlobal');
-  if (themeToggle) {{
-    themeToggle.addEventListener('click', () => {{
-      const curr = document.body.getAttribute('data-theme') || 'light';
-      const next = curr === 'dark' ? 'light' : 'dark';
-      document.body.setAttribute('data-theme', next);
-      localStorage.setItem(themeKey, next);
-    }});
-  }}
-  {STARTUP_LOADER_SCRIPT}
-</script>
-</body>
-</html>
-"""
+    return render_template(
+        "legacy/index.html",
+        total=total,
+        active=active,
+        feeds=list(feeds),
+        startup_loader_style=STARTUP_LOADER_STYLE,
+        startup_loader_markup=STARTUP_LOADER_MARKUP,
+        startup_loader_script=STARTUP_LOADER_SCRIPT,
+    )
 
 def _render_indicators(
     rows: List[Indicator],
@@ -2139,11 +2058,9 @@ def _render_indicators(
         cls = {"WHITE":"b-white","GREEN":"b-green","AMBER":"b-amber","RED":"b-red"}.get(t,"b-green")
         return _badge(t, cls, f"TLP {t}")
 
-    rows_html = []
+    view_rows: List[Dict[str, Any]] = []
     for ind in rows:
         conf = int(ind.confidence or 0)
-        bar = f"<div class='confbar' role='progressbar' aria-valuenow='{conf}' aria-valuemin='0' aria-valuemax='100' aria-label='Confidence {conf} percent'><div class='confbar-in' style='width:{conf}%'></div></div>"
-        tags = " ".join([f"<span class='tag' aria-label='Tag {_esc(t)}'>{_esc(t)}</span>" for t in (ind.tags or [])][:10])
         misp_link = ""
         if ind.source == "misp" and ind.source_id:
             misp_link = f"<a href='/misp/event/{_esc(ind.source_id)}' aria-label='Open MISP event {ind.source_id}'>Event {ind.source_id}</a>"
@@ -2161,34 +2078,18 @@ def _render_indicators(
                 for fmt in ("txt","csv","json","fortigate")
             ])
 
-        rows_html.append(
-            f"<tr role='row'>"
-            f"<td role='cell'><code>{_esc(ind.value)}</code></td>"
-            f"<td role='cell'>{type_badge(ind.type)}</td>"
-            f"<td role='cell'>{bar}</td>"
-            f"<td role='cell'>{tlp_badge(ind.tlp)}</td>"
-            f"<td role='cell'>{_esc(ind.source)}</td>"
-            f"<td role='cell'>{exports}</td>"
-            f"<td role='cell'>{tags}</td>"
-            f"<td role='cell'>{misp_link}</td>"
-            f"</tr>"
+        view_rows.append(
+            {
+                "value": str(ind.value or ""),
+                "type_badge": type_badge(ind.type),
+                "confidence": conf,
+                "tlp_badge": tlp_badge(ind.tlp),
+                "source": str(ind.source or ""),
+                "exports": exports,
+                "tags": list((ind.tags or [])[:10]),
+                "misp_link": misp_link,
+            }
         )
-
-    table_rows = "".join(rows_html) if rows_html else "<tr role='row'><td role='cell' colspan='8'>No results</td></tr>"
-
-    # Search help panel
-    search_help = """<div id="search-syntax" role="region" aria-label="Search syntax help" class="help">
-  <strong>Search Syntax (Kibana-like):</strong>
-  <ul>
-    <li><code>value:192.168.*</code> - Match IP pattern</li>
-    <li><code>confidence:>70</code> - Confidence greater than 70</li>
-    <li><code>tlp:RED</code> - Exact TLP match</li>
-    <li><code>type:ip AND confidence:>50</code> - Combined conditions</li>
-    <li><code>tags:apt</code> - Contains tag</li>
-  </ul>
-  <p><strong>Available fields:</strong> value, type, confidence, tlp, tags, source</p>
-  <p><strong>Operators:</strong> AND, OR, NOT, :, &gt;, &lt;, &gt;=, &lt;=, *, ?</p>
-</div>"""
 
     active_query: Dict[str, str] = {}
     if q:
@@ -2220,192 +2121,37 @@ def _render_indicators(
 
     prev_link = _page_link(prev_offset)
     next_link = _page_link(next_offset)
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Indicators</title>
-  <style>
-    :root {{ color-scheme: light dark; }}
-    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }}
-    body[data-theme="light"] {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --muted: #64748b; --line: #dbe1ea; }}
-    body[data-theme="dark"] {{ --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --muted: #94a3b8; --line: #334155; }}
-    body:not([data-theme]) {{ --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --muted: #64748b; --line: #dbe1ea; }}
-    .topbar {{ display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }}
-    .topbar nav a {{ margin-right:.8rem; }}
-    .toolbar {{ display: grid; grid-template-columns: 1fr; gap: .75rem; margin-bottom: 1rem; }}
-    .filter-summary {{ position: sticky; top: 0; z-index: 2; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: .75rem; }}
-    .row {{ display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }}
-    input[type=text] {{ width: 100%; padding: .6rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }}
-    select {{ padding: .5rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }}
-    button {{ padding: .55rem .8rem; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }}
-    button:focus, a:focus, input:focus, select:focus {{ outline: 3px solid #000; outline-offset: 2px; }}
-    .card {{ border: 1px solid var(--line); border-radius: 16px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; background: var(--card); }}
-    table {{ width: 100%; border-collapse: collapse; }}
-    th, td {{ border-bottom: 1px solid var(--line); padding: 0.5rem; text-align: left; vertical-align: top; }}
-    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }}
-    .badge {{ display: inline-block; padding: .15rem .5rem; border-radius: 999px; border: 1px solid var(--line); font-size: .85rem; }}
-    .tag {{ display: inline-block; padding: .1rem .45rem; border-radius: 999px; border: 1px solid var(--line); font-size: .8rem; margin-right: .25rem; margin-bottom: .15rem; }}
-    .confbar {{ width: 140px; height: 12px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }}
-    .confbar-in {{ height: 100%; background: var(--muted); }}
-    .b-ip{{}} .b-domain{{}} .b-url{{}} .b-hash{{}} .b-email{{}} .b-other{{}}
-    .b-white{{}} .b-green{{}} .b-amber{{}} .b-red{{}}
-    .help {{ font-size: .95rem; }}
-    .subtle {{ color: var(--muted); font-size: .9rem; }}
-    .pager {{ display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin: .75rem 0; }}
-    .pager a, .pager span {{ padding:.35rem .6rem; border:1px solid var(--line); border-radius:8px; }}
-    .status-live {{ min-height: 1.2rem; }}
-    .skip-link {{ position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }}
-    .skip-link:focus {{ left: 1rem; top: 1rem; width: auto; height: auto; background: var(--card); padding: .5rem; border: 1px solid var(--line); }}
-    @media (prefers-reduced-motion: reduce) {{
-      * {{ scroll-behavior: auto !important; transition: none !important; animation: none !important; }}
-    }}
-    @media (max-width: 760px) {{
-      .row label {{ width: 100%; }}
-      th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8) {{ display: none; }}
-      .card {{ padding: .65rem; }}
-    }}
-{STARTUP_LOADER_STYLE}
-  </style>
-</head>
-<body>
-{STARTUP_LOADER_MARKUP}
-<a href="#main-content" class="skip-link">Skip to main content</a>
-<header class="topbar" id="globalTopbar">
-  <nav>
-    <a href="/">Overview</a>
-    <a href="/indicators">Indicators</a>
-    <a href="/admin">Admin</a>
-    <a href="/logs">Logs</a>
-  </nav>
-  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
-</header>
-<main id="main-content" role="main">
-  <div class="card">
-    <h1>Unified Indicators</h1>
-    <p class="subtle">
-      <a href="/indicators" aria-label="Reset filters and show unfiltered results">Reset filters</a>
-    </p>
-    <div class="filter-summary" role="status" aria-live="polite">
-      {"<p><strong>Active filters:</strong> yes</p>" if has_filters else "<p class='subtle'>Active filters: none</p>"}
-      <p class="subtle">Results: <strong>{total_count}</strong> | Page <strong>{page}</strong> of <strong>{total_pages}</strong> | Limit <strong>{limit}</strong></p>
-    </div>
-    <form method="get" action="/indicators" class="toolbar" aria-label="Indicator search and filters">
-      <label for="searchBox"><strong>Search</strong></label>
-      <input type="text" id="searchBox" name="q" value="{_esc(q or '')}"
-             aria-label="Search indicators using Kibana syntax"
-             aria-describedby="search-syntax"
-             placeholder="e.g. value:192.168.* AND confidence:>70" />
-      <div class="row">
-        <label for="typeSel">Type</label>
-        <select id="typeSel" name="type" aria-label="Filter by indicator type">
-          {"".join([f"<option value='{t}' {'selected' if type_filter==t else ''}>{t}</option>" for t in ["all","ip","domain","url","hash","email"]])}
-        </select>
-
-        <label for="tlpSel">TLP</label>
-        <select id="tlpSel" name="tlp" aria-label="Filter by TLP level">
-          {"".join([f"<option value='{t}' {'selected' if tlp==t else ''}>{t}</option>" for t in ["all","WHITE","GREEN","AMBER","RED"]])}
-        </select>
-
-        <label for="srcSel">Source</label>
-        <select id="srcSel" name="source" aria-label="Filter by source">
-          {"".join([f"<option value='{_esc(s)}' {'selected' if source==s else ''}>{_esc(s)}</option>" for s in source_options])}
-        </select>
-
-        <label for="minConf">Min conf</label>
-        <select id="minConf" name="min_conf" aria-label="Minimum confidence">
-          {"".join([f"<option value='{n}' {'selected' if (min_conf==n) else ''}>{n}</option>" for n in ["",0,25,50,60,70,80,90]])}
-        </select>
-
-        <label for="maxConf">Max conf</label>
-        <select id="maxConf" name="max_conf" aria-label="Maximum confidence">
-          {"".join([f"<option value='{n}' {'selected' if (max_conf==n) else ''}>{n}</option>" for n in ["",100,90,80,70,60,50,25]])}
-        </select>
-
-        <button type="submit" aria-label="Apply search and filters">Apply</button>
-        <a href="/indicators" aria-label="Clear search and filters">Clear</a>
-        <a href="/indicators" aria-label="Return to unfiltered indicators view">Back to all indicators</a>
-      </div>
-    </form>
-
-    {search_help}
-
-    <p>Quick exports:
-      <a href="/indicators/txt{_esc(filter_suffix)}" aria-label="Export current filtered results as TXT">TXT</a> ·
-      <a href="/indicators/csv{_esc(filter_suffix)}" aria-label="Export current filtered results as CSV">CSV</a> ·
-      <a href="/indicators/json{_esc(filter_suffix)}" aria-label="Export current filtered results as JSON">JSON</a> ·
-      <a href="/indicators/fortigate{_esc(filter_suffix)}" aria-label="Export current filtered results as FortiGate list">FortiGate</a>
-    </p>
-  </div>
-
-  <div class="card">
-    <div class="pager" aria-label="Pagination controls">
-      <a href="{_esc(prev_link)}" {"aria-disabled='true'" if offset <= 0 else ""}>Prev</a>
-      <span>Page {page}/{total_pages}</span>
-      <a href="{_esc(next_link)}" {"aria-disabled='true'" if next_offset >= total_count else ""}>Next</a>
-    </div>
-    <table role="table" aria-label="Threat indicators">
-      <thead>
-        <tr role="row">
-          <th role="columnheader" aria-sort="none">Indicator</th>
-          <th role="columnheader" aria-sort="none">Type</th>
-          <th role="columnheader" aria-sort="none">Confidence</th>
-          <th role="columnheader" aria-sort="none">TLP</th>
-          <th role="columnheader" aria-sort="none">Source</th>
-          <th role="columnheader" aria-sort="none">Formats</th>
-          <th role="columnheader" aria-sort="none">Tags</th>
-          <th role="columnheader" aria-sort="none">MISP Event</th>
-        </tr>
-      </thead>
-      <tbody>
-        {table_rows}
-      </tbody>
-    </table>
-    <div class="pager" aria-label="Pagination controls (bottom)">
-      <a href="{_esc(prev_link)}" {"aria-disabled='true'" if offset <= 0 else ""}>Prev</a>
-      <span>Page {page}/{total_pages}</span>
-      <a href="{_esc(next_link)}" {"aria-disabled='true'" if next_offset >= total_count else ""}>Next</a>
-    </div>
-  </div>
-</main>
-
-<script>
-  const themeKey = 'ioc-theme';
-  const preferredTheme = localStorage.getItem(themeKey);
-  if (preferredTheme === 'dark' || preferredTheme === 'light') {{
-    document.body.setAttribute('data-theme', preferredTheme);
-  }} else {{
-    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
-  }}
-
-  const themeToggle = document.getElementById('themeToggleGlobal');
-  if (themeToggle) {{
-    themeToggle.addEventListener('click', () => {{
-      const curr = document.body.getAttribute('data-theme') || 'light';
-      const next = curr === 'dark' ? 'light' : 'dark';
-      document.body.setAttribute('data-theme', next);
-      localStorage.setItem(themeKey, next);
-    }});
-  }}
-
-  const searchBox = document.getElementById('searchBox');
-  document.addEventListener('keydown', (e) => {{
-    if (e.key === '/') {{
-      e.preventDefault();
-      searchBox.focus();
-    }}
-    if (e.key === 'Escape') {{
-      if (document.activeElement === searchBox) {{
-        searchBox.value = '';
-        searchBox.blur();
-      }}
-    }}
-  }});
-  {STARTUP_LOADER_SCRIPT}
-</script>
-</body>
-</html>
-"""
+    min_conf_options = [{"value": "", "label": "", "match_value": None}] + [
+        {"value": str(n), "label": str(n), "match_value": n} for n in [0, 25, 50, 60, 70, 80, 90]
+    ]
+    max_conf_options = [{"value": "", "label": "", "match_value": None}] + [
+        {"value": str(n), "label": str(n), "match_value": n} for n in [100, 90, 80, 70, 60, 50, 25]
+    ]
+    return render_template(
+        "legacy/indicators.html",
+        q=q,
+        type_filter=type_filter,
+        tlp=tlp,
+        source=source,
+        min_conf=min_conf,
+        max_conf=max_conf,
+        limit=limit,
+        offset=offset,
+        total_count=total_count,
+        source_options=source_options,
+        type_options=["all", "ip", "domain", "url", "hash", "email"],
+        tlp_options=["all", "WHITE", "GREEN", "AMBER", "RED"],
+        min_conf_options=min_conf_options,
+        max_conf_options=max_conf_options,
+        has_filters=has_filters,
+        page=page,
+        total_pages=total_pages,
+        next_offset=next_offset,
+        prev_link=prev_link,
+        next_link=next_link,
+        filter_suffix=filter_suffix,
+        view_rows=view_rows,
+        startup_loader_style=STARTUP_LOADER_STYLE,
+        startup_loader_markup=STARTUP_LOADER_MARKUP,
+        startup_loader_script=STARTUP_LOADER_SCRIPT,
+    )

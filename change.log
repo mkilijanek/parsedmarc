@@ -620,3 +620,35 @@
 [next planned implementation steps]
 1. Commit and push the extracted helper slice.
 2. Target the biggest remaining HTML rendering block for template extraction in the next `1.5.0` slice.
+
+2026-04-07
+
+[current stage]
+- `1.5.0` template extraction for legacy public views.
+
+[actions performed]
+- Added [app/templates/legacy/index.html](/home/kili/Repo/ioc-service/app/templates/legacy/index.html) for the overview page previously rendered inline from `app/main.py`.
+- Added [app/templates/legacy/indicators.html](/home/kili/Repo/ioc-service/app/templates/legacy/indicators.html) for the legacy `/indicators` HTML view.
+- Reworked [app/main.py](/home/kili/Repo/ioc-service/app/main.py) so `_render_index(...)` and `_render_indicators(...)` now use `render_template(...)` instead of giant f-strings.
+- Kept the startup loader, quick export links, paging, and keyboard shortcuts intact while moving layout concerns into templates.
+- Fixed one HTML-compat regression after the first run by restoring single-quoted `<option value='...'>` markup expected by existing UI tests.
+
+[important commands]
+- `find app/templates -maxdepth 2 -type f | sort`
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py`
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_ui_issues.py::test_source_dropdown_shows_distinct_sources tests/test_api.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py`
+
+[observations]
+- This slice dropped [app/main.py](/home/kili/Repo/ioc-service/app/main.py) from `2411` to `2157` lines.
+- Public-view template extraction is lower-risk than admin template extraction because it avoids the denser form-heavy `/admin` surface while still removing a large block of inline HTML.
+
+[mistakes and lessons]
+- The first Jinja conversion changed `<option value='...'>` into double-quoted attributes. Functionally nothing broke, but an existing UI regression test asserted the original markup style and failed.
+- Lesson: for legacy HTML migrations, preserve stable rendered fragments when tests or downstream consumers implicitly depend on exact markup, not just semantics.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_ui_issues.py::test_source_dropdown_shows_distinct_sources tests/test_api.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py` -> `254 passed`
+
+[next planned implementation steps]
+1. Commit and push the legacy template extraction slice.
+2. Continue `1.5.0` by targeting the next large HTML block, likely the admin/configure views or extracting more rendering helpers out of `app/main.py`.
