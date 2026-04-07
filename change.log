@@ -593,3 +593,30 @@
 [result]
 - `app/routes/ops.py` no longer carries the operational route implementations directly.
 - The route surface stayed stable while the file was reduced to a thin delegating entrypoint.
+
+2026-04-07
+
+[current stage]
+- `1.5.0` follow-up: move shared feed-ops helpers out of `app/main.py`.
+
+[actions performed]
+- Identified the helper cluster still living in [app/main.py](/home/kili/Repo/ioc-service/app/main.py) but used primarily by the split ops modules.
+- Added [app/services/feed_ops.py](/home/kili/Repo/ioc-service/app/services/feed_ops.py) with feed status, filtering, metric-window, and percentile helpers.
+- Rewired [app/main.py](/home/kili/Repo/ioc-service/app/main.py) to import those helpers and pass them into the ops route registration path.
+- Replaced request-bound helpers in the deps map with thin lambdas around `request.args`, keeping the external route contract intact.
+
+[important commands]
+- `rg -n '_apply_feed_filters_and_sort|_parse_feed_table_params|_resolve_metrics_window_hours|_percentile|_feed_operational_status|_feed_last_error_at' app/main.py`
+- `wc -l app/main.py app/services/feed_ops.py`
+- `git diff --stat`
+
+[observations]
+- This slice removed another large block from `app/main.py` without changing any endpoint ownership. It is the right order of operations before touching templates or broader DI cleanup.
+- `app/main.py` dropped from `2571` to `2411` lines in this step; the route split earlier reduced operational sprawl, and this step now cuts supporting helper debt.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py` -> `253 passed`
+
+[next planned implementation steps]
+1. Commit and push the extracted helper slice.
+2. Target the biggest remaining HTML rendering block for template extraction in the next `1.5.0` slice.

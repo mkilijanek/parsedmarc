@@ -57,6 +57,14 @@ from .services.common import (
     sum_update_result,
     redact_proxy_credentials,
 )
+from .services.feed_ops import (
+    apply_feed_filters_and_sort,
+    feed_last_error_at,
+    feed_operational_status,
+    parse_feed_table_params,
+    percentile,
+    resolve_metrics_window_hours,
+)
 from .routes import register_auth_routes, register_health_blueprint, register_logs_routes, register_ops_routes, register_public_routes
 
 from .metrics import (
@@ -1069,27 +1077,6 @@ def create_app() -> Flask:
                 rows.append(row)
         return {r.feed_source_id: r for r in rows}
 
-    def _feed_operational_status(*, enabled: bool, ready: bool, latest_run: FeedRun | None) -> str:
-        if not enabled:
-            return "DISABLED"
-        if not ready:
-            return "NOT_CONFIGURED"
-        status = str(getattr(latest_run, "status", "") or "").lower()
-        if status in {"success"}:
-            return "OK"
-        if status in {"failed", "cancelled"}:
-            return "ERROR"
-        if status in {"queued", "running", "cancel_requested"}:
-            return "WARNING"
-        return "WARNING"
-
-    def _feed_last_error_at(latest_run: FeedRun | None, feed_stats_row: FeedStats | None) -> datetime | None:
-        if latest_run is not None and str(latest_run.status or "").lower() in {"failed", "cancelled"}:
-            return latest_run.finished_at or latest_run.started_at
-        if feed_stats_row is not None and feed_stats_row.last_fetch_error:
-            return feed_stats_row.last_update
-        return None
-
     def _build_feed_items(db: Session) -> List[Dict[str, Any]]:
         feeds = _read_feed_rows(db)
         source_ids = [f.source_id for f in feeds]
@@ -1101,8 +1088,8 @@ def create_app() -> Flask:
             state = _read_feed_config_state(db, feed)
             latest = latest_runs.get(feed.source_id)
             stats_row = stats_map.get(feed.source_id)
-            status = _feed_operational_status(enabled=bool(state["enabled"]), ready=bool(state["ready"]), latest_run=latest)
-            last_error_at = _feed_last_error_at(latest, stats_row)
+            status = feed_operational_status(enabled=bool(state["enabled"]), ready=bool(state["ready"]), latest_run=latest)
+            last_error_at = feed_last_error_at(latest, stats_row)
             fetched_count = int(getattr(latest, "fetched_count", 0) or 0)
             row = {
                 "source_id": feed.source_id,
@@ -1120,153 +1107,6 @@ def create_app() -> Flask:
             }
             items.append(row)
         return items
-
-    def _apply_feed_filters_and_sort(
-        items: List[Dict[str, Any]],
-        *,
-        status_filter: str,
-        datasource: str,
-        configured: str,
-        query_text: str,
-        problems_only: bool,
-        sort_by: str,
-        sort_order: str,
-    ) -> List[Dict[str, Any]]:
-        source_types = {str(item["source_type"]) for item in items}
-        status_filter = (status_filter or "").strip().upper()
-        datasource = (datasource or "").strip().lower()
-        configured = (configured or "").strip().lower()
-        query_text = (query_text or "").strip().lower()
-        problems_only = bool(problems_only)
-
-        filtered = items
-        if status_filter and status_filter != "ALL":
-            filtered = [item for item in filtered if str(item["status"]) == status_filter]
-        if datasource and datasource not in {"all", ""} and datasource in source_types:
-            filtered = [item for item in filtered if str(item["source_type"]).lower() == datasource]
-        if configured == "configured":
-            filtered = [item for item in filtered if bool(item["ready"])]
-        elif configured == "not_configured":
-            filtered = [item for item in filtered if not bool(item["ready"])]
-        if query_text:
-            filtered = [
-                item
-                for item in filtered
-                if query_text in str(item["display_name"]).lower()
-                or query_text in str(item["source_id"]).lower()
-                or query_text in str(item["source_type"]).lower()
-            ]
-        if problems_only:
-            filtered = [item for item in filtered if str(item["status"]) in {"ERROR", "WARNING"}]
-
-        def _sort_dt_key(value: Any) -> float:
-            if isinstance(value, datetime):
-                return value.timestamp()
-            return 0.0
-
-        status_rank = {"ERROR": 5, "WARNING": 4, "NOT_CONFIGURED": 3, "DISABLED": 2, "OK": 1}
-        sort_by = (sort_by or "source").strip().lower()
-        if sort_by not in {"status", "last_run_at", "last_error_at", "fetched_count", "source"}:
-            sort_by = "source"
-        reverse = (sort_order or "asc").strip().lower() == "desc"
-        if sort_by == "status":
-            filtered = sorted(
-                filtered,
-                key=lambda item: (
-                    status_rank.get(str(item["status"]), 0),
-                    str(item["source_id"]).lower(),
-                ),
-                reverse=reverse,
-            )
-        elif sort_by == "last_run_at":
-            filtered = sorted(
-                filtered,
-                key=lambda item: (
-                    _sort_dt_key(item.get("last_run_at")),
-                    str(item["source_id"]).lower(),
-                ),
-                reverse=reverse,
-            )
-        elif sort_by == "last_error_at":
-            filtered = sorted(
-                filtered,
-                key=lambda item: (
-                    _sort_dt_key(item.get("last_error_at")),
-                    str(item["source_id"]).lower(),
-                ),
-                reverse=reverse,
-            )
-        elif sort_by == "fetched_count":
-            filtered = sorted(
-                filtered,
-                key=lambda item: (
-                    int(item.get("fetched_count", 0)),
-                    str(item["source_id"]).lower(),
-                ),
-                reverse=reverse,
-            )
-        else:
-            filtered = sorted(
-                filtered,
-                key=lambda item: (str(item["source_id"]).lower(),),
-                reverse=reverse,
-            )
-        return filtered
-
-    def _parse_feed_table_params() -> Dict[str, Any]:
-        def _int_arg(name: str, default: int, minimum: int, maximum: int) -> int:
-            try:
-                value = int(request.args.get(name, str(default)))
-            except ValueError:
-                value = default
-            return max(minimum, min(maximum, value))
-
-        return {
-            "limit": _int_arg("feeds_limit", 25, 1, 100),
-            "offset": _int_arg("feeds_offset", 0, 0, 1000000),
-            "sort": (request.args.get("feeds_sort", "source") or "source").strip().lower(),
-            "order": (request.args.get("feeds_order", "asc") or "asc").strip().lower(),
-            "status": (request.args.get("feeds_status", "all") or "all").strip().upper(),
-            "datasource": (request.args.get("feeds_datasource", "all") or "all").strip().lower(),
-            "configured": (request.args.get("feeds_configured", "all") or "all").strip().lower(),
-            "q": (request.args.get("feeds_q", "") or "").strip(),
-            "problems_only": (request.args.get("feeds_problems_only", "0") or "0").strip().lower() in {"1", "true", "yes", "on"},
-        }
-
-    def _resolve_metrics_window_hours() -> tuple[int, str]:
-        window = (request.args.get("window") or "").strip().lower()
-        if window in {"24h", "24"}:
-            return 24, "24h"
-        if window in {"7d", "168h", "168"}:
-            return 24 * 7, "7d"
-        if window in {"30d", "720h", "720"}:
-            return 24 * 30, "30d"
-        try:
-            hours = int(request.args.get("hours", "24"))
-        except ValueError:
-            hours = 24
-        hours = max(1, min(24 * 30, hours))
-        if hours == 24:
-            return 24, "24h"
-        if hours == 24 * 7:
-            return 24 * 7, "7d"
-        if hours == 24 * 30:
-            return 24 * 30, "30d"
-        return hours, f"{hours}h"
-
-    def _percentile(values: List[int], p: float) -> float | None:
-        if not values:
-            return None
-        vals = sorted(values)
-        if len(vals) == 1:
-            return float(vals[0])
-        rank = (max(0.0, min(100.0, p)) / 100.0) * (len(vals) - 1)
-        low = int(rank)
-        high = min(len(vals) - 1, low + 1)
-        if low == high:
-            return float(vals[low])
-        weight = rank - low
-        return round((vals[low] * (1.0 - weight)) + (vals[high] * weight), 2)
 
     def _admin_dangerous_ops_enabled() -> bool:
         return bool(cfg.ADMIN_DANGEROUS_OPS)
@@ -1733,7 +1573,7 @@ def create_app() -> Flask:
             "_admin_dangerous_ops_enabled": _admin_dangerous_ops_enabled,
             "_admin_token_authorized": _admin_token_authorized,
             "_app_log": _app_log,
-            "_apply_feed_filters_and_sort": _apply_feed_filters_and_sort,
+            "_apply_feed_filters_and_sort": apply_feed_filters_and_sort,
             "_audit": _audit,
             "_build_feed_items": _build_feed_items,
             "_db": _db,
@@ -1746,11 +1586,11 @@ def create_app() -> Flask:
             "_get_feed_field_value": _get_feed_field_value,
             "_get_setting": _get_setting,
             "_mask_secret": _mask_secret,
-            "_parse_feed_table_params": _parse_feed_table_params,
-            "_percentile": _percentile,
+            "_parse_feed_table_params": lambda: parse_feed_table_params(request.args),
+            "_percentile": percentile,
             "_read_feed_config_state": _read_feed_config_state,
             "_read_feed_rows": _read_feed_rows,
-            "_resolve_metrics_window_hours": _resolve_metrics_window_hours,
+            "_resolve_metrics_window_hours": lambda: resolve_metrics_window_hours(request.args),
             "_run_proxy_test": _run_proxy_test,
             "_set_setting": _set_setting,
             "_source_templates": _source_templates,
