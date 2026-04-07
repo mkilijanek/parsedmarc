@@ -682,3 +682,24 @@
 [next planned implementation steps]
 1. Commit and push the renderer-module extraction slice.
 2. Continue `1.5.0` with either dead-code cleanup in `app/main.py` or template extraction on the admin/configure surface.
+
+2026-04-07
+
+[current stage]
+- `1.5.0` dead-code cleanup after renderer extraction.
+
+[actions performed]
+- Removed unused public-view startup-loader constants and `_badge(...)` from [app/main.py](/home/kili/Repo/ioc-service/app/main.py) after the renderer implementation had already moved to [app/views/legacy_public.py](/home/kili/Repo/ioc-service/app/views/legacy_public.py).
+- Kept `_esc(...)` in place because it is still used by the error path and admin-related rendering.
+
+[observations]
+- [app/main.py](/home/kili/Repo/ioc-service/app/main.py) is now down to `1992` lines.
+- This was a safe follow-up because the renderers were already delegated; the cleanup only removed code that no longer had call sites in `main`.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py` -> `253 passed`
+- `PYTHONPATH=. .venv/bin/python -m py_compile app/main.py app/views/legacy_public.py` -> success
+
+[next planned implementation steps]
+1. Commit and push the dead-code cleanup slice.
+2. Continue `1.5.0` by attacking the admin/configure HTML surface or extracting more operational UI rendering out of route modules.
