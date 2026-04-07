@@ -44,3 +44,13 @@ def test_chaos_check_uses_healthz_and_readyz_contracts():
     assert "/healthz" in script
     assert "/readyz" in script
     assert '${BASE_URL}/health"' not in script
+
+
+def test_ops_routes_delegate_to_split_modules():
+    ops = (ROOT / "app" / "routes" / "ops.py").read_text()
+    assert "from .ops_admin import register_ops_admin_routes" in ops
+    assert "from .ops_api import register_ops_api_routes" in ops
+    assert "register_ops_admin_routes(" in ops
+    assert "register_ops_api_routes(" in ops
+    assert '@app.get("/admin")' not in ops
+    assert '@app.post("/api/sync")' not in ops

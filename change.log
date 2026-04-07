@@ -558,3 +558,38 @@
 
 [result]
 - `1.4.2` is now closed end-to-end: code, tests, tag, GitHub release, and milestone state are aligned.
+
+2026-04-07
+
+[current stage]
+- `1.5.0` modularization slice: split oversized ops routes without changing endpoint contracts.
+
+[actions performed]
+- Re-scanned [app/routes/ops.py](/home/kili/Repo/ioc-service/app/routes/ops.py) to map route boundaries before editing.
+- Extracted admin/config/feed-management routes into [app/routes/ops_admin.py](/home/kili/Repo/ioc-service/app/routes/ops_admin.py).
+- Extracted sync/job/API routes into [app/routes/ops_api.py](/home/kili/Repo/ioc-service/app/routes/ops_api.py).
+- Replaced [app/routes/ops.py](/home/kili/Repo/ioc-service/app/routes/ops.py) with a thin delegating wrapper.
+- Added a structure regression test in [tests/test_ops_contracts.py](/home/kili/Repo/ioc-service/tests/test_ops_contracts.py) so route decorators do not creep back into the wrapper.
+
+[important commands]
+- `rg -n '^\\s*@app\\.(get|post)\\(' app/routes/ops.py`
+- `sed -n '1,220p' app/routes/ops.py`
+- `sed -n '220,1095p' app/routes/ops.py`
+- `sed -n '1090,1596p' app/routes/ops.py`
+
+[observations]
+- The safest first slice for `1.5.0` is module extraction with the existing `deps` dict intact. It reduces file size and merge pressure now, without coupling this step to a larger DI refactor.
+- `/admin/sync` and `/admin/sync-jobs/*` are operationally closer to the sync/API surface than the feed/settings UI, so they were grouped with the API module even though they keep `/admin` URLs.
+
+[next planned implementation steps]
+1. Run focused regression tests covering admin UI, security, and route structure.
+2. If green, commit and push this `1.5.0` slice.
+3. Continue shrinking `app/main.py` and move inline HTML toward templates in the next slice.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py` -> `92 passed`
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py tests/test_ops_contracts.py` -> `168 passed`
+
+[result]
+- `app/routes/ops.py` no longer carries the operational route implementations directly.
+- The route surface stayed stable while the file was reduced to a thin delegating entrypoint.
