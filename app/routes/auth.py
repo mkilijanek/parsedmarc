@@ -129,6 +129,8 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         session.clear()
         session.permanent = True
         session["admin_authenticated"] = True
+        session["admin_user_id"] = "admin"
+        session["admin_role"] = "admin"
         session["admin_csrf_token"] = secrets.token_urlsafe(32)
         return redirect(next_url if next_url.startswith("/") else "/admin")
 

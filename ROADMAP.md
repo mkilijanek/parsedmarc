@@ -27,6 +27,18 @@ Known gaps filled in the local roadmap:
 - Authentication strategy is normalized as: session-based admin/web auth with RBAC, plus API token/JWT style auth for non-UI clients as part of the versioned API surface.
 - The adapter milestone includes registry/discovery, capability metadata, contract testing, and runtime-hardening work that was spread across multiple prompt sections.
 
+## Historical Tracking State
+
+- GitHub milestones closed on 2026-04-07 as already delivered historical work:
+  - `1.1.x`
+  - `1.2.1`
+  - `1.3.0`
+  - `1.4.0`
+- Historical GitHub releases created on 2026-04-07 to match already existing version tags:
+  - `1.4.0`
+  - `1.4.1`
+- `1.4.2+` remain active implementation milestones.
+
 ---
 
 ## Milestone 1.2.1 — Stability & Non-Fatal Dependencies

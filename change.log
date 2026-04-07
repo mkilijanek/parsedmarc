@@ -373,3 +373,149 @@
 1. Commit and push the current CSRF hardening slice.
 2. Fast-forward `dev` and `kili` again so all active branches stay aligned.
 3. Return to the remaining `M1.4.2` backlog: RBAC depth and audit logging coverage.
+
+2026-04-07
+
+[current stage]
+- Fourth `M1.4.2` implementation slice.
+- Goal: close audit-trail gaps on admin actions so security hardening is not limited to access control and CSRF.
+
+[actions performed]
+- Reviewed current admin action coverage and confirmed `_audit(...)` existed only on a subset of state-changing admin endpoints.
+- Updated admin login flow to store a stable session user identifier (`admin`) after successful token-based login.
+- Updated the shared `_audit(...)` helper to persist `user_id` from the authenticated admin session instead of always storing `NULL`.
+- Added missing audit entries for:
+  - feed add,
+  - feed configuration save,
+  - feed test connection,
+  - feed delete,
+  - sync-job retry,
+  - sync-job cancel.
+- Added focused regression tests for admin audit persistence around feed add, feed configure save, sync retry, sync cancel, and user attribution.
+
+[important commands]
+- `sed -n '1,320p' app/main.py`
+- `sed -n '700,1245p' app/routes/ops.py`
+- `rg -n "TestAudit|audit|admin_feed|sync_job|auth/login|admin_authenticated|csrf" tests/test_security.py tests/test_ui_issues.py tests/conftest.py`
+
+[observations]
+- The repo already had an `audit_log` model and a reusable helper, so the missing part was endpoint coverage and actor attribution rather than a missing persistence mechanism.
+- This is a good example of a “half-finished security feature”: the table and helper existed, but operationally important admin actions still had silent gaps.
+
+[mistakes and lessons]
+- Existing audit tests were too generic to protect admin-action coverage. For security-sensitive behavior, broad “some audit row exists” tests are not enough; assert the concrete action name and actor whenever practical.
+
+[next planned implementation steps]
+1. Run the focused admin/security tests and fix any coverage regressions from the new audit hooks.
+2. Commit and push this audit slice on `main`.
+3. Fast-forward `dev` and `kili` again after the `main` push succeeds.
+
+2026-04-07
+
+[current stage]
+- Workflow hardening for milestone delivery.
+
+[actions performed]
+- Added an explicit repository rule to `AGENTS.md`: every fully completed milestone must end with a release.
+- Clarified that release execution comes after milestone validation and final target-branch commit, with the release action also recorded in `change.log`.
+
+[observations]
+- This closes an operational gap in the repo workflow: earlier milestone work could be “done” from a code perspective without an equally explicit release step.
+- The new rule matters most once `M1.4.2` is actually closed; the current slice is still partial, so no release should be cut yet.
+
+[next planned implementation steps]
+1. Finish the current audit-logging slice and validate it.
+2. Continue closing the remaining `M1.4.2` scope.
+3. When `M1.4.2` reaches real DoD, create a release instead of stopping at commit/push.
+
+2026-04-07
+
+[current stage]
+- Historical milestone/release cleanup for already delivered work.
+
+[actions performed]
+- Reviewed GitHub milestone state against local roadmap and release/tag history.
+- Confirmed that several historical milestones were still open on GitHub despite already being delivered and reflected as done in local planning.
+- Confirmed that tags `1.4.0` and `1.4.1` existed locally, while matching GitHub releases were still missing.
+- Recorded the intended cleanup in `ROADMAP.md` and `MILESTONES.md` before applying GitHub-side changes.
+
+[important commands]
+- `gh api repos/mkilijanek/ioc-service/milestones?state=all`
+- `git tag --list | sort -V`
+- `gh release list --limit 30`
+- `gh issue view 119 --json number,title,state,milestone,labels,body,url`
+
+[observations]
+- GitHub had drifted from the repo's own historical accounting: milestone state, open issue state, and release history were no longer aligned.
+- `1.4.0` had one stale open issue (`#119`) even though the roadmap already marked the modularization milestone as done.
+
+[next planned implementation steps]
+1. Close the stale `1.4.0` issue if its scope is already delivered.
+2. Close the delivered historical GitHub milestones.
+3. Create missing releases for delivered tags `1.4.0` and `1.4.1`.
+
+[follow-up completed]
+- Closed GitHub issue `#119` as delivered historical `1.4.0` scope.
+- Closed GitHub milestones:
+  - `1.1.x`
+  - `1.2.1`
+  - `1.3.0`
+  - `1.4.0`
+- Created missing GitHub releases for existing tags:
+  - `1.4.0`
+  - `1.4.1`
+
+[verification]
+- `gh api repos/mkilijanek/ioc-service/milestones?state=all | jq '[.[] | {number,title,state,open_issues,closed_issues}]'`
+- `gh issue view 119 --json number,state,milestone,url`
+- `gh release view 1.4.0 --json tagName,name,publishedAt,url`
+- `gh release view 1.4.1 --json tagName,name,publishedAt,url`
+
+[result]
+- Historical milestone tracking and GitHub release history are now aligned with the delivered state recorded in the repo roadmap.
+
+2026-04-07
+
+[current stage]
+- Final `1.4.2` closure pass.
+
+[actions performed]
+- Added an explicit session role marker (`admin_role=admin`) at admin login time.
+- Added a regression test proving the authenticated admin session now carries the baseline role.
+- Added `docs/access-control.md` as the formal access-control policy baseline for `1.4.2`.
+- Linked the access-control document from `docs/README.md`.
+- Updated `SECURITY.md` to reflect the current `1.4.x` support line and the secured admin surface.
+- Clarified `ADMIN_API_TOKEN` intent in `.env.example`.
+
+[observations]
+- The missing piece for milestone closure was no longer code-path protection; it was the lack of an explicit, reviewable policy document describing the current authorization boundary.
+- This keeps `1.4.2` honest: the repo now has both implementation and a minimal operational contract for admin access.
+
+[next planned implementation steps]
+1. Run the focused `1.4.2` test set and then the full suite.
+2. Mark `1.4.2` as done in roadmap/milestones if tests are green.
+3. Commit, push, create release `1.4.2`, and close the GitHub milestone.
+
+2026-04-07
+
+[current stage]
+- Release metadata cleanup after retrospective GitHub releases.
+
+[actions performed]
+- Investigated malformed GitHub release descriptions for `1.4.0` and `1.4.1`.
+- Confirmed the body contained literal `\\n` sequences instead of real newlines.
+- Replaced both release bodies using `gh release edit --notes-file ...` with actual multiline markdown files.
+
+[important commands]
+- `gh release view 1.4.0 --json body,url`
+- `gh release view 1.4.1 --json body,url`
+- `gh release edit 1.4.0 --notes-file /tmp/release-1.4.0-notes.md`
+- `gh release edit 1.4.1 --notes-file /tmp/release-1.4.1-notes.md`
+
+[mistakes and lessons]
+- I originally created the retrospective releases with `gh release create --notes "..."` and embedded `\\n` escapes inside a shell string. GitHub stored those characters literally instead of converting them into line breaks.
+- For future releases, do not rely on escaped newline sequences inside shell strings for release notes. Use one of:
+  - `--notes-file <path>` with a prepared markdown file,
+  - a here-doc piped into a file first,
+  - or another workflow that passes real multiline text, not escaped sequences.
+- This is the same class of failure as earlier shell-escaping mistakes: when formatting matters, prefer file-backed input over inline quoted strings.

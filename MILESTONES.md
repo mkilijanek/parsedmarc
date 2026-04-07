@@ -193,3 +193,7 @@ Definition of done:
 - These milestones are mirrored into GitHub milestones for issue-level tracking.
 - Existing issues should be reassigned to the new version milestones as they are refined.
 - New implementation issues should reference both the version milestone and the assessment problem they address.
+- Historical cleanup completed on 2026-04-07:
+  - closed GitHub milestones: `1.1.x`, `1.2.1`, `1.3.0`, `1.4.0`
+  - created missing GitHub releases for existing tags: `1.4.0`, `1.4.1`
+  - left `1.4.2`, `1.5.0`, `1.5.1`, `1.6.0`, `1.6.1`, `1.7.0` open because they are not yet fully delivered

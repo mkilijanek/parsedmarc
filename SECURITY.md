@@ -1,7 +1,7 @@
 # Security Policy
 
 ## Supported Versions
-Currently supporting release line `1.1.x`.
+Currently supporting release line `1.4.x`.
 
 ## Reporting Vulnerabilities
 Create a private security report in GitHub Security Advisories for this repository.
@@ -14,6 +14,8 @@ If unavailable, open a private channel with repository maintainers and include:
 ## Security Features
 - TLS 1.2+ only
 - Rate limiting
+- Session-protected admin surface
+- Admin audit logging with source IP capture
 - SQL injection prevention
 - XSS protection
 - CSRF protection
@@ -29,3 +31,4 @@ If unavailable, open a private channel with repository maintainers and include:
 5. Monitor logs
 6. Backup data
 7. Run DB migrations before restarting app/worker on upgrades
+8. Provision `SECRET_KEY` and `ADMIN_API_TOKEN` explicitly in deployment secrets

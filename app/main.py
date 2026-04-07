@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 from typing import Any, Dict, List, Optional, Tuple
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from flask import Flask, Response, jsonify, request, make_response, redirect, url_for, stream_with_context, send_file
+from flask import Flask, Response, jsonify, request, make_response, redirect, session, url_for, stream_with_context, send_file
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.exceptions import HTTPException
@@ -239,24 +239,34 @@ def create_app() -> Flask:
             return get_session(read_only=True)
         return get_session(read_only=False)
 
-    def _audit(action: str, entity_type: str | None = None, entity_id: int | None = None, metadata: dict | None = None) -> None:
-        db = _db()
+    def _audit(
+        action: str,
+        entity_type: str | None = None,
+        entity_id: int | None = None,
+        metadata: dict | None = None,
+        *,
+        db: Session | None = None,
+    ) -> None:
+        owns_session = db is None
+        db = db or _db()
         try:
             # SECURITY: Use safe IP extraction that respects proxy configuration
             client_ip = get_client_ip()
+            user_id = str(session.get("admin_user_id") or "").strip() or None
             db.add(AuditLog(
                 action=action,
                 entity_type=entity_type,
                 entity_id=entity_id,
-                user_id=None,
+                user_id=user_id,
                 ip_address=client_ip,
-                metadata=metadata or {},
+                metadata_=metadata or {},
             ))
             db.commit()
         except Exception:
             db.rollback()
         finally:
-            db.close()
+            if owns_session:
+                db.close()
 
     def _cache_key(prefix: str, **parts: Any) -> str:
         # stable ordering

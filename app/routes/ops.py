@@ -607,7 +607,7 @@ def register_ops_routes(
 
             db.commit()
             _write_proxy_env(db)
-            _audit("admin_config_update", "app_settings", None, {"updated": True})
+            _audit("admin_config_update", "app_settings", None, {"updated": True}, db=db)
             return redirect(url_for("admin_panel", msg="Global configuration saved."))
         except Exception as e:
             db.rollback()
@@ -624,7 +624,7 @@ def register_ops_routes(
             results = _run_proxy_test()
             _set_setting(db, "proxy.last_test_result", json.dumps(results, separators=(",", ":")))
             db.commit()
-            _audit("admin_proxy_test", "app_settings", None, {"targets": len(results)})
+            _audit("admin_proxy_test", "app_settings", None, {"targets": len(results)}, db=db)
             status = "ok" if all(str(r.get("status")) == "OK" for r in results) else "warning"
             return redirect(url_for("admin_panel", msg=f"Proxy test completed ({status})."))
         except Exception as e:
@@ -698,6 +698,7 @@ def register_ops_routes(
                     "deleted": deleted,
                     "cache_flushed": cache_flushed,
                 },
+                db=db,
             )
             return redirect(
                 url_for("admin_panel", msg=f"Dangerous operation completed ({operation}). Deleted tables: {', '.join(sorted(deleted.keys()))}.")
@@ -749,6 +750,14 @@ def register_ops_routes(
                     )
                 )
             db.commit()
+            persisted = db.scalar(select(Feed).where(Feed.source_id == source_id, Feed.deleted == False))  # noqa: E712
+            _audit(
+                "admin_feed_add",
+                "feed",
+                int(getattr(persisted, "id", 0) or 0) or None,
+                {"source": source_id, "source_type": source_type, "enabled": enabled},
+                db=db,
+            )
             return redirect(url_for("admin_panel", msg=f"Feed {source_id} added."))
         except Exception as e:
             db.rollback()
@@ -946,6 +955,17 @@ if (form) {{
                 db.rollback()
                 return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Validation failed: {' '.join(errors)}"))
             db.commit()
+            _audit(
+                "admin_feed_configure_save",
+                "feed",
+                int(getattr(feed, "id", 0) or 0) or None,
+                {
+                    "source": source_id,
+                    "source_type": feed.source_type,
+                    "schedule_cron": feed.schedule_cron,
+                },
+                db=db,
+            )
             return redirect(url_for("admin_panel", msg=f"Feed {source_id} configuration saved."))
         except Exception as e:
             db.rollback()
@@ -972,6 +992,13 @@ if (form) {{
                 field_values["organizations"] = ",".join(selected_orgs)
             ok, msg = _test_feed_connection(feed, field_values)
             status = "OK" if ok else "FAILED"
+            _audit(
+                "admin_feed_test_connection",
+                "feed",
+                int(getattr(feed, "id", 0) or 0) or None,
+                {"source": source_id, "status": status.lower(), "message": msg},
+                db=db,
+            )
             return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Connection test {status}: {msg}"))
         except Exception as e:
             return redirect(url_for("admin_feed_configure", source_id=source_id, msg=f"Connection test failed: {e}"))
@@ -991,7 +1018,7 @@ if (form) {{
                 return redirect(url_for("admin_panel", msg="Invalid source for feed toggle."))
             feed.enabled = enabled
             db.commit()
-            _audit("admin_feed_toggle", "feed", None, {"source": source_name, "enabled": enabled})
+            _audit("admin_feed_toggle", "feed", None, {"source": source_name, "enabled": enabled}, db=db)
             return redirect(url_for("admin_panel", msg=f"Feed {source_name} {'enabled' if enabled else 'disabled'}"))
         except Exception as e:
             db.rollback()
@@ -1012,6 +1039,13 @@ if (form) {{
             feed.deleted = True
             feed.enabled = False
             db.commit()
+            _audit(
+                "admin_feed_delete",
+                "feed",
+                int(getattr(feed, "id", 0) or 0) or None,
+                {"source": source_id},
+                db=db,
+            )
             return redirect(url_for("admin_panel", msg=f"Feed {source_id} deleted (soft)."))
         except Exception as e:
             db.rollback()
@@ -1056,7 +1090,7 @@ if (form) {{
             if source_name != "all" and not queued and not reused:
                 return redirect(url_for("admin_panel", msg=f"Cannot sync {source_name}: configuration incomplete."))
 
-            _audit("manual_sync", "feed", None, {"source": source_name, "queued": queued, "reused": reused, "blocked": blocked})
+            _audit("manual_sync", "feed", None, {"source": source_name, "queued": queued, "reused": reused, "blocked": blocked}, db=db)
             _app_log("INFO", "scheduler", "manual_sync_queued", metadata={"source": source_name, "queued": queued, "reused": reused, "blocked": blocked}, db=db)
             msg = f"Sync queued for {source_name}."
             if queued:
@@ -1183,7 +1217,22 @@ if (form) {{
             if not state["ready"]:
                 return redirect(url_for("admin_panel", msg=f"Retry blocked: configuration incomplete for {feed.source_id}."))
             new_job, created = _enqueue_sync_job(feed, trigger_type="retry", db=db)
-            return redirect(url_for("admin_panel", msg=f"Retry {'queued' if created else 'reused existing'} for {feed.source_id} (job_id={new_job.job_id})."))
+            feed_source_id = str(feed.source_id)
+            prior_job_id = str(job.job_id)
+            queued_job_id = str(new_job.job_id)
+            _audit(
+                "admin_sync_job_retry",
+                "sync_job",
+                int(getattr(job, "id", 0) or 0) or None,
+                {
+                    "source": feed_source_id,
+                    "job_id": prior_job_id,
+                    "new_job_id": queued_job_id,
+                    "created": created,
+                },
+                db=db,
+            )
+            return redirect(url_for("admin_panel", msg=f"Retry {'queued' if created else 'reused existing'} for {feed_source_id} (job_id={queued_job_id})."))
         except Exception as e:
             logger.exception("admin_sync_job_retry_failed")
             return redirect(url_for("admin_panel", msg=f"Retry failed: {e}"))
@@ -1205,6 +1254,8 @@ if (form) {{
             now = datetime.now(timezone.utc)
             run = db.scalar(select(FeedRun).where(FeedRun.run_id == job.job_id))
             if status == "queued":
+                cancelled_job_id = str(job.job_id)
+                cancelled_source = str(job.feed_source_id)
                 job.status = "cancelled"
                 job.error = "cancelled by admin"
                 job.finished_at = now
@@ -1214,14 +1265,30 @@ if (form) {{
                     run.error = "cancelled by admin"
                     run.finished_at = now
                 db.commit()
-                return redirect(url_for("admin_panel", msg=f"Job {job.job_id} cancelled."))
+                _audit(
+                    "admin_sync_job_cancel",
+                    "sync_job",
+                    int(getattr(job, "id", 0) or 0) or None,
+                    {"job_id": cancelled_job_id, "status": "cancelled", "source": cancelled_source},
+                    db=db,
+                )
+                return redirect(url_for("admin_panel", msg=f"Job {cancelled_job_id} cancelled."))
+            requested_job_id = str(job.job_id)
+            requested_source = str(job.feed_source_id)
             job.status = "cancel_requested"
             if not job.error:
                 job.error = "cancel requested by admin"
             if run and run.status == "running":
                 run.error = "cancel requested by admin"
             db.commit()
-            return redirect(url_for("admin_panel", msg=f"Cancellation requested for running job {job.job_id}."))
+            _audit(
+                "admin_sync_job_cancel",
+                "sync_job",
+                int(getattr(job, "id", 0) or 0) or None,
+                {"job_id": requested_job_id, "status": "cancel_requested", "source": requested_source},
+                db=db,
+            )
+            return redirect(url_for("admin_panel", msg=f"Cancellation requested for running job {requested_job_id}."))
         except Exception as e:
             db.rollback()
             logger.exception("admin_sync_job_cancel_failed")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from app.models import AuditLog
 from pathlib import Path
 from unittest.mock import patch
 
@@ -337,6 +338,10 @@ def test_sync_job_cancel_endpoint_cancels_queued_job(admin_client, admin_csrf_to
     assert resp.status_code == 200
     refreshed = test_db.query(SyncJob).filter(SyncJob.job_id == "cancel-job-1").one()
     assert refreshed.status == "cancelled"
+    audit = test_db.query(AuditLog).filter(AuditLog.action == "admin_sync_job_cancel").order_by(AuditLog.id.desc()).first()
+    assert audit is not None
+    assert audit.user_id == "admin"
+    assert (audit.metadata_ or {}).get("job_id") == "cancel-job-1"
 
 
 def test_sync_job_retry_endpoint_enqueues_new_job(admin_client, admin_csrf_token, sample_indicators, test_db):
@@ -364,3 +369,53 @@ def test_sync_job_retry_endpoint_enqueues_new_job(admin_client, admin_csrf_token
         .all()
     )
     assert queued
+    audit = test_db.query(AuditLog).filter(AuditLog.action == "admin_sync_job_retry").order_by(AuditLog.id.desc()).first()
+    assert audit is not None
+    assert audit.user_id == "admin"
+    assert (audit.metadata_ or {}).get("job_id") == "failed-job-1"
+
+
+def test_admin_add_feed_records_audit_entry(admin_client, admin_csrf_token, sample_indicators, test_db):
+    response = admin_client.post(
+        "/admin/feed/new",
+        data={
+            "source_id": "ref-feed",
+            "display_name": "Ref Feed",
+            "source_type": "misp",
+            "base_url": "https://misp.example.test",
+            "auth_type": "api_key",
+            "schedule_cron": "*/30 * * * *",
+            "enabled": "on",
+            "csrf_token": admin_csrf_token,
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    audit = test_db.query(AuditLog).filter(AuditLog.action == "admin_feed_add").order_by(AuditLog.id.desc()).first()
+    assert audit is not None
+    assert audit.user_id == "admin"
+    assert (audit.metadata_ or {}).get("source") == "ref-feed"
+
+
+def test_admin_feed_configure_save_records_audit_entry(admin_client, admin_csrf_token, sample_indicators, test_db):
+    assert admin_client.get("/admin").status_code == 200
+    response = admin_client.post(
+        "/admin/feed/abusech/configure",
+        data={
+            "display_name": "abuse.ch bundle",
+            "schedule_cron": "*/5 * * * *",
+            "auth_key": "secret-token",
+            "threatfox_enabled": "1",
+            "urlhaus_enabled": "1",
+            "feodo_enabled": "1",
+            "yaraify_enabled": "1",
+            "fplist_enabled": "1",
+            "csrf_token": admin_csrf_token,
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    audit = test_db.query(AuditLog).filter(AuditLog.action == "admin_feed_configure_save").order_by(AuditLog.id.desc()).first()
+    assert audit is not None
+    assert audit.user_id == "admin"
+    assert (audit.metadata_ or {}).get("source") == "abusech"

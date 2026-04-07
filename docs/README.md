@@ -11,6 +11,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - 📖 **[API Documentation](api.md)** - REST endpoints, formats, and integration examples
 - 🏗️ **[Architecture](architecture.md)** - System design and components
 - ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
+- 🔐 **[Access Control](access-control.md)** - Admin auth, roles, CSRF, and operational boundaries
 - ⚡ **[Performance](performance.md)** - SLOs, benchmarking, degradation and runbook
 - 🛠️ **[Runbook](runbook.md)** - Incident response and release gate procedures
 - 🧭 **[M16 Finalization](m16-finalization.md)** - Go/no-go and closure checklist
@@ -56,6 +57,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 | **[api.md](api.md)** | API endpoints, formats, examples | Users, Integrators |
 | **[architecture.md](architecture.md)** | System design, data flow, scalability | Developers, Architects |
 | **[configuration.md](configuration.md)** | Environment variables, examples | Ops, Admins |
+| **[access-control.md](access-control.md)** | Admin authentication and role baseline | Ops, Security, Maintainers |
 | **[performance.md](performance.md)** | SLOs, benchmark harness, runbook | Ops, SRE, Developers |
 | **[runbook.md](runbook.md)** | Incident response and rollback procedures | Ops, SRE |
 | **[m16-finalization.md](m16-finalization.md)** | Final release decision and residual risks | Tech Leads, Ops |

@@ -393,6 +393,11 @@ class TestSessionSecurity:
         assert "window.__adminCsrfToken" in html
         assert "csrf_token" in html
 
+    def test_admin_login_sets_admin_role_baseline(self, admin_client):
+        with admin_client.session_transaction() as sess:
+            assert sess.get("admin_authenticated") is True
+            assert sess.get("admin_role") == "admin"
+
 
 # ============================================================================
 # Rate Limiting Tests
@@ -579,3 +584,27 @@ class TestAuditLogging:
 
         actions = [log.action for log in logs]
         assert "query" in actions or "export" in actions
+
+    def test_admin_audit_uses_authenticated_user_id(self, admin_client, admin_csrf_token, test_db, sample_indicators):
+        """Test that admin audit entries store the session user identifier."""
+        response = admin_client.post(
+            "/admin/feed/new",
+            data={
+                "source_id": "audit-feed",
+                "display_name": "Audit Feed",
+                "source_type": "misp",
+                "base_url": "https://audit.example.test",
+                "auth_type": "api_key",
+                "schedule_cron": "*/30 * * * *",
+                "enabled": "on",
+                "csrf_token": admin_csrf_token,
+            },
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+
+        from app.models import AuditLog
+
+        audit = test_db.query(AuditLog).filter(AuditLog.action == "admin_feed_add").order_by(AuditLog.id.desc()).first()
+        assert audit is not None
+        assert audit.user_id == "admin"

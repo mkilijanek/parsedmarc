@@ -219,6 +219,11 @@ make gate        # bash scripts/m15_premerge_gate.sh
 make readiness   # bash scripts/m16_release_readiness.sh
 ```
 
+### Milestone Release Policy
+- Every fully completed milestone must end with a release, not only with commits or a branch merge.
+- Before cutting a release for a completed milestone, verify the milestone scope is actually closed and the relevant validation/tests are green.
+- Record the release action in `change.log`, update roadmap/milestone status if needed, and push the release tag or equivalent release metadata after the final milestone commit is on the target branch.
+
 ---
 
 ## Configuration
