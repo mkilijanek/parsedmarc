@@ -545,3 +545,16 @@
 1. Commit the release-status/documentation follow-up.
 2. Push `main`.
 3. Create tag/release `1.4.2` and close GitHub milestone `1.4.2`.
+
+[follow-up completed]
+- Pushed `main` at commit `7a79e85` before cutting the release tag.
+- Created tag `1.4.2` from commit `7a79e85` and pushed it to `origin`.
+- Published GitHub release `1.4.2`.
+- Closed GitHub milestone `1.4.2`.
+
+[verification]
+- `gh release create 1.4.2 --title "1.4.2" --notes-file /tmp/release-1.4.2-notes.md`
+- `gh api repos/mkilijanek/ioc-service/milestones/11 -X PATCH -f state=closed`
+
+[result]
+- `1.4.2` is now closed end-to-end: code, tests, tag, GitHub release, and milestone state are aligned.
