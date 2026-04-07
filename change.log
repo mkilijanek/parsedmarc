@@ -7,3 +7,4 @@
 - Documented that Trivy alerts CVE-2026-30922 were cleared by regenerating `requirements.lock` with `pyasn1==0.6.3` inside the lockfile-based builds.
 2026-04-07 (continued)
 - Updated `Dockerfile-ubi.locked` so the ubi9/python-312 builder/runtime stages now point at `sha256:7ba356eca7f476bcf9a8c51714e43353376d37e0bbd4e43ceec7b1bcc6ff9675`, which carries Python 3.12.12-4.el9_7.2 and resolves CVE-2026-4519 identified by Trivy.
+- Triggered `build-locked-release` on `main` after the base bump so the signed locked images rebuild from the patched UBI Python base, and explicitly reran the Trivy/Snyk published-image scans to refresh SARIF results against the new artifacts.
