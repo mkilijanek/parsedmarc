@@ -286,3 +286,27 @@
 1. Commit the current `main` changes and push them.
 2. Fast-forward or merge `main` into `dev` and `kili`, updating this log after each branch action.
 3. Return to `M1.4.2` for the next slice: CSRF protection and/or a stronger admin role model.
+
+2026-04-07
+
+[current stage]
+- Branch synchronization after landing the current `M1.4.2` work on `main`.
+
+[actions performed]
+- Pushed `main` with commit `b7dae66` (`feat(security): gate admin access and harden startup`).
+- Fast-forwarded `dev` to `main` and pushed `origin/dev`.
+- Fast-forwarded `kili` to `main` and pushed `origin/kili`.
+
+[important commands]
+- `git push origin main`
+- `git checkout dev && git merge --ff-only main && git push origin dev`
+- `git checkout kili && git merge --ff-only main && git push origin kili`
+
+[observations]
+- Both `dev` and `kili` were strict ancestors of `main`, so no merge commits or conflict resolution were needed.
+- Using fast-forward sync kept branch history clean and avoids artificial divergence between active branches.
+
+[next planned implementation steps]
+1. Push this journal update on `main`.
+2. Fast-forward `dev` and `kili` one last time so they include the branch-sync journal entry as well.
+3. Continue `M1.4.2` with CSRF or the next admin-auth hardening slice.
