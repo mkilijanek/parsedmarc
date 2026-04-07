@@ -652,3 +652,33 @@
 [next planned implementation steps]
 1. Commit and push the legacy template extraction slice.
 2. Continue `1.5.0` by targeting the next large HTML block, likely the admin/configure views or extracting more rendering helpers out of `app/main.py`.
+
+2026-04-07
+
+[current stage]
+- `1.5.0` renderer-module extraction after the public Jinja migration.
+
+[actions performed]
+- Added [app/views/legacy_public.py](/home/kili/Repo/ioc-service/app/views/legacy_public.py) and moved the legacy public-view rendering implementation there.
+- Rewired [app/main.py](/home/kili/Repo/ioc-service/app/main.py) so `_render_index(...)` and `_render_indicators(...)` are now thin delegators into the new module.
+- Kept the operational risk low by not deleting the remaining startup-loader/admin HTML constants yet; this step isolates public render responsibility first, then leaves dead-code cleanup for a later slice.
+
+[important commands]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py`
+- `PYTHONPATH=. .venv/bin/python -m py_compile app/main.py app/views/legacy_public.py`
+
+[observations]
+- [app/main.py](/home/kili/Repo/ioc-service/app/main.py) is down again, now to `2056` lines.
+- Separating the renderer implementation from the wiring layer gives a cleaner next step for dead-code removal and template follow-up without stacking too many moving parts into one patch.
+
+[mistakes and lessons]
+- Attempting `python -m py_compile ...` failed because this environment does not expose a plain `python` binary on PATH.
+- Use `.venv/bin/python` or `python3` explicitly here; prefer the project venv for all Python tooling, not only pytest.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py` -> `253 passed`
+- `PYTHONPATH=. .venv/bin/python -m py_compile app/main.py app/views/legacy_public.py` -> success
+
+[next planned implementation steps]
+1. Commit and push the renderer-module extraction slice.
+2. Continue `1.5.0` with either dead-code cleanup in `app/main.py` or template extraction on the admin/configure surface.

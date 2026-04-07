@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 from typing import Any, Dict, List, Optional, Tuple
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from flask import Flask, Response, jsonify, request, make_response, redirect, render_template, session, url_for, stream_with_context, send_file
+from flask import Flask, Response, jsonify, request, make_response, redirect, session, url_for, stream_with_context, send_file
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.exceptions import HTTPException
@@ -65,6 +65,7 @@ from .services.feed_ops import (
     percentile,
     resolve_metrics_window_hours,
 )
+from .views.legacy_public import render_index as legacy_render_index, render_indicators as legacy_render_indicators
 from .routes import register_auth_routes, register_health_blueprint, register_logs_routes, register_ops_routes, register_public_routes
 
 from .metrics import (
@@ -2024,15 +2025,7 @@ def _badge(label: str, cls: str, aria: str) -> str:
     return f"<span class='badge {cls}' aria-label='{_esc(aria)}'>{_esc(label)}</span>"
 
 def _render_index(total: int, active: int, feeds) -> str:
-    return render_template(
-        "legacy/index.html",
-        total=total,
-        active=active,
-        feeds=list(feeds),
-        startup_loader_style=STARTUP_LOADER_STYLE,
-        startup_loader_markup=STARTUP_LOADER_MARKUP,
-        startup_loader_script=STARTUP_LOADER_SCRIPT,
-    )
+    return legacy_render_index(total, active, list(feeds))
 
 def _render_indicators(
     rows: List[Indicator],
@@ -2048,87 +2041,8 @@ def _render_indicators(
     total_count: int,
     source_options: List[str],
 ) -> str:
-    def _query_escape(value: str) -> str:
-        return (value or "").replace("\\", "\\\\").replace('"', '\\"')
-
-    def type_badge(t: str) -> str:
-        cls = {"ip":"b-ip","domain":"b-domain","url":"b-url","hash":"b-hash","email":"b-email"}.get(t,"b-other")
-        return _badge(t, cls, f"Type {t}")
-    def tlp_badge(t: str) -> str:
-        cls = {"WHITE":"b-white","GREEN":"b-green","AMBER":"b-amber","RED":"b-red"}.get(t,"b-green")
-        return _badge(t, cls, f"TLP {t}")
-
-    view_rows: List[Dict[str, Any]] = []
-    for ind in rows:
-        conf = int(ind.confidence or 0)
-        misp_link = ""
-        if ind.source == "misp" and ind.source_id:
-            misp_link = f"<a href='/misp/event/{_esc(ind.source_id)}' aria-label='Open MISP event {ind.source_id}'>Event {ind.source_id}</a>"
-
-        # Per-row quick exports (required URL schema for MISP rows)
-        if ind.source == "misp" and ind.source_id:
-            exports = " ".join([
-                f"<a href='/misp/event/{_esc(ind.source_id)}/{_esc(ind.type)}/{fmt}' aria-label='Export MISP event indicator in {fmt} format'>{fmt.upper()}</a>"
-                for fmt in ("csv","txt","json","fortigate")
-            ])
-        else:
-            q_row = f'value:"{_query_escape(ind.value)}" AND source:"{_query_escape(ind.source)}"'
-            exports = " ".join([
-                f"<a href='/indicators/{fmt}?{_esc(urlencode({'q': q_row}))}' aria-label='Export indicator in {fmt} format'>{fmt.upper()}</a>"
-                for fmt in ("txt","csv","json","fortigate")
-            ])
-
-        view_rows.append(
-            {
-                "value": str(ind.value or ""),
-                "type_badge": type_badge(ind.type),
-                "confidence": conf,
-                "tlp_badge": tlp_badge(ind.tlp),
-                "source": str(ind.source or ""),
-                "exports": exports,
-                "tags": list((ind.tags or [])[:10]),
-                "misp_link": misp_link,
-            }
-        )
-
-    active_query: Dict[str, str] = {}
-    if q:
-        active_query["q"] = q
-    if type_filter and type_filter != "all":
-        active_query["type"] = type_filter
-    if tlp and tlp != "ALL" and tlp != "all":
-        active_query["tlp"] = tlp
-    if source and source != "all":
-        active_query["source"] = source
-    if min_conf is not None:
-        active_query["min_conf"] = str(min_conf)
-    if max_conf is not None:
-        active_query["max_conf"] = str(max_conf)
-    active_query["limit"] = str(limit)
-    active_query["offset"] = str(offset)
-    filter_qs = urlencode(active_query)
-    filter_suffix = f"?{filter_qs}" if filter_qs else ""
-    has_filters = any(k in active_query for k in ("q", "type", "tlp", "source", "min_conf", "max_conf"))
-    page = (offset // max(1, limit)) + 1
-    total_pages = max(1, (total_count + max(1, limit) - 1) // max(1, limit))
-    prev_offset = max(0, offset - limit)
-    next_offset = offset + limit
-
-    def _page_link(target_offset: int) -> str:
-        qv = dict(active_query)
-        qv["offset"] = str(target_offset)
-        return "/indicators?" + urlencode(qv)
-
-    prev_link = _page_link(prev_offset)
-    next_link = _page_link(next_offset)
-    min_conf_options = [{"value": "", "label": "", "match_value": None}] + [
-        {"value": str(n), "label": str(n), "match_value": n} for n in [0, 25, 50, 60, 70, 80, 90]
-    ]
-    max_conf_options = [{"value": "", "label": "", "match_value": None}] + [
-        {"value": str(n), "label": str(n), "match_value": n} for n in [100, 90, 80, 70, 60, 50, 25]
-    ]
-    return render_template(
-        "legacy/indicators.html",
+    return legacy_render_indicators(
+        rows,
         q=q,
         type_filter=type_filter,
         tlp=tlp,
@@ -2139,19 +2053,4 @@ def _render_indicators(
         offset=offset,
         total_count=total_count,
         source_options=source_options,
-        type_options=["all", "ip", "domain", "url", "hash", "email"],
-        tlp_options=["all", "WHITE", "GREEN", "AMBER", "RED"],
-        min_conf_options=min_conf_options,
-        max_conf_options=max_conf_options,
-        has_filters=has_filters,
-        page=page,
-        total_pages=total_pages,
-        next_offset=next_offset,
-        prev_link=prev_link,
-        next_link=next_link,
-        filter_suffix=filter_suffix,
-        view_rows=view_rows,
-        startup_loader_style=STARTUP_LOADER_STYLE,
-        startup_loader_markup=STARTUP_LOADER_MARKUP,
-        startup_loader_script=STARTUP_LOADER_SCRIPT,
     )
