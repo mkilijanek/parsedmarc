@@ -125,14 +125,14 @@ def test_global_topbar_present_on_indicators_and_admin(admin_client, client, sam
     assert 'href="/indicators"' in admin_html
 
 
-def test_admin_sync_rejects_incomplete_feed_config(admin_client, sample_indicators):
-    response = admin_client.post("/admin/sync", data={"source": "misp"}, follow_redirects=True)
+def test_admin_sync_rejects_incomplete_feed_config(admin_client, admin_csrf_token, sample_indicators):
+    response = admin_client.post("/admin/sync", data={"source": "misp", "csrf_token": admin_csrf_token}, follow_redirects=True)
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "configuration incomplete" in html.lower()
 
 
-def test_feed_configure_is_scoped_to_single_feed(admin_client, sample_indicators):
+def test_feed_configure_is_scoped_to_single_feed(admin_client, admin_csrf_token, sample_indicators):
     response = admin_client.post(
         "/admin/feed/mwdb/configure",
         data={
@@ -140,6 +140,7 @@ def test_feed_configure_is_scoped_to_single_feed(admin_client, sample_indicators
             "base_url": "https://mwdb.local",
             "schedule_cron": "*/15 * * * *",
             "api_key": "secret123",
+            "csrf_token": admin_csrf_token,
         },
         follow_redirects=False,
     )
@@ -177,15 +178,15 @@ def test_abusech_configure_shows_service_selectors(admin_client, sample_indicato
     assert "Bazaar tags" not in html
 
 
-def test_feed_test_connection_endpoint_redirects(admin_client, sample_indicators):
-    response = admin_client.post("/admin/feed/abusech/test", data={"api_key": ""}, follow_redirects=False)
+def test_feed_test_connection_endpoint_redirects(admin_client, admin_csrf_token, sample_indicators):
+    response = admin_client.post("/admin/feed/abusech/test", data={"api_key": "", "csrf_token": admin_csrf_token}, follow_redirects=False)
     assert response.status_code in {301, 302}
 
 
-def test_dangerous_ops_disabled_by_default(admin_client, sample_indicators):
+def test_dangerous_ops_disabled_by_default(admin_client, admin_csrf_token, sample_indicators):
     response = admin_client.post(
         "/admin/danger/wipe",
-        data={"operation": "soft", "admin_token": "x", "confirm_phrase": "WIPE", "confirm_instance": "ioc-service"},
+        data={"operation": "soft", "admin_token": "x", "confirm_phrase": "WIPE", "confirm_instance": "ioc-service", "csrf_token": admin_csrf_token},
         follow_redirects=True,
     )
     assert response.status_code == 200
@@ -193,16 +194,16 @@ def test_dangerous_ops_disabled_by_default(admin_client, sample_indicators):
     assert "Dangerous operations are disabled" in html
 
 
-def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(admin_client, sample_indicators):
+def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(admin_client, admin_csrf_token, sample_indicators):
     with patch("app.main.requests.post") as mocked_post:
-        response = admin_client.post("/admin/feed/malwarebazaar/test", data={"api_key": ""}, follow_redirects=True)
+        response = admin_client.post("/admin/feed/malwarebazaar/test", data={"api_key": "", "csrf_token": admin_csrf_token}, follow_redirects=True)
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "ABUSECH_AUTH_KEY" in html
     mocked_post.assert_not_called()
 
 
-def test_admin_settings_persist_proxy_skip_tls_verify(admin_client, sample_indicators, test_db):
+def test_admin_settings_persist_proxy_skip_tls_verify(admin_client, admin_csrf_token, sample_indicators, test_db):
     resp = admin_client.post(
         "/admin/global-config",
         data={
@@ -212,6 +213,7 @@ def test_admin_settings_persist_proxy_skip_tls_verify(admin_client, sample_indic
             "proxy_ca_bundle_path": "/etc/ssl/certs/org-ca.pem",
             "proxy_skip_tls_verify": "1",
             "trusted_proxy_count": "1",
+            "csrf_token": admin_csrf_token,
         },
         follow_redirects=True,
     )
@@ -224,7 +226,7 @@ def test_admin_settings_persist_proxy_skip_tls_verify(admin_client, sample_indic
     assert str(row_ca.value) == "/etc/ssl/certs/org-ca.pem"
 
 
-def test_admin_proxy_test_runs_and_persists_results(admin_client, sample_indicators, test_db):
+def test_admin_proxy_test_runs_and_persists_results(admin_client, admin_csrf_token, sample_indicators, test_db):
     class _Resp:
         def __init__(self, url: str):
             self.status_code = 200
@@ -240,7 +242,7 @@ def test_admin_proxy_test_runs_and_persists_results(admin_client, sample_indicat
             return None
 
     with patch("app.main.requests.get", side_effect=lambda url, timeout=None: _Resp(url)):
-        resp = admin_client.post("/admin/proxy-test", follow_redirects=True)
+        resp = admin_client.post("/admin/proxy-test", data={"csrf_token": admin_csrf_token}, follow_redirects=True)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "Proxy test completed" in html
@@ -316,7 +318,7 @@ def test_sync_job_details_page_renders(admin_client, client, sample_indicators):
     assert job_id in html
 
 
-def test_sync_job_cancel_endpoint_cancels_queued_job(admin_client, sample_indicators, test_db):
+def test_sync_job_cancel_endpoint_cancels_queued_job(admin_client, admin_csrf_token, sample_indicators, test_db):
     # Ensure default feeds exist.
     assert admin_client.get("/admin").status_code == 200
     job = SyncJob(
@@ -331,13 +333,13 @@ def test_sync_job_cancel_endpoint_cancels_queued_job(admin_client, sample_indica
     test_db.add(job)
     test_db.commit()
 
-    resp = admin_client.post("/admin/sync-jobs/cancel-job-1/cancel", follow_redirects=True)
+    resp = admin_client.post("/admin/sync-jobs/cancel-job-1/cancel", data={"csrf_token": admin_csrf_token}, follow_redirects=True)
     assert resp.status_code == 200
     refreshed = test_db.query(SyncJob).filter(SyncJob.job_id == "cancel-job-1").one()
     assert refreshed.status == "cancelled"
 
 
-def test_sync_job_retry_endpoint_enqueues_new_job(admin_client, sample_indicators, test_db):
+def test_sync_job_retry_endpoint_enqueues_new_job(admin_client, admin_csrf_token, sample_indicators, test_db):
     # Ensure default feeds exist.
     assert admin_client.get("/admin").status_code == 200
     failed = SyncJob(
@@ -354,7 +356,7 @@ def test_sync_job_retry_endpoint_enqueues_new_job(admin_client, sample_indicator
     test_db.add(failed)
     test_db.commit()
 
-    resp = admin_client.post("/admin/sync-jobs/failed-job-1/retry", follow_redirects=True)
+    resp = admin_client.post("/admin/sync-jobs/failed-job-1/retry", data={"csrf_token": admin_csrf_token}, follow_redirects=True)
     assert resp.status_code == 200
     queued = (
         test_db.query(SyncJob)

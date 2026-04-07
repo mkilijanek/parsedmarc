@@ -107,6 +107,15 @@ def admin_client(client):
 
 
 @pytest.fixture(scope="function")
+def admin_csrf_token(admin_client):
+    """Return the admin CSRF token from the authenticated session."""
+    with admin_client.session_transaction() as sess:
+        token = sess.get("admin_csrf_token")
+    assert token
+    return token
+
+
+@pytest.fixture(scope="function")
 def sample_indicators(test_db) -> list[Indicator]:
     """Create sample indicators for testing."""
     indicators = [

@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import hmac
+import secrets
 from urllib.parse import quote
 
-from flask import redirect, request, session, url_for
+from flask import Response, redirect, request, session, url_for
 
 
 def register_auth_routes(app, *, limiter, cfg) -> None:
+    def _ensure_admin_csrf_token() -> str:
+        token = str(session.get("admin_csrf_token") or "").strip()
+        if not token:
+            token = secrets.token_urlsafe(32)
+            session["admin_csrf_token"] = token
+        return token
+
     def _admin_auth_configured() -> bool:
         return bool((cfg.ADMIN_API_TOKEN or "").strip())
 
@@ -18,9 +26,52 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         if not request.path.startswith("/admin"):
             return None
         if _admin_authenticated():
+            if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                expected = _ensure_admin_csrf_token()
+                provided = (
+                    (request.form.get("csrf_token") or "").strip()
+                    or (request.headers.get("X-CSRF-Token") or "").strip()
+                )
+                if not provided or not hmac.compare_digest(provided, expected):
+                    return Response("CSRF validation failed.", status=400)
             return None
         next_url = request.full_path if request.query_string else request.path
         return redirect(url_for("auth_login", next=next_url.rstrip("?")))
+
+    @app.after_request
+    def _inject_admin_csrf(response: Response) -> Response:
+        if request.method != "GET" or not request.path.startswith("/admin"):
+            return response
+        if response.status_code >= 400:
+            return response
+        content_type = (response.headers.get("Content-Type") or "").lower()
+        if "text/html" not in content_type:
+            return response
+        body = response.get_data(as_text=True)
+        if not body:
+            return response
+        token = _ensure_admin_csrf_token()
+        script = (
+            "<script>"
+            f"window.__adminCsrfToken={token!r};"
+            "document.querySelectorAll(\"form\").forEach(function(form){"
+            "var method=(form.getAttribute('method')||'get').toLowerCase();"
+            "if(method!=='post'){return;}"
+            "if(form.querySelector('input[name=\"csrf_token\"]')){return;}"
+            "var input=document.createElement('input');"
+            "input.type='hidden';"
+            "input.name='csrf_token';"
+            "input.value=window.__adminCsrfToken;"
+            "form.appendChild(input);"
+            "});"
+            "</script>"
+        )
+        if "</body>" in body:
+            body = body.replace("</body>", script + "</body>")
+        else:
+            body = body + script
+        response.set_data(body)
+        return response
 
     @app.get("/auth/login")
     @limiter.limit("5 per 15 minute")
@@ -78,6 +129,7 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         session.clear()
         session.permanent = True
         session["admin_authenticated"] = True
+        session["admin_csrf_token"] = secrets.token_urlsafe(32)
         return redirect(next_url if next_url.startswith("/") else "/admin")
 
     @app.post("/auth/logout")

@@ -381,6 +381,18 @@ class TestSessionSecurity:
         """Test that session lifetime is limited."""
         assert app.config["PERMANENT_SESSION_LIFETIME"] == 3600
 
+    def test_admin_post_requires_csrf_token(self, admin_client, sample_indicators):
+        response = admin_client.post("/admin/sync", data={"source": "misp"}, follow_redirects=False)
+        assert response.status_code == 400
+        assert "CSRF validation failed" in response.get_data(as_text=True)
+
+    def test_admin_html_injects_csrf_token(self, admin_client, sample_indicators, sample_feed_stats):
+        response = admin_client.get("/admin")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert "window.__adminCsrfToken" in html
+        assert "csrf_token" in html
+
 
 # ============================================================================
 # Rate Limiting Tests
