@@ -1,16 +1,12 @@
 #!/usr/bin/env sh
 set -eu
 
-# Auto-fill required runtime settings for containerized runs.
-# Values can still be overridden explicitly via environment variables.
-
+# Fail fast for cryptographic identity instead of auto-generating a new key
+# per container start. Runtime-generated keys break session compatibility
+# and secret decryption across restarts and replicas.
 if [ -z "${SECRET_KEY:-}" ]; then
-  SECRET_KEY="$(python - <<'PY'
-import secrets
-print(secrets.token_hex(32))
-PY
-)"
-  export SECRET_KEY
+  echo "SECURITY ERROR: SECRET_KEY environment variable must be set before container startup." >&2
+  exit 1
 fi
 
 if [ -z "${DATABASE_URL:-}" ]; then

@@ -25,6 +25,29 @@ This file translates the 2026-04-06 deep assessment into implementation mileston
   - `.dockerignore`
   - Config consolidation and dependency hygiene
 
+## Prompt-to-Milestone Mapping
+
+The architecture prompt bundle in [ref/ioc-architecture-prompt](/home/kili/Repo/ioc-service/ref/ioc-architecture-prompt) maps into the execution plan like this:
+
+| Prompt | Delivery mapping |
+|--------|------------------|
+| `01-executive-summary.md` | anchors the full `1.4.2` → `1.7.0` sequence and v2.0 success criteria |
+| `02-architecture-vision.md` | informs the target architecture for `1.5.0`, `1.5.1`, `1.6.0`, `1.6.1` |
+| `03-integration-architecture.md` | defines the detailed implementation target for `1.6.1` |
+| `04-iso27001-compliance.md` | defines the critical delivery baseline for `1.4.2` |
+| `05-technology-stack.md` | informs tooling and dependency choices for `1.6.0` and scheduler/runtime work in `1.6.1` |
+| `06-milestones-roadmap.md` | serves as the reference breakdown for `1.4.2` → `1.7.0`, but needed gap-filling for `1.6.0` |
+| `07-roles/*` | distribute responsibilities across each milestone rather than creating separate milestone work |
+| `08-best-practices.md` | supplies implementation standards, especially for `1.5.0` and `1.6.0` |
+| `09-quality-metrics.md` | defines CI and quality gates for `1.5.0`, `1.5.1`, `1.6.1` |
+| `10-risk-management.md` | defines milestone-level mitigation strategy, especially around `1.4.2` and `1.6.1` |
+| `11-appendices/*` | contains endpoint/schema/diagram detail consumed by `1.5.1`, `1.6.0`, and `1.6.1` |
+
+Gaps corrected while mapping:
+- `1.6.0` is explicitly preserved as its own deliverable milestone rather than being implied by other docs.
+- The auth target is treated as one model: protected admin/web UI with session/RBAC and a separate API authentication path for machine clients.
+- Adapter work includes registry/discovery, capability metadata, and contract tests, because those requirements were distributed across prompts `03`, `05`, `09`, and `11`.
+
 ## Version Plan
 
 ### 1.4.2 — Security & Runtime Hardening

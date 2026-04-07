@@ -29,6 +29,7 @@ os.environ.setdefault("ALLOWED_HOSTS", "*")
 os.environ.setdefault("TRUSTED_PROXY_COUNT", "0")
 os.environ.setdefault("MISP_VERIFY_SSL", "true")
 os.environ.setdefault("ENABLE_BACKGROUND_JOBS", "false")
+os.environ.setdefault("ADMIN_API_TOKEN", "test-admin-token")
 
 from app.db import Base
 from app.models import Indicator, FeedStats, AuditLog
@@ -91,6 +92,18 @@ def app(test_db, fake_redis):
 def client(app):
     """Create Flask test client."""
     return app.test_client()
+
+
+@pytest.fixture(scope="function")
+def admin_client(client):
+    """Create an authenticated admin client using the configured admin token."""
+    response = client.post(
+        "/auth/login",
+        data={"admin_token": os.environ["ADMIN_API_TOKEN"], "next": "/admin"},
+        follow_redirects=False,
+    )
+    assert response.status_code in {301, 302}
+    return client
 
 
 @pytest.fixture(scope="function")

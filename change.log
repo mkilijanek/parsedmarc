@@ -104,3 +104,185 @@
 [next planned implementation steps]
 1. If requested, create GitHub issues under the revised milestones so the roadmap becomes executable issue-by-issue.
 2. Begin implementation of `1.4.2` and continue recording concrete commands, decisions, and mistakes here after every meaningful change.
+
+2026-04-07
+
+[current stage]
+- Repository housekeeping alongside roadmap work.
+- Goal: unpack the user-provided architecture prompt bundle into the working tree without changing its internal structure.
+
+[actions performed]
+- Verified that `ioc-architecture-prompt.zip` exists and that `ioc-architecture-prompt/` did not yet exist.
+- Inspected archive contents before extraction to confirm it already contains the top-level `ioc-architecture-prompt/` directory.
+- Extracted the archive in the repository root.
+
+[important commands]
+- `ls -ld ioc-architecture-prompt ioc-architecture-prompt.zip`
+- `unzip -l ioc-architecture-prompt.zip | sed -n '1,40p'`
+- `unzip -q ioc-architecture-prompt.zip`
+- `find ioc-architecture-prompt -maxdepth 2 | sed -n '1,60p'`
+
+[observations]
+- The archive layout was clean and safe to unpack directly because it already used a dedicated root folder.
+- Pre-checking archive structure avoided accidental double nesting or extraction into the repository root.
+
+[mistakes and lessons]
+- Keep checking archive listings before extraction; it prevents avoidable path/layout cleanup afterwards.
+
+2026-04-07
+
+[current stage]
+- Organizing newly unpacked reference material.
+- Goal: place the architecture prompt bundle under a dedicated `ref/` location.
+
+[actions performed]
+- Checked whether `ref/` already existed before moving files.
+- Created `ref/` and moved `ioc-architecture-prompt/` into it as `ref/ioc-architecture-prompt/`.
+- Verified the resulting directory layout.
+
+[important commands]
+- `ls -ld ref ioc-architecture-prompt`
+- `mkdir -p ref && mv ioc-architecture-prompt ref/`
+- `find ref -maxdepth 2 | sort | sed -n '1,80p'`
+
+[observations]
+- The move was clean because `ref/` did not previously exist, so there was no merge risk with existing reference material.
+
+[mistakes and lessons]
+- Keep reference bundles under one dedicated parent early; it avoids later path churn in notes, scripts, and follow-up analysis.
+
+2026-04-07
+
+[current stage]
+- First-pass analysis of the markdown reference bundle in `ref/ioc-architecture-prompt/`.
+- Goal: map the document set, identify the core planning themes, and surface internal inconsistencies before using it as implementation guidance.
+
+[actions performed]
+- Indexed all `.md` files in `ref/ioc-architecture-prompt/` and checked their relative size/weight.
+- Read the central navigation and planning documents first: `README.md`, `01-executive-summary.md`, `02-architecture-vision.md`, `03-integration-architecture.md`, `04-iso27001-compliance.md`, `05-technology-stack.md`, `06-milestones-roadmap.md`, `09-quality-metrics.md`.
+- Cross-checked roadmap/auth/API claims with appendix specs (`11-appendices/api-specifications.md`, `11-appendices/database-schema.md`).
+
+[important commands]
+- `find ref/ioc-architecture-prompt -type f -name '*.md' | sort`
+- `for f in $(find ref/ioc-architecture-prompt -type f -name '*.md' | sort); do wc -l "$f"; done`
+- `for f in $(find ref/ioc-architecture-prompt -type f -name '*.md' | sort); do echo "===== $f ====="; rg -n '^#' "$f"; done`
+- `rg -n "M1\\.6\\.0|/api/v1|OAuth2|JWT|Flask-Login|Flask-WTF|APScheduler|pyproject.toml|RBAC" ref/ioc-architecture-prompt -g '*.md'`
+
+[observations]
+- The bundle is coherent at the top level: it frames `03-integration-architecture.md` as the key architectural driver and uses `04-iso27001-compliance.md` plus `06-milestones-roadmap.md` as the execution backbone.
+- The strongest planning theme is consistent across files: security first, then modularization, then adapterization.
+- A real documentation gap exists in `06-milestones-roadmap.md`: the Gantt and summary mention `M1.6.0`, but there is no dedicated `M1.6.0` section with deliverables, steps, and definition of done.
+- There is auth-model drift across documents:
+  - some places present session auth with optional OAuth2/OIDC,
+  - some present username/password + Flask-Login + JWT,
+  - the target-state table in `README.md` simplifies this to "OAuth2 + RBAC".
+- The API appendix is more concrete than the roadmap for `/api/v1/*`, JWT, and endpoint roles, which means the appendices currently carry requirements that the roadmap does not fully operationalize.
+- `03-integration-architecture.md` is detailed enough to act as a design spec, but it also expands scope materially (registry, YAML config, APScheduler, parity checks, hot reload, metrics) beyond a lightweight adapter refactor.
+
+[decisions]
+- Treat this bundle as a strong architectural reference, but not yet as a fully internally consistent implementation plan.
+- Before using it for delivery planning, the missing `M1.6.0` milestone definition should be filled and the auth strategy should be normalized into one explicit target model.
+
+[next planned implementation steps]
+1. Continue the second pass on role-specific docs and appendices to identify further scope inflation or contradictions.
+2. If requested, convert the first-pass findings into a concise gap report or patch the reference docs for consistency.
+
+2026-04-07
+
+[current stage]
+- Converting the architecture prompt bundle into an executable local/GitHub roadmap and preparing to start the first implementation slice.
+
+[actions performed]
+- Added a prompt-to-roadmap mapping section to `ROADMAP.md`.
+- Added a prompt-to-milestone mapping section to `MILESTONES.md`.
+- Filled a real gap in `ref/ioc-architecture-prompt/06-milestones-roadmap.md` by adding the missing `M1.6.0` section (`API Modernization & Configuration Cleanup`).
+- Normalized the auth wording in the prompt bundle so it no longer oscillates between vague "OAuth2 + RBAC" phrasing and the more concrete session/JWT split.
+- Updated GitHub milestone descriptions to reflect prompt mapping and current roadmap semantics.
+- Marked GitHub milestones `1.3.0` and `1.4.0` as historical/legacy tracking milestones so they stop conflicting with the forward plan.
+
+[important commands]
+- `sed -n '1,260p' ROADMAP.md`
+- `sed -n '1,260p' MILESTONES.md`
+- `gh api repos/mkilijanek/ioc-service/milestones?state=open --jq '.[] | [.number,.title,.description] | @tsv'`
+- `gh api repos/mkilijanek/ioc-service/milestones/{id} -X PATCH ...`
+
+[observations]
+- The prompt bundle was strongest as architecture/spec material, but weaker as a single coherent delivery plan until `M1.6.0` was made explicit.
+- The local repo roadmap is now the cleaner source of execution truth; the prompt bundle can serve as a reference pack without steering implementation into conflicting auth/API interpretations.
+- GitHub milestone descriptions had drifted badly for `1.3.0` and `1.4.0`; leaving them untouched would keep confusing issue triage.
+
+[decisions]
+- Keep the prompt bundle under `ref/` as a reference source, but let `ROADMAP.md` and `MILESTONES.md` remain the operative plan of record.
+- Treat `M1.4.2` as the mandatory implementation starting point; no adapter work should start before the admin surface is protected.
+
+[next planned implementation steps]
+1. Inspect the current admin/auth code paths and choose the smallest safe first implementation slice for `1.4.2`.
+2. Implement it with tests before opening broader auth/RBAC work.
+
+2026-04-07
+
+[current stage]
+- First code implementation slice for `M1.4.2`.
+- Goal: remove implicit `SECRET_KEY` generation paths and reduce Docker build context before starting heavier auth/RBAC work.
+
+[actions performed]
+- Removed runtime auto-generation of `SECRET_KEY` from `scripts/docker-entrypoint.sh`; container startup now fails fast if the secret is missing.
+- Removed automatic `.env` secret injection from `scripts/deploy-compose.sh`; deployment now requires explicit `SECRET_KEY` provisioning.
+- Added `.dockerignore` to exclude non-runtime repository content from Docker build context.
+- Clarified explicit `SECRET_KEY` provisioning in `.env.example`.
+- Added contract tests covering:
+  - deploy script does not silently provision `SECRET_KEY`,
+  - entrypoint requires explicit `SECRET_KEY`,
+  - `.dockerignore` excludes key non-runtime content.
+
+[important commands]
+- `rg -n "SECRET_KEY|docker-entrypoint|AUTO_MIGRATE|generate" scripts Dockerfile docker-compose.yml .env.example app -g '!ref/**'`
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_ops_contracts.py tests/test_security.py`
+
+[observations]
+- The repo already had strong application-level `SECRET_KEY` validation in `app/config.py`; the real risk was operational bypass in shell entrypoints/helpers.
+- Fixing deployment/runtime safety first is a low-risk way to advance `M1.4.2` without yet introducing the larger auth/RBAC surface area.
+
+[mistakes and lessons]
+- A first test version over-constrained the deploy helper by banning `secrets.token_hex` entirely, even in a help example. The real contract is "do not auto-write secrets", not "never mention how to generate one manually."
+
+[next planned implementation steps]
+1. Move to the next `M1.4.2` slice: inspect current `/admin` and state-changing routes to introduce a minimal authentication gate.
+2. Keep each security change independently testable, rather than attempting auth, RBAC, CSRF, and audit logging in one jump.
+
+2026-04-07
+
+[current stage]
+- Second `M1.4.2` implementation slice.
+- Goal: stop public access to `/admin` with the thinnest safe authentication layer that fits the current codebase.
+
+[actions performed]
+- Added `app/routes/auth.py` with:
+  - `/auth/login` (GET/POST),
+  - `/auth/logout` (POST),
+  - session-backed guard redirecting unauthenticated `/admin*` requests to login.
+- Reused `ADMIN_API_TOKEN` as the initial admin secret for web login instead of introducing a full user model in one jump.
+- Registered auth routes from `app/main.py`.
+- Added `admin_client` fixture in `tests/conftest.py`.
+- Updated admin/UI tests to authenticate explicitly instead of assuming anonymous `/admin` access.
+- Added an explicit regression test proving `/admin` redirects to `/auth/login` when unauthenticated.
+
+[important commands]
+- `rg -n "admin_panel|/admin|ADMIN_API_TOKEN|_admin_token_authorized" app/routes app/main.py tests/*`
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_security.py`
+
+[observations]
+- The existing app already had secure session cookie settings, so a thin session gate could be added without introducing a new session backend first.
+- Using `ADMIN_API_TOKEN` as the bootstrap admin credential is not the final RBAC/user model, but it closes the public-admin gap now and keeps the next auth steps incremental.
+
+[decisions]
+- Treat this as a milestone slice, not the full auth end-state: proper RBAC/user entities and CSRF are still queued.
+- Keep admin protection local to `/admin*` for now; public API auth/versioning remains in `1.6.0`.
+
+[mistakes and lessons]
+- Trying to patch all admin-related tests in one shot was too brittle until the full file shape was re-read. Read the exact test surface before doing broad mechanical replacements.
+
+[next planned implementation steps]
+1. Commit the current `main` changes and push them.
+2. Fast-forward or merge `main` into `dev` and `kili`, updating this log after each branch action.
+3. Return to `M1.4.2` for the next slice: CSRF protection and/or a stronger admin role model.

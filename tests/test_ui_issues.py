@@ -30,8 +30,14 @@ def test_source_dropdown_shows_distinct_sources(client, sample_indicators):
     assert "<option value='mwdb'" in html
 
 
-def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators, sample_feed_stats):
-    response = client.get("/admin")
+def test_admin_panel_requires_authentication(client, sample_indicators, sample_feed_stats):
+    response = client.get("/admin", follow_redirects=False)
+    assert response.status_code in {301, 302}
+    assert "/auth/login" in response.headers["Location"]
+
+
+def test_admin_panel_exposes_config_and_sync_controls(admin_client, sample_indicators, sample_feed_stats):
+    response = admin_client.get("/admin")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "Configuration Panel" in html
@@ -54,8 +60,8 @@ def test_admin_panel_exposes_config_and_sync_controls(client, sample_indicators,
     assert "Raw stats:" in html
 
 
-def test_misp_feed_is_disabled_by_default(client, sample_indicators, sample_feed_stats):
-    response = client.get("/admin")
+def test_misp_feed_is_disabled_by_default(admin_client, sample_indicators, sample_feed_stats):
+    response = admin_client.get("/admin")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "value='misp'" in html
@@ -106,9 +112,9 @@ def test_dark_mode_toggle_present_on_overview_and_logs(client, sample_indicators
     assert "localStorage.getItem(themeKey)" in logs_html
 
 
-def test_global_topbar_present_on_indicators_and_admin(client, sample_indicators, sample_feed_stats):
+def test_global_topbar_present_on_indicators_and_admin(admin_client, client, sample_indicators, sample_feed_stats):
     indicators = client.get("/indicators")
-    admin = client.get("/admin")
+    admin = admin_client.get("/admin")
     assert indicators.status_code == 200
     assert admin.status_code == 200
     indicators_html = indicators.get_data(as_text=True)
@@ -119,15 +125,15 @@ def test_global_topbar_present_on_indicators_and_admin(client, sample_indicators
     assert 'href="/indicators"' in admin_html
 
 
-def test_admin_sync_rejects_incomplete_feed_config(client, sample_indicators):
-    response = client.post("/admin/sync", data={"source": "misp"}, follow_redirects=True)
+def test_admin_sync_rejects_incomplete_feed_config(admin_client, sample_indicators):
+    response = admin_client.post("/admin/sync", data={"source": "misp"}, follow_redirects=True)
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "configuration incomplete" in html.lower()
 
 
-def test_feed_configure_is_scoped_to_single_feed(client, sample_indicators):
-    response = client.post(
+def test_feed_configure_is_scoped_to_single_feed(admin_client, sample_indicators):
+    response = admin_client.post(
         "/admin/feed/mwdb/configure",
         data={
             "display_name": "MWDB",
@@ -140,16 +146,16 @@ def test_feed_configure_is_scoped_to_single_feed(client, sample_indicators):
     assert response.status_code in {301, 302}
 
 
-def test_feed_configure_has_test_connection_button(client, sample_indicators):
-    response = client.get("/admin/feed/abusech/configure")
+def test_feed_configure_has_test_connection_button(admin_client, sample_indicators):
+    response = admin_client.get("/admin/feed/abusech/configure")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "Test connection" in html
     assert "Save settings" in html
 
 
-def test_mwdb_configure_shows_extended_fields(client, sample_indicators):
-    response = client.get("/admin/feed/mwdb/configure")
+def test_mwdb_configure_shows_extended_fields(admin_client, sample_indicators):
+    response = admin_client.get("/admin/feed/mwdb/configure")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "MWDB tags (comma-separated)" in html
@@ -158,8 +164,8 @@ def test_mwdb_configure_shows_extended_fields(client, sample_indicators):
     assert "Base URL" not in html
 
 
-def test_abusech_configure_shows_service_selectors(client, sample_indicators):
-    response = client.get("/admin/feed/abusech/configure")
+def test_abusech_configure_shows_service_selectors(admin_client, sample_indicators):
+    response = admin_client.get("/admin/feed/abusech/configure")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "ThreatFox" in html
@@ -171,13 +177,13 @@ def test_abusech_configure_shows_service_selectors(client, sample_indicators):
     assert "Bazaar tags" not in html
 
 
-def test_feed_test_connection_endpoint_redirects(client, sample_indicators):
-    response = client.post("/admin/feed/abusech/test", data={"api_key": ""}, follow_redirects=False)
+def test_feed_test_connection_endpoint_redirects(admin_client, sample_indicators):
+    response = admin_client.post("/admin/feed/abusech/test", data={"api_key": ""}, follow_redirects=False)
     assert response.status_code in {301, 302}
 
 
-def test_dangerous_ops_disabled_by_default(client, sample_indicators):
-    response = client.post(
+def test_dangerous_ops_disabled_by_default(admin_client, sample_indicators):
+    response = admin_client.post(
         "/admin/danger/wipe",
         data={"operation": "soft", "admin_token": "x", "confirm_phrase": "WIPE", "confirm_instance": "ioc-service"},
         follow_redirects=True,
@@ -187,17 +193,17 @@ def test_dangerous_ops_disabled_by_default(client, sample_indicators):
     assert "Dangerous operations are disabled" in html
 
 
-def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(client, sample_indicators):
+def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(admin_client, sample_indicators):
     with patch("app.main.requests.post") as mocked_post:
-        response = client.post("/admin/feed/malwarebazaar/test", data={"api_key": ""}, follow_redirects=True)
+        response = admin_client.post("/admin/feed/malwarebazaar/test", data={"api_key": ""}, follow_redirects=True)
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "ABUSECH_AUTH_KEY" in html
     mocked_post.assert_not_called()
 
 
-def test_admin_settings_persist_proxy_skip_tls_verify(client, sample_indicators, test_db):
-    resp = client.post(
+def test_admin_settings_persist_proxy_skip_tls_verify(admin_client, sample_indicators, test_db):
+    resp = admin_client.post(
         "/admin/global-config",
         data={
             "proxy_http_url": "http://proxy.local:8080",
@@ -218,7 +224,7 @@ def test_admin_settings_persist_proxy_skip_tls_verify(client, sample_indicators,
     assert str(row_ca.value) == "/etc/ssl/certs/org-ca.pem"
 
 
-def test_admin_proxy_test_runs_and_persists_results(client, sample_indicators, test_db):
+def test_admin_proxy_test_runs_and_persists_results(admin_client, sample_indicators, test_db):
     class _Resp:
         def __init__(self, url: str):
             self.status_code = 200
@@ -234,7 +240,7 @@ def test_admin_proxy_test_runs_and_persists_results(client, sample_indicators, t
             return None
 
     with patch("app.main.requests.get", side_effect=lambda url, timeout=None: _Resp(url)):
-        resp = client.post("/admin/proxy-test", follow_redirects=True)
+        resp = admin_client.post("/admin/proxy-test", follow_redirects=True)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "Proxy test completed" in html
@@ -299,20 +305,20 @@ def test_api_500_returns_json_with_correlation_id(client, sample_indicators):
     assert isinstance(data.get("correlation_id"), str) and data["correlation_id"]
 
 
-def test_sync_job_details_page_renders(client, sample_indicators):
+def test_sync_job_details_page_renders(admin_client, client, sample_indicators):
     sync_resp = client.post("/api/sync", json={"source": "abusech"})
     assert sync_resp.status_code == 202
     job_id = sync_resp.get_json()["jobs"][0]["job_id"]
-    details = client.get(f"/admin/sync-jobs/{job_id}")
+    details = admin_client.get(f"/admin/sync-jobs/{job_id}")
     assert details.status_code == 200
     html = details.get_data(as_text=True)
     assert "Sync Job Details" in html
     assert job_id in html
 
 
-def test_sync_job_cancel_endpoint_cancels_queued_job(client, sample_indicators, test_db):
+def test_sync_job_cancel_endpoint_cancels_queued_job(admin_client, sample_indicators, test_db):
     # Ensure default feeds exist.
-    assert client.get("/admin").status_code == 200
+    assert admin_client.get("/admin").status_code == 200
     job = SyncJob(
         job_id="cancel-job-1",
         feed_source_id="abusech",
@@ -325,15 +331,15 @@ def test_sync_job_cancel_endpoint_cancels_queued_job(client, sample_indicators, 
     test_db.add(job)
     test_db.commit()
 
-    resp = client.post("/admin/sync-jobs/cancel-job-1/cancel", follow_redirects=True)
+    resp = admin_client.post("/admin/sync-jobs/cancel-job-1/cancel", follow_redirects=True)
     assert resp.status_code == 200
     refreshed = test_db.query(SyncJob).filter(SyncJob.job_id == "cancel-job-1").one()
     assert refreshed.status == "cancelled"
 
 
-def test_sync_job_retry_endpoint_enqueues_new_job(client, sample_indicators, test_db):
+def test_sync_job_retry_endpoint_enqueues_new_job(admin_client, sample_indicators, test_db):
     # Ensure default feeds exist.
-    assert client.get("/admin").status_code == 200
+    assert admin_client.get("/admin").status_code == 200
     failed = SyncJob(
         job_id="failed-job-1",
         feed_source_id="abusech",
@@ -348,7 +354,7 @@ def test_sync_job_retry_endpoint_enqueues_new_job(client, sample_indicators, tes
     test_db.add(failed)
     test_db.commit()
 
-    resp = client.post("/admin/sync-jobs/failed-job-1/retry", follow_redirects=True)
+    resp = admin_client.post("/admin/sync-jobs/failed-job-1/retry", follow_redirects=True)
     assert resp.status_code == 200
     queued = (
         test_db.query(SyncJob)

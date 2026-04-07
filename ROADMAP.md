@@ -4,6 +4,29 @@ This roadmap uses semantic versioning with the following intent:
 - **1.2.x** — patches/hotfixes/observability/docs improvements (no big architecture refactors)
 - **1.3.0** — architecture milestone (connector standardization + modularization)
 
+## Prompt Mapping (01-11)
+
+The reference bundle under [ref/ioc-architecture-prompt](/home/kili/Repo/ioc-service/ref/ioc-architecture-prompt) is mapped into the active roadmap as follows:
+
+| Prompt | Focus | Primary roadmap target |
+|--------|-------|------------------------|
+| `01-executive-summary` | business goals, success criteria, sequencing | `1.4.2` → `1.7.0` umbrella |
+| `02-architecture-vision` | target architecture, ADRs, migration strategy | `1.5.0`, `1.5.1`, `1.6.0`, `1.6.1` |
+| `03-integration-architecture` | adapter contracts, registry, pipeline, scheduling | `1.6.1` |
+| `04-iso27001-compliance` | auth, RBAC, CSRF, audit, secrets, controls | `1.4.2` |
+| `05-technology-stack` | dependency, scheduler, packaging, API tooling choices | `1.6.0`, `1.6.1` |
+| `06-milestones-roadmap` | delivery breakdown and effort model | `1.4.2` → `1.7.0` planning baseline |
+| `07-roles/*` | team execution responsibilities by discipline | cross-cutting, anchored to the matching milestone |
+| `08-best-practices` | coding/review/versioning/error-handling standards | `1.5.0`, `1.6.0` |
+| `09-quality-metrics` | quality gates, KPI thresholds, success criteria | `1.5.0`, `1.5.1`, `1.6.1` |
+| `10-risk-management` | delivery and architecture risks with mitigations | all active milestones, especially `1.4.2` and `1.6.1` |
+| `11-appendices/*` | API/schema/diagram reference detail | `1.5.1`, `1.6.0`, `1.6.1` |
+
+Known gaps filled in the local roadmap:
+- `M1.6.0` is treated as a first-class milestone with explicit API/config scope; the prompt bundle referenced it across sections but did not fully operationalize it in one place.
+- Authentication strategy is normalized as: session-based admin/web auth with RBAC, plus API token/JWT style auth for non-UI clients as part of the versioned API surface.
+- The adapter milestone includes registry/discovery, capability metadata, contract testing, and runtime-hardening work that was spread across multiple prompt sections.
+
 ---
 
 ## Milestone 1.2.1 — Stability & Non-Fatal Dependencies

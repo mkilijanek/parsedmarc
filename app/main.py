@@ -57,7 +57,7 @@ from .services.common import (
     sum_update_result,
     redact_proxy_credentials,
 )
-from .routes import register_health_blueprint, register_logs_routes, register_ops_routes, register_public_routes
+from .routes import register_auth_routes, register_health_blueprint, register_logs_routes, register_ops_routes, register_public_routes
 
 from .metrics import (
     request_count,
@@ -141,6 +141,12 @@ def create_app() -> Flask:
     app.limiter = limiter  # type: ignore[attr-defined]
     fallback_rps_window: deque[float] = deque()
     fallback_rps_lock = Lock()
+
+    register_auth_routes(
+        app,
+        limiter=limiter,
+        cfg=cfg,
+    )
 
     def _check_fallback_rps() -> bool:
         now = time.time()
