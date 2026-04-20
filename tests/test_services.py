@@ -728,8 +728,9 @@ class _FakeQuery:
 
 
 class _FakeDB:
-    def __init__(self, rows=None):
+    def __init__(self, rows=None, settings=None):
         self.rows = rows or []
+        self.settings = settings or {}
         self.executed = 0
         self.committed = 0
         self.rolled_back = 0
@@ -741,6 +742,24 @@ class _FakeDB:
     def execute(self, stmt):
         self.executed += 1
         return None
+
+    def scalar(self, stmt):
+        where_criteria = getattr(stmt, "_where_criteria", ())
+        key = None
+        for criterion in where_criteria:
+            right = getattr(criterion, "right", None)
+            value = getattr(right, "value", None)
+            if value in self.settings:
+                key = value
+                break
+        if key is None:
+            return None
+        value, is_secret = self.settings[key]
+        row = MagicMock()
+        row.key = key
+        row.value = value
+        row.is_secret = is_secret
+        return row
 
     def commit(self):
         self.committed += 1
@@ -1127,6 +1146,56 @@ class TestAbuseChUpdater:
         assert fake_db.executed >= 2
         assert fake_db.committed >= 1
         assert fake_db.closed == 1
+
+    @patch("app.services.abusech.SessionLocal")
+    @patch("app.services.abusech.fetch_urlhaus_urls")
+    @patch("app.services.abusech.fetch_threatfox_iocs")
+    def test_update_abusech_uses_db_component_overrides_for_worker_scheduler(
+        self,
+        mock_threatfox,
+        mock_urlhaus,
+        mock_sessionlocal,
+    ):
+        mock_threatfox.return_value = iter([])
+        mock_urlhaus.return_value = iter([{
+            "ioc_value": "http://override.test/payload",
+            "ioc_type": "url",
+            "source_ref": "http://override.test/payload",
+            "first_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "last_seen": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "confidence": 65,
+            "tlp": "GREEN",
+            "is_active": True,
+            "tags": [],
+            "metadata": {},
+        }])
+        fake_db = _FakeDB(
+            rows=[],
+            settings={
+                "feedsecret.abusech.api_key": ("db-shared-key", True),
+                "feedcfg.abusech.threatfox_enabled": ("0", False),
+                "feedcfg.abusech.urlhaus_enabled": ("1", False),
+                "feedcfg.abusech.feodotracker_enabled": ("0", False),
+                "feedcfg.abusech.yaraify_enabled": ("0", False),
+                "feedcfg.abusech.hunting_fplist_enabled": ("0", False),
+            },
+        )
+        mock_sessionlocal.return_value = fake_db
+
+        with patch.dict("os.environ", {
+            "SECRET_KEY": "a" * 32,
+            "THREATFOX_ENABLED": "true",
+            "URLHAUS_ENABLED": "false",
+            "FEODOTRACKER_ENABLED": "false",
+            "YARAIFY_ENABLED": "false",
+            "HUNTING_FPLIST_ENABLED": "false",
+        }, clear=False):
+            result = update_abusech_indicators()
+
+        assert "threatfox" not in result
+        assert result["urlhaus"]["fetched"] == 1
+        mock_threatfox.assert_not_called()
+        mock_urlhaus.assert_called_once()
 
     @patch("app.services.abusech.SessionLocal")
     @patch("app.services.abusech.fetch_hunting_fplist")

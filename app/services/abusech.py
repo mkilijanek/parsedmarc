@@ -5,31 +5,27 @@ import io
 import ipaddress
 import logging
 import re
-import time
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, Dict, Iterator, List, Optional
 
-import requests  # kept for compatibility with existing test patches (app.services.abusech.requests)
 from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..config import Config
 from ..db import SessionLocal
 from ..metrics import (
-    feed_update_errors,
     feed_fetch_total,
     feed_fetched_rows_total,
     feed_update_duration_seconds,
-    quality_normalized_total,
-    quality_dropped_invalid_total,
+    feed_update_errors,
     quality_dedup_merged_total,
+    quality_dropped_invalid_total,
+    quality_normalized_total,
 )
 from ..models import FeedStats, Indicator
-from .common import (
-    _circuit_breaker,
-    standardized_update_result,
-    ExternalFeedConnector,
-)
+from ..settings_store import parse_bool_setting, runtime_override_or_env
+from .common import ExternalFeedConnector, _circuit_breaker, standardized_update_result
 from .quality import canonicalize_row, dedup_rows
 
 logger = logging.getLogger(__name__)
@@ -686,7 +682,84 @@ def _mark_feed_error(db, *, source: str, now: datetime, error: str) -> None:
     )
 
 
-def _validate_abusech_config(cfg: Config) -> None:
+def _feed_value_key(source_id: str, key: str) -> str:
+    return f"feedcfg.{source_id}.{key}"
+
+
+def _feed_secret_key(source_id: str, key: str) -> str:
+    return f"feedsecret.{source_id}.{key}"
+
+
+def _load_abusech_runtime_config(db: Any, cfg: Config) -> Any:
+    values: Dict[str, Any] = {name: getattr(cfg, name) for name in (
+        "ABUSECH_AUTH_KEY",
+        "THREATFOX_ENABLED",
+        "THREATFOX_API_URL",
+        "THREATFOX_AUTH_KEY",
+        "THREATFOX_DAYS",
+        "THREATFOX_LIMIT",
+        "URLHAUS_ENABLED",
+        "URLHAUS_FEED_URL",
+        "URLHAUS_LIMIT",
+        "FEODOTRACKER_ENABLED",
+        "FEODOTRACKER_FEED_URL",
+        "FEODOTRACKER_LIMIT",
+        "YARAIFY_ENABLED",
+        "YARAIFY_API_URL",
+        "YARAIFY_AUTH_KEY",
+        "YARAIFY_IDENTIFIER",
+        "YARAIFY_LOOKUP_HASHES",
+        "YARAIFY_TASK_STATUS",
+        "YARAIFY_LIMIT",
+        "HUNTING_FPLIST_ENABLED",
+        "HUNTING_API_URL",
+        "HUNTING_AUTH_KEY",
+        "HUNTING_FPLIST_FORMAT",
+        "HUNTING_FPLIST_LIMIT",
+        "ABUSECH_TIMEOUT_S",
+        "ABUSECH_RETRY_ATTEMPTS",
+        "ABUSECH_RETRY_BASE_DELAY_S",
+        "ABUSECH_CIRCUIT_FAIL_THRESHOLD",
+        "ABUSECH_CIRCUIT_COOLDOWN_S",
+    )}
+
+    string_overrides = {
+        "ABUSECH_AUTH_KEY": ("api_key", True),
+        "YARAIFY_AUTH_KEY": ("yaraify_auth_key", True),
+        "YARAIFY_IDENTIFIER": ("yaraify_identifier", False),
+        "YARAIFY_LOOKUP_HASHES": ("yaraify_lookup_hashes", False),
+        "HUNTING_AUTH_KEY": ("hunting_auth_key", True),
+        "HUNTING_FPLIST_FORMAT": ("hunting_fplist_format", False),
+    }
+    for attr, (setting_name, secret) in string_overrides.items():
+        values[attr] = runtime_override_or_env(
+            db,
+            setting_key=_feed_secret_key("abusech", setting_name) if secret else _feed_value_key("abusech", setting_name),
+            env_value=str(values.get(attr) or ""),
+            secret=secret,
+            cfg=cfg,
+        )
+
+    bool_overrides = {
+        "THREATFOX_ENABLED": "threatfox_enabled",
+        "URLHAUS_ENABLED": "urlhaus_enabled",
+        "FEODOTRACKER_ENABLED": "feodotracker_enabled",
+        "YARAIFY_ENABLED": "yaraify_enabled",
+        "HUNTING_FPLIST_ENABLED": "hunting_fplist_enabled",
+    }
+    for attr, setting_name in bool_overrides.items():
+        values[attr] = parse_bool_setting(runtime_override_or_env(
+            db,
+            setting_key=_feed_value_key("abusech", setting_name),
+            env_value="1" if bool(values.get(attr)) else "0",
+            secret=False,
+            cfg=cfg,
+        ))
+
+    return SimpleNamespace(**values)
+
+
+def _validate_abusech_config(cfg: Any) -> None:
     shared_key = (cfg.ABUSECH_AUTH_KEY or "").strip()
     if cfg.THREATFOX_ENABLED and not ((cfg.THREATFOX_AUTH_KEY or "").strip() or shared_key):
         raise RuntimeError("THREATFOX_ENABLED=true requires THREATFOX_AUTH_KEY or ABUSECH_AUTH_KEY")
@@ -704,9 +777,6 @@ def _validate_abusech_config(cfg: Config) -> None:
 def update_abusech_indicators() -> Dict[str, Any]:
     cfg = Config()
     now = datetime.now(tz=timezone.utc)
-    _validate_abusech_config(cfg)
-
-    auth_key = cfg.ABUSECH_AUTH_KEY
     results: Dict[str, Dict[str, Any]] = {}
 
     def _source_specs() -> List[tuple[str, bool, Any]]:
@@ -820,6 +890,10 @@ def update_abusech_indicators() -> Dict[str, Any]:
 
     db = SessionLocal()
     try:
+        cfg = _load_abusech_runtime_config(db, cfg)
+        _validate_abusech_config(cfg)
+        auth_key = cfg.ABUSECH_AUTH_KEY
+
         for source, enabled, fetch_fn in _source_specs():
             if not enabled:
                 continue

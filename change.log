@@ -1323,3 +1323,31 @@
 - `PYTHONPATH=. SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-local-check.db REDIS_URL=memory:// ALLOWED_HOSTS='*' RATE_LIMITS_ENABLED=false .venv/bin/pytest -q` -> `496 passed, 3 skipped`
 - `.venv/bin/mypy app/main.py app/routes/ops.py app/routes/ops_admin.py app/routes/ops_api.py app/views/legacy_public.py` -> success
 - CI coverage command for refactored boundary -> `259 passed, 1 skipped`, coverage `58.64%` against required `55%`
+
+[actions performed]
+- Rechecked the local `1.5.1` definition before release and found that database-backed override of abuse.ch subcomponents was still listed in the milestone but not fully implemented for the direct worker scheduler path.
+- Added `app/settings_store.py` for shared, DB-backed `AppSetting` reads with compatibility for existing plain, `v1:`, and `v2:` secret formats.
+- Updated `app/services/abusech.py` so the scheduled worker reads persisted `feedcfg.abusech.*` component toggles and `feedsecret.abusech.*` credentials directly from the database before falling back to environment defaults.
+- Added regression coverage proving DB settings can disable `ThreatFox` and enable `URLhaus` even when environment variables say the opposite.
+- Documented database-backed abuse.ch component override precedence in `docs/configuration.md` and `docs/data-sources.md`.
+
+[important commands]
+- `gh issue list --repo mkilijanek/ioc-service --state open --milestone 1.5.1 --limit 100`
+- `gh release list --repo mkilijanek/ioc-service --limit 20`
+- `gh run list --repo mkilijanek/ioc-service --branch main --limit 8 --json databaseId,headSha,status,conclusion,name,url,createdAt`
+- `PYTHONPATH=. pytest -q tests/test_services.py::TestAbuseChUpdater::test_update_abusech_uses_db_component_overrides_for_worker_scheduler tests/test_services.py::TestAbuseChUpdater::test_update_abusech_indicators tests/test_services.py::TestAbuseChUpdater::test_source_error_does_not_block_other_sources`
+
+[observations]
+- Previous web-triggered sync could project DB feed settings into environment variables before running a feed, but the standalone worker scheduler called `update_abusech_indicators()` directly and therefore still depended on process env only.
+- This is exactly the class of mismatch that caused abuse.ch to fetch zero rows or fail after toggles were changed outside the environment.
+
+[mistakes and lessons]
+- I almost proceeded to release `1.5.1` based only on commit/CI state. Lesson: before cutting milestone releases, re-read the milestone definition, not just the last commit summary, and verify every listed DoD item has a concrete implementation path.
+
+[verification]
+- Focused abuse.ch override regression tests -> `3 passed`
+- `python -m compileall -q app scripts/validate_schema.py` -> success
+- `ruff check app/settings_store.py app/services/abusech.py` -> success
+- `pytest -q tests/test_services.py::TestAbuseChUpdater tests/test_worker_health.py tests/test_postgres_integration.py` -> `9 passed, 2 skipped`
+- `python scripts/validate_schema.py` -> success
+- Full local test suite -> `497 passed, 3 skipped`

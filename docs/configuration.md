@@ -641,6 +641,24 @@ HUNTING_FPLIST_FORMAT=csv
 HUNTING_FPLIST_LIMIT=10000
 ```
 
+#### Database-backed abuse.ch component overrides
+
+The Admin feed configuration stores abuse.ch component selections in `app_settings` and the `abusech` service reads those settings directly during worker execution. Persisted values take precedence over process environment defaults for:
+
+- `feedcfg.abusech.threatfox_enabled`
+- `feedcfg.abusech.urlhaus_enabled`
+- `feedcfg.abusech.feodotracker_enabled`
+- `feedcfg.abusech.yaraify_enabled`
+- `feedcfg.abusech.hunting_fplist_enabled`
+- `feedsecret.abusech.api_key`
+- `feedsecret.abusech.yaraify_auth_key`
+- `feedsecret.abusech.hunting_auth_key`
+- `feedcfg.abusech.yaraify_identifier`
+- `feedcfg.abusech.yaraify_lookup_hashes`
+- `feedcfg.abusech.hunting_fplist_format`
+
+This avoids the earlier operational gap where scheduled worker runs could still follow stale environment-only component toggles after an operator changed abuse.ch settings in the database.
+
 #### ABUSECH hardening variables
 
 ```bash

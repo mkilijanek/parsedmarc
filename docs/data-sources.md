@@ -265,6 +265,8 @@ Admin feed configuration for `abusech` supports selectors:
 - `threatfox`, `urlhaus`, `feodotracker`, `yaraify`
 - optional `custom filter` field (stored per feed)
 
+Persisted Admin settings override environment defaults for component enablement and shared/source-specific abuse.ch credentials. The scheduled worker reads these `app_settings` values directly, so component changes made in the database are honored even outside the web-triggered sync path.
+
 **IOC types:**
 - ThreatFox: IP/domain/url/hash (normalized)
 - URLhaus: URL
