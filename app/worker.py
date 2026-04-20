@@ -18,8 +18,17 @@ from .services.cleanup import cleanup_old_indicators, cleanup_export_files
 from .services.correlation_snapshot import refresh_correlation_snapshots
 from .services.deps import dep_health_refresh
 from .services.common import configure_requests_tls_verify_from_env
-from .db import get_session
+from .db import SessionLocal, engine, get_session
 from .models import AppSetting
+from .worker_health import (
+    WorkerHealthServer,
+    active_jobs,
+    mark_job_failure,
+    mark_job_start,
+    mark_job_success,
+    mark_loop,
+    mark_shutdown_requested,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +37,7 @@ shutdown_requested = False
 def _signal_handler(signum, frame):
     global shutdown_requested
     shutdown_requested = True
+    mark_shutdown_requested()
     logger.info("shutdown_requested", extra={"signal": signum})
 
 def _safe_job(name: str, fn):
@@ -38,11 +48,14 @@ def _safe_job(name: str, fn):
         t0 = time.monotonic()
         try:
             logger.info("job_start", extra={"job": name})
+            mark_job_start(name)
             fn()
             duration_ms = int((time.monotonic() - t0) * 1000)
+            mark_job_success(name)
             logger.info("job_success", extra={"job": name, "duration_ms": duration_ms})
         except Exception as e:
             duration_ms = int((time.monotonic() - t0) * 1000)
+            mark_job_failure(name, str(e))
             logger.error("job_failed", extra={"job": name, "error": str(e), "duration_ms": duration_ms}, exc_info=True)
     return _wrap
 
@@ -94,6 +107,12 @@ def main():
     cfg = Config()
     setup_logging(cfg.LOG_LEVEL)
     _bootstrap_proxy_env_from_settings()
+    health_server = WorkerHealthServer(
+        cfg.WORKER_HEALTH_HOST,
+        cfg.WORKER_HEALTH_PORT,
+        cfg.WORKER_HEALTH_MAX_LOOP_AGE_S,
+    )
+    health_server.start()
 
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
@@ -101,7 +120,9 @@ def main():
     if not cfg.ENABLE_BACKGROUND_JOBS:
         logger.warning("background_jobs_disabled")
         while not shutdown_requested:
+            mark_loop()
             time.sleep(1)
+        health_server.stop()
         return
 
     interval = max(30, int(cfg.UPDATE_INTERVAL))
@@ -128,11 +149,20 @@ def main():
     logger.info("worker_started", extra={"update_interval_s": interval})
 
     while not shutdown_requested:
+        mark_loop()
         schedule.run_pending()
         time.sleep(1)
 
     schedule.clear()
-    logger.info("worker_draining")
+    logger.info("worker_draining", extra={"grace_s": cfg.WORKER_SHUTDOWN_GRACE_S})
+    deadline = time.monotonic() + max(0, int(cfg.WORKER_SHUTDOWN_GRACE_S))
+    while active_jobs() > 0 and time.monotonic() < deadline:
+        time.sleep(0.25)
+    if active_jobs() > 0:
+        logger.warning("worker_shutdown_grace_exhausted", extra={"active_jobs": active_jobs()})
+    SessionLocal.remove()
+    engine.dispose()
+    health_server.stop()
     logger.info("worker_exiting")
 
 if __name__ == "__main__":

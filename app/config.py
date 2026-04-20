@@ -151,6 +151,13 @@ class Config:
     ENABLE_BACKGROUND_JOBS: bool = field(default_factory=lambda: _env_bool("ENABLE_BACKGROUND_JOBS", True))
     UPDATE_INTERVAL: int = field(default_factory=lambda: _env_int("UPDATE_INTERVAL", 600))
     DEP_HEALTH_INTERVAL_S: int = field(default_factory=lambda: _env_int("DEP_HEALTH_INTERVAL_S", 60))
+    WORKER_HEALTH_HOST: str = field(default_factory=lambda: _env_str("WORKER_HEALTH_HOST", "0.0.0.0"))
+    WORKER_HEALTH_PORT: int = field(default_factory=lambda: _env_int("WORKER_HEALTH_PORT", 8091))
+    WORKER_HEALTH_MAX_LOOP_AGE_S: int = field(default_factory=lambda: _env_int("WORKER_HEALTH_MAX_LOOP_AGE_S", 120))
+    WORKER_SHUTDOWN_GRACE_S: int = field(default_factory=lambda: _env_int("WORKER_SHUTDOWN_GRACE_S", 30))
+    SYNC_JOB_MAX_RETRIES: int = field(default_factory=lambda: _env_int("SYNC_JOB_MAX_RETRIES", 3))
+    SYNC_JOB_RETRY_BASE_DELAY_S: int = field(default_factory=lambda: _env_int("SYNC_JOB_RETRY_BASE_DELAY_S", 30))
+    SYNC_JOB_RETRY_MAX_DELAY_S: int = field(default_factory=lambda: _env_int("SYNC_JOB_RETRY_MAX_DELAY_S", 900))
 
     # Security
     ALLOWED_HOSTS: str = field(default_factory=lambda: _env_str("ALLOWED_HOSTS", "*"))
@@ -159,4 +166,6 @@ class Config:
     METRICS_AUTH_TOKEN: str = field(default_factory=lambda: _env_str("METRICS_AUTH_TOKEN", ""))
     ADMIN_DANGEROUS_OPS: bool = field(default_factory=lambda: _env_bool("ADMIN_DANGEROUS_OPS", False))
     ADMIN_API_TOKEN: str = field(default_factory=lambda: _env_str("ADMIN_API_TOKEN", ""))
+    ADMIN_ROLE: str = field(default_factory=lambda: _env_str("ADMIN_ROLE", "admin"))
     INSTANCE_NAME: str = field(default_factory=lambda: _env_str("INSTANCE_NAME", "ioc-service"))
+    AUDIT_INTEGRITY_VERIFY_INTERVAL_S: int = field(default_factory=lambda: _env_int("AUDIT_INTEGRITY_VERIFY_INTERVAL_S", 3600))

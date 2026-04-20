@@ -709,6 +709,38 @@ UPDATE_INTERVAL=300
 UPDATE_INTERVAL=3600
 ```
 
+### WORKER_HEALTH_HOST / WORKER_HEALTH_PORT
+
+**Type:** String / integer
+**Default:** `0.0.0.0` / `8091`
+**Purpose:** Lightweight worker health server. It exposes `/healthz` and `/metrics` from the worker process and is used by the Docker healthcheck.
+
+```bash
+WORKER_HEALTH_HOST=0.0.0.0
+WORKER_HEALTH_PORT=8091
+WORKER_HEALTH_MAX_LOOP_AGE_S=120
+```
+
+Set `WORKER_HEALTH_PORT=0` to disable the worker health server.
+
+### WORKER_SHUTDOWN_GRACE_S
+
+**Type:** Integer (seconds)
+**Default:** `30`
+**Purpose:** Grace period for shutdown after SIGTERM/SIGINT. The worker stops accepting new jobs and waits for active jobs before closing the DB pool.
+
+### SYNC_JOB_MAX_RETRIES / SYNC_JOB_RETRY_BASE_DELAY_S
+
+**Type:** Integer
+**Default:** `3` retries, `30` seconds base delay
+**Purpose:** Automatic retry policy for transient sync-job failures. Delay uses exponential backoff and is capped by `SYNC_JOB_RETRY_MAX_DELAY_S`.
+
+```bash
+SYNC_JOB_MAX_RETRIES=3
+SYNC_JOB_RETRY_BASE_DELAY_S=30
+SYNC_JOB_RETRY_MAX_DELAY_S=900
+```
+
 ---
 
 ## Docker Configuration

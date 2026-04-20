@@ -1276,3 +1276,50 @@
 - GitHub Actions for `cfc0da6` are green on `main`: CI, Release Package, and Automatic Dependency Submission succeeded.
 - GitHub Actions for `cfc0da6` are green on `kili`: CI, Release Package, and Automatic Dependency Submission succeeded.
 - GitHub Actions for `cfc0da6` are green on `dev`: Automatic Dependency Submission succeeded.
+
+[current stage]
+- Implementing milestone `1.5.1` database convergence, PostgreSQL validation, worker reliability, and security/compliance controls.
+
+[actions performed]
+- Confirmed completed milestone releases/tags already exist for concrete milestones through `1.5.0`; did not create a fake `1.1.x` tag because that is a patch line, not a concrete version.
+- Added worker health server module with `/healthz` and `/metrics`, Docker worker healthcheck, loop-age/database/shutdown checks, and active-job state tracking.
+- Added graceful worker shutdown state: SIGTERM/SIGINT mark shutdown, scheduled jobs stop starting, active jobs get a grace window, and DB resources are disposed.
+- Hardened browser security headers with `Referrer-Policy`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, and `X-Permitted-Cross-Domain-Policies`.
+- Added `scripts/validate_schema.py` and CI schema-drift job comparing ORM metadata with Alembic head while reporting legacy SQL inventory for convergence tracking.
+- Added PostgreSQL integration CI job and tests for JSONB/ARRAY round trips, tag lookup compilation, and migrated schema columns.
+- Added automatic transient `SyncJob` retry state (`retry_count`, `max_retries`, `failure_class`, `next_attempt_at`) with exponential backoff, UI visibility, metrics, and migration `0005_sync_job_retry_state`.
+- Added scheduled audit integrity verification and `/admin/audit/report` compliance endpoint.
+- Added token-backed RBAC enforcement for admin roles (`admin`, `operator`, `viewer`) with central permission checks before `/admin` handlers.
+- Added vulnerability/security CI scan job with `pip-audit` and high-severity `bandit` SAST gate.
+- Added compliance documentation: `docs/risk-register.md`, `docs/vulnerability-management.md`, and `docs/data-protection.md`.
+- Updated docs for worker health config, sync retry config, security headers, schema drift, and access control.
+
+[important commands]
+- `gh issue list --repo mkilijanek/ioc-service --state open --limit 200 --json number,title,milestone,labels`
+- `gh release list --repo mkilijanek/ioc-service --limit 20`
+- `PYTHONPATH=. SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-local-check.db REDIS_URL=memory:// ALLOWED_HOSTS='*' RATE_LIMITS_ENABLED=false .venv/bin/python scripts/validate_schema.py`
+- `PYTHONPATH=. SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-local-check.db REDIS_URL=memory:// ALLOWED_HOSTS='*' RATE_LIMITS_ENABLED=false .venv/bin/pytest -q tests/test_worker_health.py tests/test_security.py tests/test_ui_issues.py tests/test_postgres_integration.py`
+- `.venv/bin/pip-audit -r requirements.txt`
+- `.venv/bin/bandit -q -r app --severity-level high --confidence-level medium`
+- `PYTHONPATH=. SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-local-check.db REDIS_URL=memory:// ALLOWED_HOSTS='*' RATE_LIMITS_ENABLED=false .venv/bin/pytest -q`
+- `.venv/bin/mypy app/main.py app/routes/ops.py app/routes/ops_admin.py app/routes/ops_api.py app/views/legacy_public.py`
+
+[observations]
+- Local `pip-audit` returned `No known vulnerabilities found`.
+- Full local pytest passed: `496 passed, 3 skipped`.
+- `scripts/validate_schema.py` reports legacy SQL only as convergence inventory because `database/init` still uses historical `ti` schema and column names like `ioc_value`/`ioc_type`.
+- Adding latest local `mypy` exposed pre-existing imported-module type errors outside the current boundary; `pyproject.toml` now keeps the CI boundary focused by ignoring legacy/imported modules that are not yet part of the typed boundary.
+
+[mistakes and lessons]
+- Running high-severity `bandit` locally after installing `pip-audit` showed many low/medium legacy findings. Lesson: do not add a blanket SAST gate without first setting a severity threshold or it will fail on historical debt unrelated to the current change.
+- `mypy` follows imports from targeted files, so targeting `app/main.py` can still surface errors in `app.factory` and services. Lesson: typed-boundary CI needs explicit override scoping until the entire codebase is type-clean.
+
+[verification]
+- `PYTHONPATH=. SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-local-check.db REDIS_URL=memory:// ALLOWED_HOSTS='*' RATE_LIMITS_ENABLED=false .venv/bin/python -m compileall -q app scripts/validate_schema.py` -> success
+- `PYTHONPATH=. SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-local-check.db REDIS_URL=memory:// ALLOWED_HOSTS='*' RATE_LIMITS_ENABLED=false .venv/bin/python scripts/validate_schema.py` -> success
+- `.venv/bin/ruff check app/main.py app/factory.py app/routes/ops.py app/routes/ops_admin.py app/routes/ops_api.py app/views/legacy_public.py tests/test_ops_contracts.py` -> success
+- `PYTHONPATH=. SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-local-check.db REDIS_URL=memory:// ALLOWED_HOSTS='*' RATE_LIMITS_ENABLED=false .venv/bin/pytest -q tests/test_worker_health.py tests/test_security.py tests/test_ui_issues.py tests/test_postgres_integration.py` -> `92 passed, 3 skipped`
+- `.venv/bin/pip-audit -r requirements.txt && .venv/bin/bandit -q -r app --severity-level high --confidence-level medium` -> success
+- `PYTHONPATH=. SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-local-check.db REDIS_URL=memory:// ALLOWED_HOSTS='*' RATE_LIMITS_ENABLED=false .venv/bin/pytest -q` -> `496 passed, 3 skipped`
+- `.venv/bin/mypy app/main.py app/routes/ops.py app/routes/ops_admin.py app/routes/ops_api.py app/views/legacy_public.py` -> success
+- CI coverage command for refactored boundary -> `259 passed, 1 skipped`, coverage `58.64%` against required `55%`

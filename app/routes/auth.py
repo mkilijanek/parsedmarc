@@ -7,6 +7,33 @@ from urllib.parse import quote
 from flask import Response, redirect, request, session, url_for
 
 
+ROLE_PERMISSIONS = {
+    "admin": {
+        "admin:read",
+        "feed:configure",
+        "feed:sync",
+        "indicator:read",
+        "indicator:export",
+        "logs:view",
+        "audit:view",
+        "system:dangerous",
+    },
+    "operator": {
+        "admin:read",
+        "feed:sync",
+        "indicator:read",
+        "indicator:export",
+        "logs:view",
+        "audit:view",
+    },
+    "viewer": {
+        "admin:read",
+        "indicator:read",
+        "logs:view",
+    },
+}
+
+
 def register_auth_routes(app, *, limiter, cfg) -> None:
     def _ensure_admin_csrf_token() -> str:
         token = str(session.get("admin_csrf_token") or "").strip()
@@ -21,11 +48,33 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
     def _admin_authenticated() -> bool:
         return bool(session.get("admin_authenticated"))
 
+    def _admin_role() -> str:
+        role = str(session.get("admin_role") or "").strip().lower()
+        return role if role in ROLE_PERMISSIONS else "viewer"
+
+    def _has_permission(permission: str) -> bool:
+        return permission in ROLE_PERMISSIONS.get(_admin_role(), set())
+
+    def _permission_for_admin_request() -> str:
+        path = request.path
+        if path.startswith("/admin/danger"):
+            return "system:dangerous"
+        if path.startswith("/admin/audit"):
+            return "audit:view"
+        if path.startswith("/admin/sync") or "/sync-jobs/" in path:
+            return "feed:sync"
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            return "feed:configure"
+        return "admin:read"
+
     @app.before_request
     def _require_admin_session():
         if not request.path.startswith("/admin"):
             return None
         if _admin_authenticated():
+            permission = _permission_for_admin_request()
+            if not _has_permission(permission):
+                return Response("Forbidden: insufficient role permissions.", status=403)
             if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
                 expected = _ensure_admin_csrf_token()
                 provided = (
@@ -130,7 +179,8 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         session.permanent = True
         session["admin_authenticated"] = True
         session["admin_user_id"] = "admin"
-        session["admin_role"] = "admin"
+        configured_role = str(getattr(cfg, "ADMIN_ROLE", "admin") or "admin").strip().lower()
+        session["admin_role"] = configured_role if configured_role in ROLE_PERMISSIONS else "admin"
         session["admin_csrf_token"] = secrets.token_urlsafe(32)
         return redirect(next_url if next_url.startswith("/") else "/admin")
 

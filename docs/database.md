@@ -72,15 +72,17 @@ Key fields:
 - `trigger_type` (`manual` / `scheduled`)
 - `status` (`queued` / `running` / `success` / `failed`)
 - `error`, `result_json`
+- retry state: `retry_count`, `max_retries`, `failure_class`, `next_attempt_at`
 - `created_at`, `started_at`, `finished_at`
 
 Indexes:
 - `idx_sync_jobs_feed_status`
 - `idx_sync_jobs_created`
 - `idx_sync_jobs_status_created`
+- `idx_sync_jobs_status_next_attempt`
 - `idx_sync_jobs_trigger_status`
 
-Schema is managed through Alembic migrations (`0001`, `0002`, `0003`).
+Schema is managed through Alembic migrations (`0001` through `0005`). CI runs `python scripts/validate_schema.py` to compare ORM metadata with Alembic head and report the legacy SQL inventory used for convergence tracking.
 
 ```sql
 CREATE TABLE ti.feed_stats (

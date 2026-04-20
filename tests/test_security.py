@@ -358,6 +358,15 @@ class TestSecurityHeaders:
         assert "microphone=()" in permissions
         assert "camera=()" in permissions
 
+    def test_cross_origin_and_referrer_headers(self, client):
+        """Test browser isolation headers for admin and API surfaces."""
+        response = client.get("/health")
+
+        assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+        assert response.headers.get("Cross-Origin-Opener-Policy") == "same-origin"
+        assert response.headers.get("Cross-Origin-Resource-Policy") == "same-origin"
+        assert response.headers.get("X-Permitted-Cross-Domain-Policies") == "none"
+
 
 # ============================================================================
 # Session Security Tests
@@ -398,6 +407,18 @@ class TestSessionSecurity:
         with admin_client.session_transaction() as sess:
             assert sess.get("admin_authenticated") is True
             assert sess.get("admin_role") == "admin"
+
+    def test_viewer_role_cannot_perform_admin_post(self, client):
+        with client.session_transaction() as sess:
+            sess["admin_authenticated"] = True
+            sess["admin_user_id"] = "viewer"
+            sess["admin_role"] = "viewer"
+            sess["admin_csrf_token"] = "csrf"
+
+        response = client.post("/admin/sync", data={"source": "all", "csrf_token": "csrf"})
+
+        assert response.status_code == 403
+        assert "insufficient role permissions" in response.get_data(as_text=True)
 
 
 # ============================================================================
@@ -663,3 +684,13 @@ class TestAuditLogging:
         body = tampered.get_json()
         assert body["valid"] is False
         assert body["failure_count"] >= 1
+
+    def test_admin_audit_report_includes_integrity_and_controls(self, admin_client, sample_indicators):
+        response = admin_client.get("/admin/audit/report")
+
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["audit_table"] == "audit_log"
+        assert body["central_log_table"] == "app_logs"
+        assert "ISO27001-A.12.4.1" in body["controls"]
+        assert body["integrity"]["valid"] is True

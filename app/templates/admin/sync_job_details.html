@@ -29,6 +29,7 @@
     <p><strong>Job ID:</strong> <code>{{ job.job_id }}</code></p>
     <p><strong>Source:</strong> {{ job.feed_source_id }} | <strong>Trigger:</strong> {{ job.trigger_type }} | <strong>Status:</strong> {{ job.status }}</p>
     <p><strong>Created:</strong> {{ job.created_at or '' }} | <strong>Started:</strong> {{ job.started_at or '' }} | <strong>Finished:</strong> {{ job.finished_at or '' }}</p>
+    <p><strong>Retries:</strong> {{ job.retry_count or 0 }}/{{ job.max_retries or 0 }} | <strong>Failure class:</strong> {{ job.failure_class or '' }} | <strong>Next attempt:</strong> {{ job.next_attempt_at or '' }}</p>
     <p><strong>Error:</strong> {{ job.error or '' }}</p>
     <p><strong>Result:</strong> <code>{{ job_result_json }}</code></p>
     <p><strong>FeedRun status:</strong> {{ run_status }} | <strong>Fetched:</strong> {{ run_fetched }}</p>

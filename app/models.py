@@ -261,6 +261,10 @@ class SyncJob(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", server_default="queued")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_json: Mapped[dict] = mapped_column(JSONCompat(), default=dict, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3, server_default="3")
+    failure_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    next_attempt_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
     started_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
@@ -269,5 +273,6 @@ class SyncJob(Base):
         Index("idx_sync_jobs_feed_status", "feed_source_id", "status"),
         Index("idx_sync_jobs_created", "created_at"),
         Index("idx_sync_jobs_status_created", "status", "created_at"),
+        Index("idx_sync_jobs_status_next_attempt", "status", "next_attempt_at"),
         Index("idx_sync_jobs_trigger_status", "trigger_type", "status"),
     )

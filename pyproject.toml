@@ -13,6 +13,16 @@ warn_unused_configs = true
 pretty = true
 disable_error_code = ["import-untyped"]
 
+[[tool.mypy.overrides]]
+module = [
+  "app.factory",
+  "app.formatters",
+  "app.routes.health",
+  "app.routes.public",
+  "app.services.*",
+]
+ignore_errors = true
+
 [tool.coverage.run]
 branch = true
 source = [

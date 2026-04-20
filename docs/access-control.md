@@ -1,6 +1,6 @@
 # Access Control Baseline
 
-Status: introduced for `1.4.2` (2026-04-07).
+Status: updated for `1.5.1` (2026-04-20).
 
 This document defines the minimum access-control model currently enforced by IOC Service for the admin surface.
 
@@ -11,14 +11,13 @@ This document defines the minimum access-control model currently enforced by IOC
 - After a successful login, the session is marked with:
   - `admin_authenticated=true`
   - `admin_user_id=admin`
-  - `admin_role=admin`
+  - `admin_role=<ADMIN_ROLE>`
 - State-changing `/admin` requests also require a valid CSRF token.
+- `/admin` requests are checked against a role-permission matrix before route execution.
 
 ## Active Roles
 
 ### `admin`
-
-This is the only active role implemented in `1.4.2`.
 
 Capabilities:
 - view `/admin`
@@ -29,13 +28,9 @@ Capabilities:
 - access dangerous admin operations only after entering a valid `ADMIN_API_TOKEN`
   and the required confirmation values in the Web UI
 
-## Reserved Future Roles
-
-These roles are documented now so future work can extend the model without redefining the baseline:
-
 ### `operator`
 
-Planned intent:
+Capabilities:
 - view admin dashboards
 - trigger syncs
 - inspect jobs/logs
@@ -43,7 +38,7 @@ Planned intent:
 
 ### `viewer`
 
-Planned intent:
+Capabilities:
 - read-only access to status, feeds, and logs
 - no state-changing admin actions
 
@@ -55,6 +50,19 @@ Planned intent:
 - Destructive operations require CSRF validation, the admin token, the `WIPE` confirmation phrase,
   and the current instance name. They no longer require a separate `.env` feature flag.
 
+## Permission Matrix
+
+| Permission | admin | operator | viewer |
+|---|---:|---:|---:|
+| `admin:read` | yes | yes | yes |
+| `feed:configure` | yes | no | no |
+| `feed:sync` | yes | yes | no |
+| `indicator:read` | yes | yes | yes |
+| `indicator:export` | yes | yes | no |
+| `logs:view` | yes | yes | yes |
+| `audit:view` | yes | yes | no |
+| `system:dangerous` | yes | no | no |
+
 ## Scope Note
 
-`1.4.2` establishes the baseline protection model, not a full user database or multi-user RBAC system. A richer role system remains future work, but this milestone removes the previously public admin surface and formalizes the current authorization boundary.
+`1.5.1` enforces RBAC in the current token-backed admin model. It does not add a multi-user database yet; that remains a larger identity-management project. The effective role is selected with `ADMIN_ROLE` and defaults to `admin`.

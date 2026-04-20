@@ -20,4 +20,5 @@ cache_access_total = Counter('cache_access_total', 'Cache accesses', ['endpoint'
 db_query_duration_seconds = Histogram('db_query_duration_seconds', 'Database query duration', ['endpoint'])
 sync_jobs_queued = Gauge('sync_jobs_queued', 'SyncJobs waiting to be picked up')
 sync_jobs_running = Gauge('sync_jobs_running', 'SyncJobs currently executing')
+sync_job_retries_total = Counter('sync_job_retries_total', 'SyncJob retry attempts scheduled', ['source', 'failure_class'])
 export_jobs_pending = Gauge('export_jobs_pending', 'ExportJobs queued or running')

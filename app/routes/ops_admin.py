@@ -322,6 +322,8 @@ def register_ops_admin_routes(
                     f"<td>{_esc(str(j.created_at or ''))}</td>"
                     f"<td>{_esc(str(j.started_at or ''))}</td>"
                     f"<td>{_esc(str(j.finished_at or ''))}</td>"
+                    f"<td>{_esc(str(getattr(j, 'retry_count', 0) or 0))}/{_esc(str(getattr(j, 'max_retries', 0) or 0))}</td>"
+                    f"<td>{_esc(str(getattr(j, 'next_attempt_at', '') or ''))}</td>"
                     "<td>"
                     f"<a href='/admin/sync-jobs/{_esc(j.job_id)}'>Details</a> "
                     + (
@@ -343,7 +345,7 @@ def register_ops_admin_routes(
             ]
         )
         if not recent_jobs_html:
-            recent_jobs_html = "<tr><td colspan='8'>No sync jobs yet.</td></tr>"
+            recent_jobs_html = "<tr><td colspan='10'>No sync jobs yet.</td></tr>"
 
         danger_zone_html = f"""
   <div class="card">

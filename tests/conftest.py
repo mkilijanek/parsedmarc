@@ -323,6 +323,10 @@ def assert_security_headers(response):
     assert "Content-Security-Policy" in response.headers
     assert "Strict-Transport-Security" in response.headers
     assert "Permissions-Policy" in response.headers
+    assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+    assert response.headers.get("Cross-Origin-Opener-Policy") == "same-origin"
+    assert response.headers.get("Cross-Origin-Resource-Policy") == "same-origin"
+    assert response.headers.get("X-Permitted-Cross-Domain-Policies") == "none"
 
 
 def assert_no_sql_injection(query_string: str) -> bool:

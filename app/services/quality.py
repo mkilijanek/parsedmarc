@@ -183,9 +183,13 @@ def dedup_rows(rows: Iterable[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], in
         # Merge tags preserving normalized uniqueness.
         existing["tags"] = normalize_tags(list(existing.get("tags") or []) + list(row.get("tags") or []))
         # Merge metadata shallowly.
-        md = {}
-        md.update(existing.get("metadata") if isinstance(existing.get("metadata"), dict) else {})
-        md.update(row.get("metadata") if isinstance(row.get("metadata"), dict) else {})
+        existing_metadata = existing.get("metadata")
+        row_metadata = row.get("metadata")
+        md: Dict[str, Any] = {}
+        if isinstance(existing_metadata, dict):
+            md.update(existing_metadata)
+        if isinstance(row_metadata, dict):
+            md.update(row_metadata)
         existing["metadata"] = md
         # Keep latest last_seen and earliest first_seen when available.
         fs_a = existing.get("first_seen")

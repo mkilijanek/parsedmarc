@@ -6,11 +6,11 @@ import json
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple, cast
 
 import requests
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 
@@ -94,7 +94,7 @@ def graph_access_token(
         pem = (cert_private_key_pem or "").strip()
         if not pem:
             raise RuntimeError("certificate mode requires private key PEM")
-        key = load_pem_private_key(pem.encode("utf-8"), password=None)
+        key = cast(rsa.RSAPrivateKey, load_pem_private_key(pem.encode("utf-8"), password=None))
         now = int(time.time())
         header = {"alg": "RS256", "typ": "JWT"}
         x5t = _thumbprint_to_x5t(cert_thumbprint)

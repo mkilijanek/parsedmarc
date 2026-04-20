@@ -15,7 +15,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Dict, List
@@ -47,6 +47,7 @@ from .metrics import (
     generate_latest,
     request_count,
     request_duration,
+    sync_job_retries_total,
     sync_jobs_queued,
     sync_jobs_running,
 )
@@ -207,6 +208,10 @@ def create_app() -> Flask:
         resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         # Permissions Policy: Disable unnecessary browser features
         resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+        resp.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
         return resp
 
     @app.before_request
@@ -328,6 +333,27 @@ def create_app() -> Flask:
             result = verify_audit_chain(rows, secret_key=cfg.SECRET_KEY)
             status_code = 200 if result["valid"] else 409
             return jsonify(result), status_code
+        finally:
+            db.close()
+
+    @app.get("/admin/audit/report")
+    @limiter.limit("10 per minute")
+    def admin_audit_report():
+        db = _db(read_only=True)
+        try:
+            rows = list(db.scalars(select(AuditLog).order_by(AuditLog.id.asc())).all())
+            result = verify_audit_chain(rows, secret_key=cfg.SECRET_KEY)
+            report = {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "instance": cfg.INSTANCE_NAME,
+                "controls": ["ISO27001-A.12.4.1", "ISO27001-A.12.4.3", "NIST-PR.PT-1"],
+                "central_log_table": "app_logs",
+                "audit_table": "audit_log",
+                "required_fields": ["action", "user_id", "ip_address", "created_at", "metadata", "log_hash"],
+                "integrity": result,
+            }
+            status_code = 200 if result["valid"] else 409
+            return jsonify(report), status_code
         finally:
             db.close()
 
@@ -1105,7 +1131,12 @@ def create_app() -> Flask:
         th.start()
 
     scheduler_lock = Lock()
-    scheduler_state: Dict[str, Any] = {"active_run_id": None, "active_job_id": None, "last_minute": {}}
+    scheduler_state: Dict[str, Any] = {
+        "active_run_id": None,
+        "active_job_id": None,
+        "last_minute": {},
+        "last_audit_integrity_check_at": None,
+    }
 
     def _app_log(
         level: str,
@@ -1264,6 +1295,7 @@ def create_app() -> Flask:
                 idempotency_key=f"{feed.source_id}:{trigger_type}",
                 status="queued",
                 result_json={},
+                max_retries=max(0, int(cfg.SYNC_JOB_MAX_RETRIES)),
             )
             db.add(job)
             db.add(
@@ -1285,6 +1317,29 @@ def create_app() -> Flask:
         finally:
             if own_session:
                 db.close()
+
+    def _classify_sync_failure(exc: Exception) -> str:
+        text = str(exc).lower()
+        permanent_markers = (
+            "incomplete config",
+            "feed not found",
+            "unknown source_type",
+            "requires threatfox_auth_key",
+            "requires yaraify_auth_key",
+            "requires hunting_auth_key",
+            "authentication failed",
+            "invalid api key",
+            "unauthorized",
+            "forbidden",
+        )
+        if any(marker in text for marker in permanent_markers):
+            return "permanent"
+        return "transient"
+
+    def _sync_retry_delay_s(retry_count: int) -> int:
+        base = max(1, int(cfg.SYNC_JOB_RETRY_BASE_DELAY_S))
+        max_delay = max(base, int(cfg.SYNC_JOB_RETRY_MAX_DELAY_S))
+        return min(max_delay, base * (2 ** max(0, retry_count - 1)))
 
     def _execute_sync_job(job: SyncJobRef) -> Dict[str, Any]:
         run_id = job.job_id
@@ -1310,6 +1365,7 @@ def create_app() -> Flask:
             if row:
                 row.status = "running"
                 row.error = None
+                row.failure_class = None
                 row.started_at = now
             db.commit()
 
@@ -1438,10 +1494,51 @@ def create_app() -> Flask:
                 run.finished_at = datetime.now(timezone.utc)
             row = db.scalar(select(SyncJob).where(SyncJob.id == job.id))
             if row:
-                row.status = "failed"
+                failure_class = _classify_sync_failure(e)
+                retry_count = int(row.retry_count or 0)
+                max_retries = max(0, int(row.max_retries if row.max_retries is not None else cfg.SYNC_JOB_MAX_RETRIES))
+                should_retry = failure_class == "transient" and retry_count < max_retries
+                row.retry_count = retry_count + 1 if should_retry else retry_count
+                row.failure_class = failure_class
                 row.error = str(e)
-                row.finished_at = datetime.now(timezone.utc)
-                row.result_json = {}
+                if should_retry:
+                    delay_s = _sync_retry_delay_s(row.retry_count)
+                    row.status = "queued"
+                    row.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay_s)
+                    row.finished_at = None
+                    row.result_json = {
+                        "retry_scheduled": True,
+                        "retry_count": row.retry_count,
+                        "max_retries": max_retries,
+                        "delay_s": delay_s,
+                        "failure_class": failure_class,
+                    }
+                    sync_job_retries_total.labels(source=str(job.feed_source_id), failure_class=failure_class).inc()
+                    _app_log(
+                        "WARNING",
+                        "scheduler",
+                        "sync_job_retry_scheduled",
+                        feed_source_id=job.feed_source_id,
+                        run_id=run_id,
+                        metadata={
+                            "error": str(e),
+                            "retry_count": row.retry_count,
+                            "max_retries": max_retries,
+                            "delay_s": delay_s,
+                            "next_attempt_at": str(row.next_attempt_at),
+                        },
+                        db=db,
+                    )
+                else:
+                    row.status = "failed"
+                    row.next_attempt_at = None
+                    row.finished_at = datetime.now(timezone.utc)
+                    row.result_json = {
+                        "retry_scheduled": False,
+                        "retry_count": retry_count,
+                        "max_retries": max_retries,
+                        "failure_class": failure_class,
+                    }
             if job.feed_source_id == "misp":
                 err_text = str(e).lower()
                 timeout_hit = ("timeout" in err_text and elapsed_s >= max(1, int(cfg.MISP_SYNC_TIMEOUT_S)))
@@ -1476,7 +1573,16 @@ def create_app() -> Flask:
     def _dequeue_next_sync_job() -> SyncJobRef | None:
         db = _db()
         try:
-            stmt = select(SyncJob).where(SyncJob.status == "queued").order_by(SyncJob.created_at.asc()).limit(1)
+            now = datetime.now(timezone.utc)
+            stmt = (
+                select(SyncJob)
+                .where(
+                    SyncJob.status == "queued",
+                    or_(SyncJob.next_attempt_at.is_(None), SyncJob.next_attempt_at <= now),
+                )
+                .order_by(SyncJob.created_at.asc())
+                .limit(1)
+            )
             bind = db.get_bind()
             if bind and bind.dialect.name == "postgresql":
                 stmt = stmt.with_for_update(skip_locked=True)
@@ -1570,6 +1676,25 @@ def create_app() -> Flask:
         finally:
             db.close()
 
+    def _run_audit_integrity_check_if_due(now: datetime) -> None:
+        interval_s = max(60, int(cfg.AUDIT_INTEGRITY_VERIFY_INTERVAL_S))
+        last = scheduler_state.get("last_audit_integrity_check_at")
+        if isinstance(last, datetime) and (now - last).total_seconds() < interval_s:
+            return
+        db = _db(read_only=True)
+        try:
+            rows = list(db.scalars(select(AuditLog).order_by(AuditLog.id.asc())).all())
+            result = verify_audit_chain(rows, secret_key=cfg.SECRET_KEY)
+        finally:
+            db.close()
+        scheduler_state["last_audit_integrity_check_at"] = now
+        _app_log(
+            "INFO" if result["valid"] else "ERROR",
+            "audit",
+            "audit_integrity_verified" if result["valid"] else "audit_integrity_failed",
+            metadata=result,
+        )
+
     def _scheduler_loop() -> None:
         lock_id = 993451
         while True:
@@ -1590,6 +1715,7 @@ def create_app() -> Flask:
                     try:
                         now = datetime.now(timezone.utc)
                         _enqueue_due_scheduled_jobs(now)
+                        _run_audit_integrity_check_if_due(now)
                         _run_sync_queue_once(max_jobs=10)
                     finally:
                         unlock_db = _db()

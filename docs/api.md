@@ -582,6 +582,10 @@ X-XSS-Protection: 1; mode=block
 Content-Security-Policy: default-src 'self'; ...
 Strict-Transport-Security: max-age=31536000; includeSubDomains
 Permissions-Policy: geolocation=(), microphone=(), camera=()
+Referrer-Policy: strict-origin-when-cross-origin
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+X-Permitted-Cross-Domain-Policies: none
 ```
 
 ---

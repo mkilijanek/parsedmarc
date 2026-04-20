@@ -69,6 +69,10 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 |----------|-------------|----------|
 | **[data-sources.md](data-sources.md)** | Source integrations, normalization | Developers, Threat Intel |
 | **[database.md](database.md)** | Schema, indexes, queries | DBAs, Developers |
+| **[access-control.md](access-control.md)** | Admin auth and RBAC baseline | Security, Operators |
+| **[data-protection.md](data-protection.md)** | Data classification and protection baseline | Security, Operators |
+| **[risk-register.md](risk-register.md)** | Current project risk register | Security, PM |
+| **[vulnerability-management.md](vulnerability-management.md)** | Vulnerability and patch management process | Security, Maintainers |
 | **[cli.md](cli.md)** | Manual ingestion tool | Operators, Analysts |
 
 ### User Documentation

@@ -7,7 +7,7 @@ import json
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Iterable, Dict, Any, List
+from typing import Iterable, Dict, Any, List, cast
 
 from .models import Indicator
 
@@ -75,8 +75,8 @@ def export_json(indicators: Iterable[Indicator]) -> str:
             "is_active": ind.is_active,
             "tags": ind.tags or [],
             "metadata": ind.metadata_ or {},
-            "first_seen": _utc_iso(ind.first_seen),
-            "last_seen": _utc_iso(ind.last_seen),
+            "first_seen": _utc_iso(cast(datetime | None, ind.first_seen)),
+            "last_seen": _utc_iso(cast(datetime | None, ind.last_seen)),
         }
         for ind in indicators
     ]
