@@ -1377,3 +1377,19 @@
 
 [mistakes and lessons]
 - I first tried `gh issue close --comment-file`, but this installed `gh` version does not support that flag. Lesson: for multiline issue-closing comments, load the file content into a shell variable and pass it via `--comment`.
+
+[actions performed]
+- Closed GitHub milestone `1.5.1`.
+- Created and pushed annotated git tag `1.5.1` pointing at `772a0e5b157ee416e281feecf01cbc3869f42bde`.
+- Created GitHub release `1.5.1`: https://github.com/mkilijanek/ioc-service/releases/tag/1.5.1
+- Verified release notes render as normal multiline Markdown, not as literal `\\n` escape sequences.
+
+[important commands]
+- `gh api -X PATCH repos/mkilijanek/ioc-service/milestones/7 -f state=closed`
+- `git tag -a 1.5.1 -m "Release 1.5.1" 772a0e5b157ee416e281feecf01cbc3869f42bde`
+- `git push origin 1.5.1`
+- `gh release create 1.5.1 --repo mkilijanek/ioc-service --target 772a0e5b157ee416e281feecf01cbc3869f42bde --title "1.5.1" --notes-file /tmp/release-1.5.1.md`
+- `gh release view 1.5.1 --repo mkilijanek/ioc-service --json body --jq .body`
+
+[mistakes and lessons]
+- `gh release view --json isLatest` failed because this installed `gh` does not expose `isLatest`. Lesson: inspect `gh` available JSON fields from the error output or use documented fields (`tagName`, `name`, `url`, `publishedAt`, `targetCommitish`) for release verification.
