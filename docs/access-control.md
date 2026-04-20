@@ -26,9 +26,8 @@ Capabilities:
 - test feed connections
 - trigger syncs
 - retry and cancel sync jobs
-- access dangerous admin operations when separately enabled by:
-  - `ADMIN_DANGEROUS_OPS=true`
-  - valid `ADMIN_API_TOKEN`
+- access dangerous admin operations only after entering a valid `ADMIN_API_TOKEN`
+  and the required confirmation values in the Web UI
 
 ## Reserved Future Roles
 
@@ -53,7 +52,8 @@ Planned intent:
 - `ADMIN_API_TOKEN` must be explicitly provisioned before using `/admin`.
 - `SECRET_KEY` must be explicitly provisioned; container startup must fail without it.
 - Admin actions must be written to `audit_log` with actor, action, target, timestamp, and source IP.
-- Destructive operations require an additional dangerous-ops gate and remain disabled by default.
+- Destructive operations require CSRF validation, the admin token, the `WIPE` confirmation phrase,
+  and the current instance name. They no longer require a separate `.env` feature flag.
 
 ## Scope Note
 

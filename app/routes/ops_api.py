@@ -5,7 +5,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
-from flask import jsonify, redirect, render_template, request, url_for
+from flask import jsonify, redirect, render_template, request, session, url_for
+from flask_limiter.util import get_remote_address
 from sqlalchemy import select
 
 
@@ -35,8 +36,14 @@ def register_ops_api_routes(
     AppLog = deps["AppLog"]
     SyncJob = deps["SyncJob"]
 
+    def _admin_rate_limit_key() -> str:
+        admin_user_id = str(session.get("admin_user_id") or "").strip()
+        if admin_user_id:
+            return f"admin:{admin_user_id}"
+        return f"ip:{get_remote_address()}"
+
     @app.post("/admin/sync")
-    @limiter.limit("10 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_sync():
         source_name = (request.form.get("source") or "").strip().lower()
         if not source_name:
@@ -96,7 +103,7 @@ def register_ops_api_routes(
             db.close()
 
     @app.get("/admin/sync-jobs/<job_id>")
-    @limiter.limit("30 per minute")
+    @limiter.limit("100 per minute", key_func=_admin_rate_limit_key)
     def admin_sync_job_details(job_id: str):
         job_id = (job_id or "").strip()
         if not job_id:
@@ -137,7 +144,7 @@ def register_ops_api_routes(
         )
 
     @app.post("/admin/sync-jobs/<job_id>/retry")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_sync_job_retry(job_id: str):
         job_id = (job_id or "").strip()
         db = _db()
@@ -177,7 +184,7 @@ def register_ops_api_routes(
             db.close()
 
     @app.post("/admin/sync-jobs/<job_id>/cancel")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_sync_job_cancel(job_id: str):
         job_id = (job_id or "").strip()
         db = _db()
@@ -234,7 +241,7 @@ def register_ops_api_routes(
             db.close()
 
     @app.post("/api/sync")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def api_sync():
         payload = request.get_json(silent=True) or {}
         source_name = str(payload.get("source") or request.args.get("source") or "").strip().lower()
@@ -269,7 +276,7 @@ def register_ops_api_routes(
             db.close()
 
     @app.get("/api/feeds")
-    @limiter.limit("60 per minute")
+    @limiter.limit("100 per minute", key_func=_admin_rate_limit_key)
     def api_feeds():
         def _int_arg(name: str, default: int, minimum: int, maximum: int) -> int:
             try:
@@ -333,7 +340,7 @@ def register_ops_api_routes(
             db.close()
 
     @app.get("/api/feeds/metrics")
-    @limiter.limit("60 per minute")
+    @limiter.limit("100 per minute", key_func=_admin_rate_limit_key)
     def api_feeds_metrics():
         hours, window = _resolve_metrics_window_hours()
         datasource = (request.args.get("datasource") or "all").strip().lower()
@@ -490,7 +497,7 @@ def register_ops_api_routes(
             db.close()
 
     @app.get("/api/runs/current")
-    @limiter.limit("60 per minute")
+    @limiter.limit("100 per minute", key_func=_admin_rate_limit_key)
     def api_runs_current():
         db = _db(read_only=True)
         try:

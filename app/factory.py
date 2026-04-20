@@ -281,6 +281,24 @@ def create_app() -> Flask:
             if owns_session:
                 db.close()
 
+    @app.errorhandler(429)
+    def _rate_limit_exceeded(err: HTTPException):
+        corr = getattr(request, "_correlation_id", uuid.uuid4().hex)
+        _audit(
+            "rate_limit_exceeded",
+            "request",
+            None,
+            {
+                "path": request.path,
+                "method": request.method,
+                "description": err.description or err.name,
+                "correlation_id": corr,
+            },
+        )
+        if request.path.startswith("/api/"):
+            return jsonify({"error": err.description or "Rate limit exceeded", "correlation_id": corr}), 429
+        return err
+
     def _cache_key(prefix: str, **parts: Any) -> str:
         # stable ordering
         segs = [prefix] + [f"{k}={parts[k]}" for k in sorted(parts.keys())]
@@ -537,6 +555,12 @@ def create_app() -> Flask:
                     {"key": "urlhaus_enabled", "label": "URLhaus", "secret": False, "required": False, "env": "URLHAUS_ENABLED", "type": "checkbox"},
                     {"key": "feodotracker_enabled", "label": "FeodoTracker", "secret": False, "required": False, "env": "FEODOTRACKER_ENABLED", "type": "checkbox"},
                     {"key": "yaraify_enabled", "label": "YARAify", "secret": False, "required": False, "env": "YARAIFY_ENABLED", "type": "checkbox"},
+                    {"key": "yaraify_auth_key", "label": "YARAify auth key", "secret": True, "required": False, "env": "YARAIFY_AUTH_KEY", "placeholder": "Leave blank to use abuse.ch auth key"},
+                    {"key": "yaraify_identifier", "label": "YARAify identifier", "secret": False, "required": False, "env": "YARAIFY_IDENTIFIER", "placeholder": "Optional YARAify task identifier"},
+                    {"key": "yaraify_lookup_hashes", "label": "YARAify lookup hashes", "secret": False, "required": False, "env": "YARAIFY_LOOKUP_HASHES", "placeholder": "Optional comma-separated hashes"},
+                    {"key": "hunting_fplist_enabled", "label": "Hunting FPList", "secret": False, "required": False, "env": "HUNTING_FPLIST_ENABLED", "type": "checkbox"},
+                    {"key": "hunting_auth_key", "label": "Hunting auth key", "secret": True, "required": False, "env": "HUNTING_AUTH_KEY", "placeholder": "Leave blank to use abuse.ch auth key"},
+                    {"key": "hunting_fplist_format", "label": "Hunting FPList format", "secret": False, "required": False, "env": "HUNTING_FPLIST_FORMAT", "placeholder": "csv"},
                 ],
             },
         }
@@ -680,9 +704,18 @@ def create_app() -> Flask:
                 "urlhaus_enabled": (form_data.get(_field_input_name("urlhaus_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
                 "feodotracker_enabled": (form_data.get(_field_input_name("feodotracker_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
                 "yaraify_enabled": (form_data.get(_field_input_name("yaraify_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
+                "hunting_fplist_enabled": (form_data.get(_field_input_name("hunting_fplist_enabled")) or "").strip().lower() in {"1", "true", "yes", "on"},
             }
             if not any(toggles.values()):
                 errors.append("Select at least one abuse.ch service.")
+            if toggles["yaraify_enabled"]:
+                has_identifier = bool((form_data.get(_field_input_name("yaraify_identifier")) or "").strip())
+                has_hashes = bool((form_data.get(_field_input_name("yaraify_lookup_hashes")) or "").strip())
+                if not has_identifier and not has_hashes:
+                    current_identifier = _get_setting(db, _feed_value_key(feed.source_id, "yaraify_identifier"), "", secret=False)
+                    current_hashes = _get_setting(db, _feed_value_key(feed.source_id, "yaraify_lookup_hashes"), "", secret=False)
+                    if not current_identifier and not current_hashes:
+                        errors.append("YARAify requires an identifier or lookup hashes.")
 
         return errors
 

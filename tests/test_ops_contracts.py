@@ -53,3 +53,23 @@ def test_ops_routes_delegate_to_split_modules():
     assert "register_ops_api_routes(" in ops
     assert '@app.get("/admin")' not in ops
     assert '@app.post("/api/sync")' not in ops
+
+
+def test_admin_routes_use_per_user_rate_limit_keys():
+    ops_admin = (ROOT / "app" / "routes" / "ops_admin.py").read_text()
+    ops_api = (ROOT / "app" / "routes" / "ops_api.py").read_text()
+    assert "def _admin_rate_limit_key()" in ops_admin
+    assert "def _admin_rate_limit_key()" in ops_api
+    assert 'limiter.limit("100 per minute", key_func=_admin_rate_limit_key)' in ops_admin
+    assert 'limiter.limit("10 per minute", key_func=_admin_rate_limit_key)' in ops_admin
+    assert 'limiter.limit("3 per hour", key_func=_admin_rate_limit_key)' in ops_admin
+    assert 'limiter.limit("10 per minute", key_func=_admin_rate_limit_key)' in ops_api
+    assert 'limiter.limit("100 per minute", key_func=_admin_rate_limit_key)' in ops_api
+
+
+def test_feed_runtime_overrides_fall_back_to_env_when_db_row_absent():
+    factory = (ROOT / "app" / "factory.py").read_text()
+    assert "def _runtime_override_or_env(" in factory
+    assert 'return str(os.environ.get(env_key) or "")' in factory
+    assert 'setting_key=_feed_secret_key(feed.source_id, str(f["key"]))' in factory
+    assert 'env_key=env_key' in factory

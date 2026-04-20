@@ -174,6 +174,9 @@ def test_abusech_configure_shows_service_selectors(admin_client, sample_indicato
     assert "URLhaus" in html
     assert "FeodoTracker" in html
     assert "YARAify" in html
+    assert "YARAify identifier" in html
+    assert "YARAify lookup hashes" in html
+    assert "Hunting FPList" in html
     assert "Custom filter" in html
     assert "Base URL" not in html
     assert "Bazaar tags" not in html
@@ -184,7 +187,12 @@ def test_feed_test_connection_endpoint_redirects(admin_client, admin_csrf_token,
     assert response.status_code in {301, 302}
 
 
-def test_dangerous_ops_disabled_by_default(admin_client, admin_csrf_token, sample_indicators):
+def test_dangerous_wipe_requires_admin_token(admin_client, admin_csrf_token, sample_indicators):
+    panel = admin_client.get("/admin")
+    assert panel.status_code == 200
+    assert "Danger Zone" in panel.get_data(as_text=True)
+    assert "ADMIN_DANGEROUS_OPS" not in panel.get_data(as_text=True)
+
     response = admin_client.post(
         "/admin/danger/wipe",
         data={"operation": "soft", "admin_token": "x", "confirm_phrase": "WIPE", "confirm_instance": "ioc-service", "csrf_token": admin_csrf_token},
@@ -192,7 +200,7 @@ def test_dangerous_ops_disabled_by_default(admin_client, admin_csrf_token, sampl
     )
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "Dangerous operations are disabled" in html
+    assert "Dangerous operation denied: invalid admin token" in html
 
 
 def test_malwarebazaar_test_connection_error_mentions_abusech_auth_key(admin_client, admin_csrf_token, sample_indicators):
@@ -404,12 +412,13 @@ def test_admin_feed_configure_save_records_audit_entry(admin_client, admin_csrf_
         data={
             "display_name": "abuse.ch bundle",
             "schedule_cron": "*/5 * * * *",
-            "auth_key": "secret-token",
+            "api_key": "secret-token",
             "threatfox_enabled": "1",
             "urlhaus_enabled": "1",
-            "feodo_enabled": "1",
+            "feodotracker_enabled": "1",
             "yaraify_enabled": "1",
-            "fplist_enabled": "1",
+            "yaraify_identifier": "task-123",
+            "hunting_fplist_enabled": "1",
             "csrf_token": admin_csrf_token,
         },
         follow_redirects=True,

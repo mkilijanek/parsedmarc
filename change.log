@@ -1144,3 +1144,62 @@
 - GitHub labels created: 6 (database, testing, ci/cd, api, architecture, performance, compliance, nist, iso27001)
 - Milestones used: 4 (1.5.1, 1.6.0, 1.6.1, 1.7.0)
 - Estimated development time: 14-20 weeks (based on kimi-milestones.txt)
+
+2026-04-20
+
+[current stage]
+- Security issue triage and dependency hardening, starting with open high-priority security issues.
+
+[actions performed]
+- Reviewed open GitHub issues and prioritized security/high-priority items first.
+- Checked available PyPI versions for `cryptography`, `alembic`, and `Mako` before editing pins.
+- Updated `requirements.txt`: `alembic==1.18.4`, explicit `Mako==1.3.11`, and `cryptography==46.0.7`.
+
+[observations]
+- GitHub issue `#135` asks for `cryptography>=47.0.0`, but the package index available from this environment currently reports latest `cryptography` as `46.0.7`; do not pin an unavailable version just to satisfy text in the issue.
+- `Mako` was previously transitive via Alembic; adding an explicit fixed pin makes the security posture auditable and removes ambiguity for Dependabot.
+
+[next planned implementation steps]
+1. Install updated requirements into `.venv`.
+2. Run focused security/database tests and Alembic sanity checks.
+3. Comment/close dependency issues according to the verified outcome.
+
+[verification]
+- `.venv/bin/python -m pip install -r requirements.txt` -> success
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_security.py tests/test_database.py tests/test_ops_contracts.py` -> `101 passed`
+- `SECRET_KEY=... DATABASE_URL=sqlite:///./tmp_alembic_check.db .venv/bin/alembic upgrade head` -> success
+- installed versions verified: `cryptography 46.0.7`, `alembic 1.18.4`, `mako 1.3.11`
+
+[actions performed]
+- Implemented per-admin-user rate limit keys for admin UI/API routes using session `admin_user_id` with IP fallback.
+- Split admin rate tiers into read (`100/min`), write (`10/min`), and dangerous wipe (`3/hour`).
+- Added a `429` handler that writes `rate_limit_exceeded` audit events and returns JSON for API paths.
+- Added tests/contracts for per-user admin rate limits and audit logging on exceeded API limits.
+
+[next planned implementation steps]
+1. Run focused tests for security, UI, and ops contracts.
+2. Resolve any regressions from the new limiter key functions.
+
+[actions performed]
+- Extended abuse.ch source templates with DB-backed override fields for YARAify identifier/hash inputs and Hunting FPList toggles/credentials.
+- Added validation so enabling YARAify requires either an identifier or lookup hashes from form/DB state.
+- Added contract/UI tests covering abuse.ch DB override fields and env fallback behavior.
+
+[next planned implementation steps]
+1. Re-run focused suites for security, UI, ops contracts, and abuse.ch services.
+
+[mistakes and lessons]
+- I guessed a pytest class selector (`tests/test_services.py::TestAbuseChService`) that does not exist. Search test names before using narrow selectors in this repo.
+
+[actions performed]
+- Addressed GitHub issue #133 by removing the `ADMIN_DANGEROUS_OPS` runtime gate from the Web UI wipe flow.
+- Kept destructive wipe protected by authenticated admin session, CSRF, `ADMIN_API_TOKEN`, `WIPE` confirmation phrase, and exact `INSTANCE_NAME` confirmation.
+- Updated `docs/access-control.md`, `.env.example`, and UI regression tests to describe the token-confirmation model instead of the old `.env` feature flag.
+
+[next planned implementation steps]
+1. Run focused security/UI/ops tests after the destructive wipe contract change.
+2. Commit and push the security batch if validation passes.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_security.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_services.py::TestAbuseChUpdater tests/test_services.py::TestAbuseChFetchers tests/test_services.py::TestAbuseChHelpers` -> `107 passed`
+- `bash scripts/dev-check.sh` -> `490 passed`

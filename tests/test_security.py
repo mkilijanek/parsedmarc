@@ -25,6 +25,7 @@ from app.security import (
     get_client_ip,
 )
 from app.main import create_app
+from app.models import AuditLog
 from conftest import assert_security_headers, assert_no_sql_injection
 
 
@@ -419,6 +420,23 @@ class TestRateLimiting:
         # Flask-Limiter may add these headers
         # Test is informational rather than strict
         assert response.status_code == 200
+
+    def test_admin_api_rate_limit_exceed_is_audited(self, client, test_db):
+        """Admin API rate limit violations are returned as JSON and written to audit log."""
+        statuses = [
+            client.post("/api/sync", json={"source": "does-not-exist"}).status_code
+            for _ in range(11)
+        ]
+
+        assert statuses[:10] == [400] * 10
+        assert statuses[-1] == 429
+        row = (
+            test_db.query(AuditLog)
+            .filter(AuditLog.action == "rate_limit_exceeded")
+            .one_or_none()
+        )
+        assert row is not None
+        assert (row.metadata_ or {}).get("path") == "/api/sync"
 
 
 # ============================================================================

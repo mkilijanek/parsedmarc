@@ -7,7 +7,8 @@ import sys
 from typing import Any, Dict, List
 from urllib.parse import urlencode
 
-from flask import redirect, render_template, request, url_for
+from flask import redirect, render_template, request, session, url_for
+from flask_limiter.util import get_remote_address
 from sqlalchemy import delete, func, select
 
 from ..services.common import redact_proxy_credentials
@@ -20,6 +21,13 @@ def _runtime_attr(name: str, default: Any) -> Any:
     return default
 
 
+def _admin_rate_limit_key() -> str:
+    admin_user_id = str(session.get("admin_user_id") or "").strip()
+    if admin_user_id:
+        return f"admin:{admin_user_id}"
+    return f"ip:{get_remote_address()}"
+
+
 def register_ops_admin_routes(
     app,
     *,
@@ -28,7 +36,6 @@ def register_ops_admin_routes(
     logger: logging.Logger,
     deps: Dict[str, Any],
 ) -> None:
-    _admin_dangerous_ops_enabled = deps["_admin_dangerous_ops_enabled"]
     _admin_token_authorized = deps["_admin_token_authorized"]
     _app_log = deps["_app_log"]
     _apply_feed_filters_and_sort = deps["_apply_feed_filters_and_sort"]
@@ -66,7 +73,7 @@ def register_ops_admin_routes(
     ADMIN_FEED_METRICS_WIDGET_SCRIPT = deps["ADMIN_FEED_METRICS_WIDGET_SCRIPT"]
 
     @app.get("/admin")
-    @limiter.limit("30 per minute")
+    @limiter.limit("100 per minute", key_func=_admin_rate_limit_key)
     def admin_panel():
         table_params = _parse_feed_table_params()
         db = _db()
@@ -338,11 +345,10 @@ def register_ops_admin_routes(
         if not recent_jobs_html:
             recent_jobs_html = "<tr><td colspan='8'>No sync jobs yet.</td></tr>"
 
-        if _admin_dangerous_ops_enabled():
-            danger_zone_html = f"""
+        danger_zone_html = f"""
   <div class="card">
     <h2>Danger Zone</h2>
-    <p>High-risk operations. Requires admin token, confirmation phrase and instance name.</p>
+    <p>High-risk operations. Requires the admin token, confirmation phrase and instance name.</p>
     <form method="post" action="/admin/danger/wipe">
       <p><label>Operation
         <select name="operation">
@@ -369,13 +375,6 @@ def register_ops_admin_routes(
     </form>
   </div>
             """
-        else:
-            danger_zone_html = """
-  <div class="card">
-    <h2>Danger Zone</h2>
-    <p>Disabled. Set <code>ADMIN_DANGEROUS_OPS=true</code> and configure <code>ADMIN_API_TOKEN</code> to enable controlled wipe operations.</p>
-  </div>
-            """
 
         return render_template(
             "admin/panel.html",
@@ -398,7 +397,7 @@ def register_ops_admin_routes(
         )
 
     @app.post("/admin/global-config")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_save_global_config():
         db = _db()
         try:
@@ -437,7 +436,7 @@ def register_ops_admin_routes(
             db.close()
 
     @app.post("/admin/proxy-test")
-    @limiter.limit("10 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_proxy_test():
         db = _db()
         try:
@@ -455,10 +454,8 @@ def register_ops_admin_routes(
             db.close()
 
     @app.post("/admin/danger/wipe")
-    @limiter.limit("5 per minute")
+    @limiter.limit("3 per hour", key_func=_admin_rate_limit_key)
     def admin_danger_wipe():
-        if not _admin_dangerous_ops_enabled():
-            return redirect(url_for("admin_panel", msg="Dangerous operations are disabled."))
         if not _admin_token_authorized():
             return redirect(url_for("admin_panel", msg="Dangerous operation denied: invalid admin token."))
         confirm_phrase = (request.form.get("confirm_phrase") or "").strip().upper()
@@ -532,7 +529,7 @@ def register_ops_admin_routes(
             db.close()
 
     @app.post("/admin/feed/new")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_add_feed():
         source_id = (request.form.get("source_id") or "").strip().lower()
         display_name = (request.form.get("display_name") or "").strip()
@@ -587,7 +584,7 @@ def register_ops_admin_routes(
             db.close()
 
     @app.get("/admin/feed/<source_id>/configure")
-    @limiter.limit("30 per minute")
+    @limiter.limit("100 per minute", key_func=_admin_rate_limit_key)
     def admin_feed_configure(source_id: str):
         source_id = (source_id or "").strip().lower()
         msg = (request.args.get("msg") or "").strip()
@@ -620,7 +617,7 @@ def register_ops_admin_routes(
         )
 
     @app.post("/admin/feed/<source_id>/configure")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_feed_configure_save(source_id: str):
         source_id = (source_id or "").strip().lower()
         db = _db()
@@ -677,7 +674,7 @@ def register_ops_admin_routes(
             db.close()
 
     @app.post("/admin/feed/<source_id>/test")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_feed_test_connection(source_id: str):
         source_id = (source_id or "").strip().lower()
         db = _db()
@@ -709,7 +706,7 @@ def register_ops_admin_routes(
             db.close()
 
     @app.post("/admin/feed-toggle")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_feed_toggle():
         source_name = (request.form.get("source") or "").strip().lower()
         enabled = (request.form.get("enabled") or "").strip().lower() in {"1", "true", "yes", "on"}
@@ -730,7 +727,7 @@ def register_ops_admin_routes(
             db.close()
 
     @app.post("/admin/feed/<source_id>/delete")
-    @limiter.limit("20 per minute")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def admin_feed_delete(source_id: str):
         source_id = (source_id or "").strip().lower()
         db = _db()
