@@ -34,6 +34,9 @@ Known gaps filled in the local roadmap:
   - `1.2.1`
   - `1.3.0`
   - `1.4.0`
+- GitHub milestones closed after active delivery:
+  - `1.5.0` on 2026-04-07
+  - `1.5.1` on 2026-04-20
 - Historical GitHub releases created on 2026-04-07 to match already existing version tags:
   - `1.4.0`
   - `1.4.1`
@@ -327,6 +330,9 @@ Usunąć dualizm schematu SQL/ORM i dodać prawdziwą walidację zachowań Postg
 - drift schematu między SQL a ORM jest wykrywalny
 - CI blokuje niespójne zmiany schematu
 - runtime potrafi czytać z DB trwałe override składowych feedów złożonych zamiast polegać wyłącznie na env
+
+**Status**
+- Done on 2026-04-20.
 
 ---
 

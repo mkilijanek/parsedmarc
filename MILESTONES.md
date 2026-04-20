@@ -129,6 +129,9 @@ Definition of done:
 - Inconsistent schema changes fail CI before merge.
 - Composite feed component overrides are persisted in DB and take precedence in runtime over static env defaults where configured.
 
+Status:
+- Done on 2026-04-20.
+
 ### 1.6.0 — API & Configuration Modernization
 
 Problem focus:
@@ -205,4 +208,7 @@ Definition of done:
 - Historical cleanup completed on 2026-04-07:
   - closed GitHub milestones: `1.1.x`, `1.2.1`, `1.3.0`, `1.4.0`
   - created missing GitHub releases for existing tags: `1.4.0`, `1.4.1`
-  - left `1.5.0`, `1.5.1`, `1.6.0`, `1.6.1`, `1.7.0` open because they are not yet fully delivered
+  - left `1.6.0`, `1.6.1`, `1.7.0` open because they are not yet fully delivered
+- Active delivery cleanup:
+  - closed GitHub milestone `1.5.0` and released `1.5.0` on 2026-04-07
+  - closed GitHub milestone `1.5.1` and released `1.5.1` on 2026-04-20

@@ -1351,3 +1351,29 @@
 - `pytest -q tests/test_services.py::TestAbuseChUpdater tests/test_worker_health.py tests/test_postgres_integration.py` -> `9 passed, 2 skipped`
 - `python scripts/validate_schema.py` -> success
 - Full local test suite -> `497 passed, 3 skipped`
+
+[actions performed]
+- Committed `e82a412` (`Complete abuse.ch DB overrides for 1.5.1`) and pushed it to `origin/main`.
+- Fast-forwarded `dev` and `kili` to `e82a412` and pushed both branches.
+- Waited for GitHub Actions on `main` run `24685420735`; CI, Release Package, and Automatic Dependency Submission all completed successfully.
+- Closed completed `1.5.1` issues: `#141`, `#142`, `#147`, `#148`, `#151`, `#154`, `#169`, `#172`.
+- Moved broad enterprise-scope controls out of `1.5.1` instead of falsely closing them:
+  - `#163` to `1.6.1` for centralized SIEM/retention/cold-storage controls beyond the delivered audit-integrity baseline.
+  - `#164` to `1.6.0` for role tables, role-management UI, and access-review automation beyond the delivered token-backed RBAC baseline.
+  - `#165` to `1.6.0` for TDE/KMS/mTLS/secret-manager/DLP controls beyond the delivered repository-side data-protection baseline.
+
+[important commands]
+- `git checkout dev && git merge --ff-only main && git push origin dev`
+- `git checkout kili && git merge --ff-only main && git push origin kili`
+- `gh run watch 24685420735 --repo mkilijanek/ioc-service --exit-status`
+- `gh issue close <issue> --repo mkilijanek/ioc-service --reason completed --comment "$body"`
+- `gh issue edit 163 --repo mkilijanek/ioc-service --milestone 1.6.1`
+- `gh issue edit 164 --repo mkilijanek/ioc-service --milestone 1.6.0`
+- `gh issue edit 165 --repo mkilijanek/ioc-service --milestone 1.6.0`
+
+[observations]
+- GitHub milestone `1.5.1` now has `0` open issues and `11` closed issues after closing complete work and moving non-complete enterprise controls to future milestones.
+- GitHub Actions only reported Node.js 20 deprecation annotations for `actions/checkout@v4` and `actions/setup-python@v5`; these are warnings, not failures.
+
+[mistakes and lessons]
+- I first tried `gh issue close --comment-file`, but this installed `gh` version does not support that flag. Lesson: for multiline issue-closing comments, load the file content into a shell variable and pass it via `--comment`.
