@@ -14,7 +14,7 @@ prometheus-client==0.20.0
 cryptography==46.0.7
 
 # Testing dependencies
-pytest==8.3.4
+pytest==9.0.3
 pytest-cov==6.0.0
 pytest-mock==3.14.0
 pytest-env==1.1.5

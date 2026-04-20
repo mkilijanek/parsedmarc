@@ -1218,3 +1218,15 @@
 
 [observations]
 - Both branch pushes still reported 2 moderate GitHub dependency vulnerabilities on the default branch; they are not resolved by the current dependency batch.
+
+[actions performed]
+- Queried Dependabot alerts via `gh api repos/mkilijanek/ioc-service/dependabot/alerts`.
+- Confirmed `Mako` alert `GHSA-v92g-xgxw-vvmm` is fixed by `Mako==1.3.11`.
+- Confirmed an open `pytest` alert `GHSA-6w46-j5rx-g56g` requires `pytest>=9.0.3`; updated `requirements.txt` from `pytest==8.3.4` to `pytest==9.0.3`.
+
+[observations]
+- The open cryptography alert requires `46.0.7`, and `requirements.txt` already pins `cryptography==46.0.7`; GitHub may need another dependency graph refresh after the push.
+
+[verification]
+- `.venv/bin/python -m pip install -r requirements.txt` -> success, installed `pytest==9.0.3`.
+- `bash scripts/dev-check.sh` -> `490 passed` with pytest 9.0.3.
