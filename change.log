@@ -1203,3 +1203,10 @@
 [verification]
 - `PYTHONPATH=. .venv/bin/pytest -q tests/test_security.py tests/test_ui_issues.py tests/test_ops_contracts.py tests/test_services.py::TestAbuseChUpdater tests/test_services.py::TestAbuseChFetchers tests/test_services.py::TestAbuseChHelpers` -> `107 passed`
 - `bash scripts/dev-check.sh` -> `490 passed`
+
+[actions performed]
+- Created commit `4fea2c0` (`Harden admin controls and dependency pins`) with the security/dependency/abuse.ch fixes.
+- Pushed `main` to `origin/main`.
+
+[observations]
+- GitHub push output still reports 2 moderate dependency vulnerabilities on the default branch; follow-up triage is needed after branch synchronization.
