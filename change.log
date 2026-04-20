@@ -1210,3 +1210,11 @@
 
 [observations]
 - GitHub push output still reports 2 moderate dependency vulnerabilities on the default branch; follow-up triage is needed after branch synchronization.
+
+[actions performed]
+- Fast-forwarded local `dev` to `main` and pushed `origin/dev`.
+- Fast-forwarded local `kili` to `main` and pushed `origin/kili`.
+- Returned working branch to `main`.
+
+[observations]
+- Both branch pushes still reported 2 moderate GitHub dependency vulnerabilities on the default branch; they are not resolved by the current dependency batch.
