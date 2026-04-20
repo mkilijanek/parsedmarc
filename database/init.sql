@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
     user_id VARCHAR(100),
     ip_address INET,
     metadata JSONB DEFAULT '{}'::jsonb,
+    previous_hash VARCHAR(64),
+    log_hash VARCHAR(64),
     created_at TIMESTAMP DEFAULT NOW()
 );
 

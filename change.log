@@ -1230,3 +1230,40 @@
 [verification]
 - `.venv/bin/python -m pip install -r requirements.txt` -> success, installed `pytest==9.0.3`.
 - `bash scripts/dev-check.sh` -> `490 passed` with pytest 9.0.3.
+
+[actions performed]
+- Commented and closed GitHub issues `#136`, `#137`, `#133`, `#130`, and `#131` with implementation/verification references.
+- Re-queried Dependabot alerts after dependency updates; no open alerts were returned.
+- Commented and closed `#135` because the active cryptography advisory is satisfied by `cryptography==46.0.7`, which Dependabot reports as the patched version.
+
+[next planned implementation steps]
+1. Continue security backlog from high-priority compliance issues, starting with practical controls that can be implemented in code rather than documentation-only placeholders.
+2. Re-sync `dev` and `kili` after any new commits on `main`.
+
+[actions performed]
+- Investigated GitHub Actions CI failure for run `24671292399`.
+- Root cause: CI sets `RATE_LIMITS_ENABLED=false`, while `test_admin_api_rate_limit_exceed_is_audited` assumed the limiter was enabled and expected a `429`.
+- Updated that regression test to explicitly enable the Flask-Limiter instance for the test case.
+- Started implementing issue `#163` by adding HMAC audit-log hash-chain helpers, `previous_hash`/`log_hash` model fields, Alembic migration `0004_audit_log_integrity`, root SQL schema fields, `/admin/audit/verify`, and tamper-detection tests.
+
+[observations]
+- The CI failure was in the M15 gate pytest step only; Python 3.11/3.12 test jobs and quality gates passed.
+- The `#163` implementation intentionally allows unsigned legacy audit rows before the first signed row so existing deployments can migrate without retroactive backfill.
+
+[mistakes and lessons]
+- Initial audit hash used a timezone-aware Python datetime while the SQLite `DateTime` column round-tripped it as naive, causing immediate verification mismatch.
+  Lesson: when signing persisted timestamps, sign the exact representation expected after DB round-trip or use timezone-aware DB columns consistently.
+- Initial `0004_audit_log_integrity` migration failed on a fresh SQLite baseline because this repo's `0001_baseline_schema` uses current `Base.metadata.create_all()`.
+  Lesson: until schema convergence is fixed, additive migrations must tolerate fresh-baseline columns already present.
+- Setting `client.application.limiter.enabled = True` after creating an app initialized with `RATE_LIMITS_ENABLED=false` did not make Flask-Limiter enforce route limits.
+  Lesson: tests that require active Flask-Limiter enforcement must either create the app with rate limiting enabled up front or skip when the CI environment explicitly disables it.
+- I ran `scripts/m15_premerge_gate.sh` locally without first starting the app server, which made the benchmark phase report 100% errors.
+  Lesson: mirror the workflow steps when reproducing CI gates; `m15_premerge_gate.sh` expects a live app at `BASE_URL`.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_security.py tests/test_database.py` -> `96 passed`
+- `SECRET_KEY=... DATABASE_URL=sqlite:////tmp/ioc-alembic-163.db REDIS_URL=memory:// PYTHONPATH=. .venv/bin/alembic upgrade head` -> success
+- `bash scripts/dev-check.sh` -> `491 passed`
+- `RATE_LIMITS_ENABLED=false PYTHONPATH=. .venv/bin/pytest -q` -> `490 passed, 1 skipped`
+- CI-style M15 reproduction with live Gunicorn on `127.0.0.1:18080`, `RATE_LIMITS_ENABLED=false`, `RUNS=1 DURATION=6 CONCURRENCY=4 MIN_MIXED_RPS=120 MAX_MIXED_P95_MS=900 MAX_ERROR_RATE=0.05 BASE_URL=http://127.0.0.1:18080 bash scripts/m15_premerge_gate.sh` -> passed (`mixed rps=152.68`, `p95=40.43ms`, `error=0.000000`)
+- CI quality coverage command for the refactored boundary -> `257 passed`, total coverage `60.07%` against required `55%`

@@ -168,6 +168,8 @@ class AuditLog(Base):
     user_id: Mapped[str | None] = mapped_column(String(100))
     ip_address: Mapped[str | None] = mapped_column(InetCompat())
     metadata_: Mapped[dict] = mapped_column("metadata", JSONCompat(), default=dict, nullable=False)
+    previous_hash: Mapped[str | None] = mapped_column(String(64))
+    log_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
 
 

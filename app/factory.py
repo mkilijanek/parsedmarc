@@ -29,6 +29,7 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
 from werkzeug.exceptions import HTTPException
 
+from .audit_integrity import signed_audit_hash, verify_audit_chain
 from .cache import get_redis
 from .config import Config
 from .db import SessionLocal, get_session
@@ -266,14 +267,33 @@ def create_app() -> Flask:
             # SECURITY: Use safe IP extraction that respects proxy configuration
             client_ip = get_client_ip()
             user_id = str(session.get("admin_user_id") or "").strip() or None
-            db.add(AuditLog(
+            previous_hash = str(
+                db.scalar(select(AuditLog.log_hash).where(AuditLog.log_hash.is_not(None)).order_by(AuditLog.id.desc()).limit(1))
+                or ""
+            )
+            created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            row = AuditLog(
                 action=action,
                 entity_type=entity_type,
                 entity_id=entity_id,
                 user_id=user_id,
                 ip_address=client_ip,
                 metadata_=metadata or {},
-            ))
+                previous_hash=previous_hash,
+                created_at=created_at,
+            )
+            row.log_hash = signed_audit_hash(
+                secret_key=cfg.SECRET_KEY,
+                action=row.action,
+                entity_type=row.entity_type,
+                entity_id=row.entity_id,
+                user_id=row.user_id,
+                ip_address=row.ip_address,
+                metadata=row.metadata_,
+                created_at=row.created_at,
+                previous_hash=row.previous_hash,
+            )
+            db.add(row)
             db.commit()
         except Exception:
             db.rollback()
@@ -298,6 +318,18 @@ def create_app() -> Flask:
         if request.path.startswith("/api/"):
             return jsonify({"error": err.description or "Rate limit exceeded", "correlation_id": corr}), 429
         return err
+
+    @app.get("/admin/audit/verify")
+    @limiter.limit("30 per minute")
+    def admin_audit_verify():
+        db = _db(read_only=True)
+        try:
+            rows = list(db.scalars(select(AuditLog).order_by(AuditLog.id.asc())).all())
+            result = verify_audit_chain(rows, secret_key=cfg.SECRET_KEY)
+            status_code = 200 if result["valid"] else 409
+            return jsonify(result), status_code
+        finally:
+            db.close()
 
     def _cache_key(prefix: str, **parts: Any) -> str:
         # stable ordering

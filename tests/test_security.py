@@ -15,19 +15,19 @@ Tests cover:
 from __future__ import annotations
 
 import os
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+from conftest import assert_security_headers
 from flask import Flask
 
-from app.security import (
-    validate_search_query,
-    enforce_allowed_hosts,
-    get_client_ip,
-)
 from app.main import create_app
 from app.models import AuditLog
-from conftest import assert_security_headers, assert_no_sql_injection
-
+from app.security import (
+    enforce_allowed_hosts,
+    get_client_ip,
+    validate_search_query,
+)
 
 # ============================================================================
 # Input Validation Tests
@@ -423,6 +423,8 @@ class TestRateLimiting:
 
     def test_admin_api_rate_limit_exceed_is_audited(self, client, test_db):
         """Admin API rate limit violations are returned as JSON and written to audit log."""
+        if not client.application.limiter.enabled:
+            pytest.skip("rate limiting is disabled for this environment")
         statuses = [
             client.post("/api/sync", json={"source": "does-not-exist"}).status_code
             for _ in range(11)
@@ -626,3 +628,38 @@ class TestAuditLogging:
         audit = test_db.query(AuditLog).filter(AuditLog.action == "admin_feed_add").order_by(AuditLog.id.desc()).first()
         assert audit is not None
         assert audit.user_id == "admin"
+        assert audit.previous_hash is not None
+        assert audit.log_hash is not None
+
+    def test_admin_audit_verify_detects_tampering(self, admin_client, admin_csrf_token, test_db, sample_indicators):
+        """Audit verification reports signed chain validity and detects changed metadata."""
+        response = admin_client.post(
+            "/admin/feed/new",
+            data={
+                "source_id": "tamper-feed",
+                "display_name": "Tamper Feed",
+                "source_type": "misp",
+                "base_url": "https://tamper.example.test",
+                "auth_type": "api_key",
+                "schedule_cron": "*/30 * * * *",
+                "enabled": "on",
+                "csrf_token": admin_csrf_token,
+            },
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+
+        verified = admin_client.get("/admin/audit/verify")
+        assert verified.status_code == 200
+        assert verified.get_json()["valid"] is True
+
+        audit = test_db.query(AuditLog).filter(AuditLog.action == "admin_feed_add").order_by(AuditLog.id.desc()).first()
+        assert audit is not None
+        audit.metadata_ = {"tampered": True}
+        test_db.commit()
+
+        tampered = admin_client.get("/admin/audit/verify")
+        assert tampered.status_code == 409
+        body = tampered.get_json()
+        assert body["valid"] is False
+        assert body["failure_count"] >= 1

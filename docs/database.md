@@ -112,9 +112,16 @@ CREATE TABLE ti.audit_log (
     user_id TEXT,
     ip_address INET,
     metadata JSONB DEFAULT '{}',
+    previous_hash TEXT,
+    log_hash TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 ```
+
+New audit entries are signed as a tamper-evident HMAC chain. `previous_hash`
+stores the prior signed audit entry hash and `log_hash` signs the canonical
+audit payload with `SECRET_KEY`. Use `GET /admin/audit/verify` to validate the
+chain; unsigned rows created before this rollout are reported as legacy rows.
 
 ---
 
