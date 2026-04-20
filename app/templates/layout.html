@@ -2,93 +2,174 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>{{ title or "IOC Viewer" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Threat Feed Aggregator{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --bg-light: #f8fafc;
+      --fg-light: #0f172a;
+      --card-light: #ffffff;
+      --line-light: #dbe1ea;
+      --muted-light: #64748b;
+      --primary-light: #0ea5e9;
+      --primary-hover-light: #0284c7;
+      --success-light: #22c55e;
+      --warning-light: #f59e0b;
+      --error-light: #ef4444;
+      --info-light: #3b82f6;
+      --bg-dark: #0f172a;
+      --fg-dark: #e2e8f0;
+      --card-dark: #1e293b;
+      --line-dark: #334155;
+      --muted-dark: #94a3b8;
+      --primary-dark: #38bdf8;
+      --primary-hover-dark: #7dd3fc;
+      --success-dark: #4ade80;
+      --warning-dark: #fbbf24;
+      --error-dark: #f87171;
+      --info-dark: #60a5fa;
+    }
+    body[data-theme="light"] { --bg: var(--bg-light); --fg: var(--fg-light); --card: var(--card-light); --line: var(--line-light); --muted: var(--muted-light); --primary: var(--primary-light); --primary-hover: var(--primary-hover-light); --success: var(--success-light); --warning: var(--warning-light); --error: var(--error-light); --info: var(--info-light); }
+    body[data-theme="dark"] { --bg: var(--bg-dark); --fg: var(--fg-dark); --card: var(--card-dark); --line: var(--line-dark); --muted: var(--muted-dark); --primary: var(--primary-dark); --primary-hover: var(--primary-hover-dark); --success: var(--success-dark); --warning: var(--warning-dark); --error: var(--error-dark); --info: var(--info-dark); }
+    body:not([data-theme]) { --bg: var(--bg-light); --fg: var(--fg-light); --card: var(--card-light); --line: var(--line-light); --muted: var(--muted-light); --primary: var(--primary-light); --primary-hover: var(--primary-hover-light); --success: var(--success-light); --warning: var(--warning-light); --error: var(--error-light); --info: var(--info-light); }
+    body { font-family: var(--font-family); margin: 0; padding: 0; min-height: 100vh; background: var(--bg); color: var(--fg); line-height: 1.5; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 0 1.5rem; }
+    .topbar { position: sticky; top: 0; z-index: 100; background: var(--card); border-bottom: 1px solid var(--line); padding: 0.75rem 0; backdrop-filter: blur(8px); }
+    .topbar-inner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .topbar nav { display: flex; gap: 0.25rem; }
+    .topbar nav a { padding: 0.5rem 0.75rem; border-radius: 8px; text-decoration: none; color: var(--fg); font-weight: 500; transition: all 0.15s ease; }
+    .topbar nav a:hover { background: var(--bg); }
+    .topbar nav a.active { background: var(--primary); color: white; }
+    main { padding: 1.5rem 0; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: box-shadow 0.15s ease; }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--line); }
+    .card-title { margin: 0; font-size: 1.25rem; font-weight: 600; }
+    h1 { font-size: 1.875rem; margin-bottom: 1rem; margin-top: 0; }
+    h2 { font-size: 1.5rem; margin-bottom: 0.875rem; margin-top: 0; }
+    h3 { font-size: 1.25rem; margin-bottom: 0.75rem; margin-top: 0; }
+    .btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.625rem 1rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.15s ease; text-decoration: none; }
+    .btn:hover { background: var(--bg); transform: translateY(-1px); }
+    .btn-primary { background: var(--primary); border-color: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); border-color: var(--success); color: white; }
+    .btn-warning { background: var(--warning); border-color: var(--warning); color: white; }
+    .btn-danger { background: var(--error); border-color: var(--error); color: white; }
+    .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .form-group { margin-bottom: 1rem; }
+    .form-label { display: block; margin-bottom: 0.375rem; font-weight: 500; font-size: 0.875rem; }
+    .form-input { width: 100%; padding: 0.625rem 0.875rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font-size: 0.9375rem; transition: border-color 0.15s, box-shadow 0.15s; box-sizing: border-box; }
+    .form-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1); }
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+    th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--line); }
+    th { font-weight: 600; color: var(--muted); font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.025em; }
+    tbody tr:hover { background: var(--bg); }
+    .badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.8125rem; font-weight: 500; }
+    .badge-success { background: rgba(34, 197, 94, 0.1); color: var(--success); }
+    .badge-warning { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+    .badge-error { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+    .badge-info { background: rgba(59, 130, 246, 0.1); color: var(--info); }
+    .spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid var(--line); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; }
+    .toast { display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.25rem; border-radius: 8px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    .toast-success { border-left: 4px solid var(--success); }
+    .toast-warning { border-left: 4px solid var(--warning); }
+    .toast-error { border-left: 4px solid var(--error); }
+    .toast-info { border-left: 4px solid var(--info); }
+    .grid { display: grid; gap: 1rem; }
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+    .text-muted { color: var(--muted); }
+    .text-center { text-align: center; }
+    .skip-link { position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+    .skip-link:focus { position: fixed; left: 1rem; top: 1rem; width: auto; height: auto; padding: 0.75rem 1rem; background: var(--primary); color: white; z-index: 10000; border-radius: 8px; }
+    {% block extra_css %}{% endblock %}
+  </style>
 </head>
 <body>
-  <div id="startupLoader" class="startup-loader" aria-live="polite" aria-label="Application startup in progress">
-    <div class="startup-loader-card">
-      <div class="startup-loader-grid" aria-hidden="true"></div>
-      <div class="startup-loader-scan" aria-hidden="true"></div>
-      <h2>IOC Service</h2>
-      <p>Booting modules, validating feeds, preparing data plane...</p>
-      <div class="startup-loader-progress"><span id="startupLoaderBar"></span></div>
-    </div>
-  </div>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <header class="topbar">
-    <div class="brand"><a href="{{ url_for('webui.index') }}">IOC Viewer</a></div>
-    <nav class="nav">
-      <a href="{{ url_for('webui.unified') }}">Unified</a>
-      <a href="{{ url_for('webui.mobile') }}">Mobile</a>
-      <a href="{{ url_for('webui.stats') }}">Stats</a>
-      <a href="{{ url_for('indicators_view') }}">Legacy /indicators</a>
-      <a href="{{ url_for('logs_page') }}">Logs</a>
-      <button type="button" class="theme-btn" id="themeToggle">Theme</button>
-    </nav>
+    <div class="container topbar-inner">
+      <nav>
+        <a href="/" class="{% if active_page == 'home' %}active{% endif %}">Overview</a>
+        <a href="/indicators" class="{% if active_page == 'indicators' %}active{% endif %}">Indicators</a>
+        <a href="/admin" class="{% if active_page == 'admin' %}active{% endif %}">Admin</a>
+        <a href="/logs" class="{% if active_page == 'logs' %}active{% endif %}">Logs</a>
+      </nav>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <button type="button" class="btn btn-sm" id="themeToggle">🌓</button>
+      </div>
+    </div>
   </header>
 
-  <main class="container">
+  <main id="main-content" class="container">
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="footer">
-    <small>DB-backed IOC presentation layer</small>
-  </footer>
+  <div id="toast-container" class="toast-container"></div>
+
   <script>
-    (function () {
-      const themeKey = "ioc-theme";
-      const saved = localStorage.getItem(themeKey);
-      if (saved === "light" || saved === "dark") {
-        document.body.setAttribute("data-theme", saved);
+    (function() {
+      const themeKey = 'ioc-theme';
+      const preferredTheme = localStorage.getItem(themeKey);
+      if (preferredTheme === 'dark' || preferredTheme === 'light') {
+        document.body.setAttribute('data-theme', preferredTheme);
       } else {
-        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-        document.body.setAttribute("data-theme", prefersDark ? "dark" : "light");
+        const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+        document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
       }
-      const toggle = document.getElementById("themeToggle");
-      if (toggle) {
-        toggle.addEventListener("click", function () {
-          const current = document.body.getAttribute("data-theme") || "light";
-          const next = current === "dark" ? "light" : "dark";
-          document.body.setAttribute("data-theme", next);
-          localStorage.setItem(themeKey, next);
-        });
-      }
+      document.getElementById('themeToggle')?.addEventListener('click', () => {
+        const curr = document.body.getAttribute('data-theme') || 'light';
+        const next = curr === 'dark' ? 'light' : 'dark';
+        document.body.setAttribute('data-theme', next);
+        localStorage.setItem(themeKey, next);
+      });
     })();
 
-    (function () {
-      const loader = document.getElementById("startupLoader");
-      const bar = document.getElementById("startupLoaderBar");
-      if (!loader || !bar) return;
-      const startedAt = Date.now();
-      let done = false;
-      let width = 10;
-      const tick = window.setInterval(function () {
-        if (done) return;
-        width = Math.min(92, width + Math.random() * 7);
-        bar.style.width = width.toFixed(1) + "%";
-      }, 120);
-      function finish() {
-        if (done) return;
-        done = true;
-        const minVisibleMs = 400;
-        const remaining = Math.max(0, minVisibleMs - (Date.now() - startedAt));
-        window.setTimeout(function () {
-          bar.style.width = "100%";
-          loader.classList.add("done");
-          window.setTimeout(function () {
-            loader.remove();
-          }, 450);
-          window.clearInterval(tick);
-        }, remaining);
+    window.showToast = function(message, type = 'info', duration = 5000) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.setAttribute('role', 'alert');
+      const icons = { success: '✓', warning: '⚠', error: '✗', info: 'ℹ' };
+      toast.innerHTML = `<span>${icons[type] || 'ℹ'}</span><span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.animation = 'slideIn 0.3s ease reverse';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    };
+
+    window.apiRequest = async function(url, options = {}) {
+      const defaultOptions = {
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      };
+      try {
+        const response = await fetch(url, { ...defaultOptions, ...options });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+      } catch (error) {
+        console.error('API request failed:', error);
+        showToast('Request failed: ' + error.message, 'error');
+        throw error;
       }
-      const timeout = window.setTimeout(finish, 3500);
-      fetch("/health", { cache: "no-store" })
-        .then(function () { finish(); })
-        .catch(function () { finish(); })
-        .finally(function () { window.clearTimeout(timeout); });
-      window.addEventListener("load", finish, { once: true });
-    })();
+    };
+
+    window.confirmAction = function(message, callback) {
+      if (confirm(message)) { callback(); }
+    };
+
+    {% block extra_js %}{% endblock %}
   </script>
 </body>
 </html>

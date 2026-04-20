@@ -311,12 +311,14 @@ Usunąć dualizm schematu SQL/ORM i dodać prawdziwą walidację zachowań Postg
 - dodać testy integracyjne z PostgreSQL dla triggerów, widoków, FTS, JSONB i funkcji eksportu
 - uzupełnić brakujące relacje/FK tam, gdzie są elementem modelu domenowego
 - usunąć zahardcodowane limity omijające runtime config
+- dodać mechanizm nadpisywania składowych feedów złożonych na poziomie bazy danych, zaczynając od `abusech` (`ThreatFox`, `URLhaus`, `FeodoTracker`, `YARAify`, `Hunting`)
 - dodać automatyczne wykrywanie schema drift w CI/CD
 
 **Issues (planned)**
 - NEW-ISSUE: Reconcile SQL schema, ORM metadata and Alembic migrations
 - NEW-ISSUE: Add PostgreSQL integration test suite in CI
 - NEW-ISSUE: Add relational integrity constraints and config-aligned export limits
+- NEW-ISSUE: Persist composite-feed component overrides in DB and honor them at runtime for `abusech`
 - NEW-ISSUE: Detect schema drift automatically between SQL, ORM and migrations
 
 **Definition of Done**
@@ -324,6 +326,7 @@ Usunąć dualizm schematu SQL/ORM i dodać prawdziwą walidację zachowań Postg
 - PostgreSQL-only mechanizmy są testowane automatycznie
 - drift schematu między SQL a ORM jest wykrywalny
 - CI blokuje niespójne zmiany schematu
+- runtime potrafi czytać z DB trwałe override składowych feedów złożonych zamiast polegać wyłącznie na env
 
 ---
 

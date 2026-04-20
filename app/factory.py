@@ -353,6 +353,20 @@ def create_app() -> Flask:
         row.value = stored
         row.is_secret = secret
 
+    def _runtime_override_or_env(
+        db: Session,
+        *,
+        setting_key: str,
+        env_key: str,
+        secret: bool = False,
+    ) -> str:
+        row = db.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+        if row is None:
+            return str(os.environ.get(env_key) or "")
+        if secret:
+            return _secret_decrypt(row.value)
+        return str(row.value or "")
+
     def _mask_secret(value: str) -> str:
         if not value:
             return ""
@@ -1249,14 +1263,39 @@ def create_app() -> Flask:
                     if feed.base_url:
                         updates[env_key] = feed.base_url
                 elif f.get("secret"):
-                    updates[env_key] = _get_setting(db, _feed_secret_key(feed.source_id, str(f["key"])), "", secret=True)
+                    updates[env_key] = _runtime_override_or_env(
+                        db,
+                        setting_key=_feed_secret_key(feed.source_id, str(f["key"])),
+                        env_key=env_key,
+                        secret=True,
+                    )
                 else:
-                    updates[env_key] = _get_setting(db, _feed_value_key(feed.source_id, str(f["key"])), "", secret=False)
+                    updates[env_key] = _runtime_override_or_env(
+                        db,
+                        setting_key=_feed_value_key(feed.source_id, str(f["key"])),
+                        env_key=env_key,
+                        secret=False,
+                    )
             if feed.source_type == "mwdb":
-                updates["MWDB_ORGANIZATIONS"] = _get_setting(db, _feed_value_key(feed.source_id, "organizations"), "", secret=False)
-                updates["MWDB_MY_GROUP"] = _get_setting(db, _feed_value_key(feed.source_id, "my_group"), "", secret=False)
+                updates["MWDB_ORGANIZATIONS"] = _runtime_override_or_env(
+                    db,
+                    setting_key=_feed_value_key(feed.source_id, "organizations"),
+                    env_key="MWDB_ORGANIZATIONS",
+                    secret=False,
+                )
+                updates["MWDB_MY_GROUP"] = _runtime_override_or_env(
+                    db,
+                    setting_key=_feed_value_key(feed.source_id, "my_group"),
+                    env_key="MWDB_MY_GROUP",
+                    secret=False,
+                )
             if feed.source_type == "malwarebazaar":
-                shared_key = _get_setting(db, _feed_secret_key("abusech", "api_key"), "", secret=True)
+                shared_key = _runtime_override_or_env(
+                    db,
+                    setting_key=_feed_secret_key("abusech", "api_key"),
+                    env_key="ABUSECH_AUTH_KEY",
+                    secret=True,
+                )
                 if shared_key:
                     updates["ABUSECH_AUTH_KEY"] = shared_key
 

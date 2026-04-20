@@ -1,0 +1,471 @@
+# IOC Service - Prompts dla Rozwoju i Analizy
+# Wygenerowano: 2026-04-20
+
+================================================================================
+SEKCJA 1: PROMPTY DLA PRZYSZŁEJ ANALIZY KODU
+================================================================================
+
+PROMPT 1.1: Analiza Złożoności Kodu
+------------------------------------
+Przeanalizuj złożoność cyklomatyczną i strukturalną następujących plików:
+- app/factory.py
+- app/routes/ops_admin.py
+- app/routes/ops_api.py
+- app/services/common.py
+
+Zidentyfikuj:
+1. Funkcje z złożonością >10 (wg metryki radon)
+2. Funkcje o długości >100 linii
+3. Powtórzenia kodu (code duplication)
+4. Naruszenia zasady pojedynczej odpowiedzialności (SRP)
+
+Zaproponuj refaktoryzację dla top 5 najbardziej skomplikowanych funkcji.
+
+---
+
+PROMPT 1.2: Security Audit - Static Analysis
+-------------------------------------------
+Przeprowadź statyczną analizę bezpieczeństwa kodu w katalogu app/.
+
+Skup się na:
+1. SQL Injection vectors (czy wszystkie zapytania używają parametrów?)
+2. XSS vulnerabilities (czy output HTML jest escapowany?)
+3. CSRF protection gaps (czy wszystkie POST/PUT/DELETE mają ochronę?)
+4. Hardcoded secrets lub credentials
+5. Path traversal możliwości
+6. Unsafe deserialization
+7. Race conditions w operacjach na DB
+
+Użyj grep i analizy kodu. Zapisz znaleziska w formacie:
+- Plik:linia - opis zagrożenia - poziom ryzyka - propozycja fixu
+
+---
+
+PROMPT 1.3: Test Coverage Analysis
+----------------------------------
+Przeanalizuj pokrycie testami w projekcie.
+
+1. Identyfikuj funkcje/metody bez testów (uncovered)
+2. Znajdź "happy path" testy bez edge cases
+3. Zidentyfikuj braki w testach integracyjnych
+4. Znajdź testy, które testują implementation zamiast behavior
+5. Sprawdź czy testy są deterministic (brak flakiness)
+
+Zaproponuj priorytetową listę testów do dopisania.
+
+---
+
+PROMPT 1.4: Architecture Compliance Check
+-----------------------------------------
+Sprawdź czy kod jest zgodny z architekturą opisaną w AGENTS.md i ROADMAP.md.
+
+Weryfikuj:
+1. Czy routes są thin i delegują do services?
+2. Czy services nie mają bezpośredniego dostępu do request/response?
+3. Czy models nie zawierają logiki biznesowej?
+4. Czy wszystkie SQL queries są w db layer?
+5. Czy nie ma importów cyklicznych?
+6. Czy zależności między modułami tworzą DAG?
+
+Zgłoś naruszenia i propozycje naprawy.
+
+---
+
+PROMPT 1.5: Dependency Analysis
+---------------------------------
+Przeanalizuj zależności projektu (requirements.txt + importy).
+
+1. Zidentyfikuj unused dependencies
+2. Znajdź outdated packages (sprawdź najnowsze wersje)
+3. Sprawdź conflicting dependencies
+4. Znajdź zależności z znanymi CVE
+5. Sprawdź licencje pakietów (czy są kompatybilne z projektem?)
+
+Zaproponuj aktualizacje i usunięcia.
+
+================================================================================
+SEKCJA 2: PROMPTY DLA IMPLEMENTACJI
+================================================================================
+
+PROMPT 2.1: Implementacja Adapter Pattern (Milestone 1.6.1)
+-----------------------------------------------------------
+Cel: Stworzenie adapterów dla feed connectors i export targets.
+
+Wymagania:
+1. Zdefiniuj interfejs FeedAdapter z metodami:
+   - fetch() -> FetchResult
+   - validate_config() -> bool
+   - get_capabilities() -> CapabilityMetadata
+   - health_check() -> HealthStatus
+
+2. Zaimplementuj adaptery dla:
+   - AbuseChAdapter (obecny abusech.py)
+   - MWDBAdapter (obecny mwdb.py)
+   - MISPAdapter (obecny misp.py)
+   - MalwareBazaarAdapter (obecny malwarebazaar.py)
+   - CrowdSecAdapter (obecny crowdsec.py)
+
+3. Stwórz AdapterRegistry z:
+   - register(adapter_class)
+   - get(source: str) -> FeedAdapter
+   - list_available() -> list
+   - discover() -> auto-register z entry_points
+
+4. Dodaj contract tests:
+   - FakeFeedAdapter dla testów
+   - Testy weryfikujące interfejs
+   - Property-based tests dla payload mapping
+
+Pliki do utworzenia/modyfikacji:
+- app/adapters/__init__.py
+- app/adapters/base.py (interfejsy)
+- app/adapters/feed/ (implementacje)
+- app/adapters/registry.py
+- tests/test_adapters_contract.py
+
+---
+
+PROMPT 2.2: API Versioning /api/v1/ (Milestone 1.6.0)
+----------------------------------------------------
+Cel: Wprowadzenie wersjonowania API z zachowaniem backwards compatibility.
+
+Wymagania:
+1. Utwórz blueprint /api/v1/ z endpointami:
+   - GET /api/v1/indicators (paginated, filtered)
+   - POST /api/v1/indicators/search (Kibana-like query)
+   - GET /api/v1/indicators/{id}
+   - GET /api/v1/indicators/export/{format}
+   - POST /api/v1/sync/{source}
+   - GET /api/v1/sync/{job_id}/status
+   - GET /api/v1/feeds (list feeds)
+   - GET /api/v1/feeds/{source}/stats
+   - GET /api/v1/correlations
+   - GET /api/v1/health
+   - GET /api/v1/readyz
+   - GET /api/v1/metrics
+
+2. Stwórz modele Pydantic dla request/response
+3. Dodaj OpenAPI spec (generowana automatycznie)
+4. Zaimplementuj API key authentication dla v1
+5. Zachowaj stare endpointy z deprecation headers
+6. Dodaj middleware do logowania API calls
+
+Pliki do utworzenia/modyfikacji:
+- app/api/v1/__init__.py
+- app/api/v1/routes/
+- app/api/v1/schemas/
+- app/api/v1/dependencies.py
+- app/api/v1/middleware.py
+- tests/test_api_v1.py
+- docs/openapi.yaml (generowane)
+
+---
+
+PROMPT 2.3: Config Refactoring (Milestone 1.6.0)
+------------------------------------------------
+Cel: Rozbicie monolitycznej klasy Config na domenowe grupy.
+
+Wymagania:
+1. Utwórz strukturę konfiguracji:
+   ```
+   config/
+   ├── __init__.py (ConfigAggregator)
+   ├── base.py (BaseConfig z walidacją)
+   ├── database.py (DatabaseConfig)
+   ├── security.py (SecurityConfig)
+   ├── feeds.py (FeedsConfig)
+   ├── export.py (ExportConfig)
+   ├── proxy.py (ProxyConfig)
+   └── logging.py (LoggingConfig)
+   ```
+
+2. Każda sekcja powinna:
+   - Używać Pydantic Settings lub dataclasses
+   - Walidować wartości (np. URL format, port ranges)
+   - Mety typowane (typed)
+   - Dokumentację w docstrings
+
+3. Dodaj support dla:
+   - .env plików
+   - Environment variables z prefixem (IOC_)
+   - YAML config (opcjonalnie)
+   - Config validation on startup
+
+4. Usuń duplikację env parsing z innych miejsc
+
+Pliki do utworzenia/modyfikacji:
+- app/config/
+- app/config/__init__.py
+- app/config/*.py (sekcje)
+- app/main.py (update usage)
+- tests/test_config.py
+
+---
+
+PROMPT 2.4: PostgreSQL Integration Tests (Milestone 1.5.1)
+---------------------------------------------------------
+Cel: Dodanie testów integracyjnych z prawdziwym PostgreSQL.
+
+Wymagania:
+1. Utwórz test fixtures:
+   - postgres_container (pytest-docker lub testcontainers)
+   - migrated_db (alembic upgrade head)
+   - db_session (SQLAlchemy session)
+
+2. Napisz testy dla:
+   - JSONB operations (metadata storage)
+   - ARRAY operations (tags)
+   - Full-text search (jeśli używane)
+   - SQL functions (export_indicators)
+   - Triggers (audit, timestamps)
+   - Migrations (alembic upgrade/downgrade)
+   - Connection pooling
+
+3. Dodaj testy dla PostgreSQL-specific features:
+   - JSONB indexing (@> operator)
+   - ARRAY operators (&&, @>)
+   - Window functions (percentile)
+
+4. Integracja z CI (GitHub Actions z PostgreSQL service)
+
+Pliki do utworzenia/modyfikacji:
+- tests/integration/__init__.py
+- tests/integration/conftest.py
+- tests/integration/test_postgres_features.py
+- tests/integration/test_migrations.py
+- .github/workflows/ci.yml (update)
+- docker-compose.test.yml
+
+---
+
+PROMPT 2.5: Schema Drift Detection (Milestone 1.5.1)
+----------------------------------------------------
+Cel: Automatyczne wykrywanie rozbieżności między ORM a DB schema.
+
+Wymagania:
+1. Utwórz narzędzie do porównywania:
+   - SQLAlchemy models (app/models.py)
+   - Alembic migrations (alembic/versions/)
+   - database/init/ SQL scripts
+   - Running database (introspection)
+
+2. Sprawdź:
+   - Brakujące kolumny
+   - Typy kolumn (mismatch)
+   - Indexy (brakujące/dodatkowe)
+   - Constraints (FK, unique, check)
+   - Defaults
+
+3. Dodaj CI check:
+   - Fail build jeśli drift detected
+   - Generuj raport z różnicami
+
+4. Komenda CLI: python -m app.cli validate-schema
+
+Pliki do utworzenia/modyfikacji:
+- app/schema_validator.py
+- app/cli.py (dodaj komendę)
+- .github/workflows/ci.yml
+- tests/test_schema_validation.py
+
+================================================================================
+SEKCJA 3: PROMPTY DLA DEBUGOWANIA
+================================================================================
+
+PROMPT 3.1: Diagnostyka Feed Sync Issues
+----------------------------------------
+Gdy feed zgłasza fetched=0 lub failure:
+
+1. Sprawdź kroki:
+   ```
+   a. Czy feed jest enabled w DB?
+   b. Czy env variables są ustawione (docker inspect)?
+   c. Czy DB overrides nie nadpisują env pustymi wartościami?
+   d. Czy connector działa bezpośrednio (test w kontenerze)?
+   e. Czy job queue nie ma backlogu?
+   f. Czy logs zawierają stop_reason?
+   ```
+
+2. Query dla diagnostyki:
+   ```sql
+   SELECT source, status, fetched_count, stop_reason, details
+   FROM feed_runs ORDER BY finished_at DESC LIMIT 10;
+
+   SELECT * FROM sync_jobs WHERE status = 'failed';
+
+   SELECT * FROM app_logs WHERE level = 'ERROR'
+   AND message ILIKE '%feed%' ORDER BY created_at DESC;
+   ```
+
+3. Kod do testowania bezpośredniego:
+   ```python
+   docker compose exec -T worker python - <<'PY'
+   from app.services.abusech import update_abusech_indicators
+   from app.db import SessionLocal
+   db = SessionLocal()
+   result = update_abusech_indicators(db)
+   print(result)
+   PY
+   ```
+
+---
+
+PROMPT 3.2: Diagnostyka Nginx 502
+---------------------------------
+Gdy nginx zwraca 502 Bad Gateway:
+
+1. Checklist:
+   ```
+   a. Czy app kontener działa? (docker compose ps)
+   b. Czy app słucha na poprawnym porcie? (ss -lntp)
+   c. Czy healthcheck przechodzi? (curl /healthz)
+   d. Czy nginx ma poprawny upstream? (docker exec nginx cat /etc/nginx/conf.d/*)
+   e. Czy IP kontenera się nie zmieniło? (docker network inspect)
+   f. Czy SELinux nie blokuje? (ausearch -m AVC)
+   ```
+
+2. Fix - recreate nginx:
+   ```bash
+   docker compose stop nginx
+   docker compose rm nginx
+   docker compose up -d nginx
+   ```
+
+3. Preventive measures:
+   - Dodaj resolver z TTL w nginx.conf
+   - Użyj Docker DNS name zamiast IP
+   - Dodaj health check dla upstream
+
+---
+
+PROMPT 3.3: Diagnostyka Manual Sync Divergence
+-----------------------------------------------
+Gdy manual sync daje inne wyniki niż scheduled:
+
+1. Porównaj config resolution:
+   ```python
+   # Worker path
+   from app.worker import resolve_feed_config
+   # Manual path
+   from app.routes.ops_api import resolve_feed_config
+   # Czy obie ścieżki dają ten sam wynik?
+   ```
+
+2. Sprawdź DB overrides:
+   ```sql
+   SELECT source_id, key, value FROM app_settings
+   WHERE source_id IN ('abusech', 'mwdb', 'misp');
+   ```
+
+3. Porównaj env w kontenerach:
+   ```bash
+   docker inspect ioc-service-worker-1 --format='{{range .Config.Env}}{{.}}\n{{end}}'
+   docker inspect ioc-service-app-1 --format='{{range .Config.Env}}{{.}}\n{{end}}'
+   ```
+
+4. Fix: Ujednolić logikę w app/services/deps.py
+
+================================================================================
+SEKCJA 4: PROMPTY DLA CODE REVIEW
+================================================================================
+
+PROMPT 4.1: Code Review Checklist
+---------------------------------
+Przed mergem PR sprawdź:
+
+Security:
+- [ ] Brak nowych zależności bez audit
+- [ ] Brak hardcoded secrets
+- [ ] Input validation dla nowych endpointów
+- [ ] CSRF protection dla nowych POST/PUT/DELETE
+
+Quality:
+- [ ] Testy dla nowego kodu
+- [ ] Type hints dla public API
+- [ ] Docstrings dla funkcji/classes
+- [ ] Brak nowych błędów lint (ruff)
+- [ ] Mypy przechodzi
+
+Architecture:
+- [ ] Routes są thin
+- [ ] Logika w services
+- [ ] Brak cyklicznych importów
+- [ ] Konfiguracja w config layer
+
+Performance:
+- [ ] Brak N+1 queries
+- [ ] Dodane indexy dla nowych queries
+- [ ] Cache gdy potrzebny
+
+---
+
+PROMPT 4.2: Security Review
+---------------------------
+Dla zmian dotyczących security:
+
+1. Sprawdź:
+   - Czy nowe endpointy są chronione?
+   - Czy są testy bezpieczeństwa?
+   - Czy audit log jest aktualizowany?
+   - Czy są rate limity?
+
+2. Dokumentacja:
+   - Czy SECURITY.md jest aktualny?
+   - Czy access-control.md odzwierciedla zmiany?
+   - Czy są migration notes dla operów?
+
+3. Compliance:
+   - Czy zmiana jest zgodna z ISO27001 wymaganiami?
+   - Czy wymaga nowych polityk bezpieczeństwa?
+
+================================================================================
+SEKCJA 5: STATUS IMPLEMENTACJI (ZAKTUALIZOWANO 2026-04-20)
+================================================================================
+
+A. Postęp Milestones
+-------------------
+- Milestone 1.5.1: 5 issues oryginalne + 11 GitHub Issues (CRITICAL security)
+- Milestone 1.6.0: 4 issues oryginalne + 6 GitHub Issues
+- Milestone 1.6.1: 5 issues oryginalne + 10 GitHub Issues
+- Milestone 1.7.0: 4 issues oryginalne + 8 GitHub Issues (2 ZAIMPLEMENTOWANE)
+
+B. Zaimplementowane w sesji 2026-04-20
+--------------------------------------
+✓ Issue #155: Unified layout template
+  - Nowoczesny CSS z variables
+  - Light/dark theme support
+  - Component library (card, btn, badge, spinner)
+  - Responsive grid system
+
+✓ Issue #157: Toast notification system
+  - JavaScript showToast() API
+  - 4 typy: success, warning, error, info
+  - Auto-dismiss z animation
+  - Rola ARIA dla accessibility
+
+C. Krytyczne zależności bezpieczeństwa (do naprawy NATYCHMIAST)
+--------------------------------------------------------------
+⚠ CVE-2026-39892 (cryptography < 47.0.0) - CVSS 9.8
+⚠ GHSA-v92g-xgxw-vvmm (Mako path traversal)
+⚠ CVE-2025-71176 (pytest tmpdir - dev only)
+
+D. Otwarte GitHub Issues do zrobienia: 40
+-----------------------------------------
+#130-134: Critical bug fixes (feed sync, nginx, wipe confirmation, logs)
+#135-137: Security vulnerabilities
+#138-142: Observability & reliability
+#143-148: API modernization & hardening
+#149-162: UX improvements
+#163-173: Compliance (ISO 27001, NIST CSF)
+
+E. Priorytety na najbliższe 2 tygodnie
+--------------------------------------
+1. Naprawa CVE-2026-39892 (#135) - CRITICAL
+2. Fix #130: Manual sync clobbers feed env
+3. Fix #131: abuse.ch sync divergence
+4. Fix #132: Nginx 502 after recreation
+5. Fix #133: Wipe confirmation z tokenem
+
+================================================================================
+KONIEC PLIKU PROMPTS
+================================================================================

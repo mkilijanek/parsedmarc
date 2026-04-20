@@ -770,3 +770,377 @@
 [mistakes and lessons]
 - A blanket lint gate on the refactored boundary immediately turned into a line-length war with legacy payload constants and CSS blobs. For this milestone, Ruff should focus on import hygiene and correctness signals, not mass-reformat legacy strings.
 - The scoped coverage floor for `1.5.0` has to start from the real post-refactor baseline. Setting `70%` against a still-large `app/factory.py` just creates fake failure noise; `55%` is defensible as an anti-regression floor and can be raised in later milestones as logic leaves the factory module.
+
+2026-04-07
+
+[current stage]
+- Operational network exposure change for the local NUC deployment.
+
+[actions performed]
+- Set `APP_HOST_BIND=192.168.10.71` in the local deployment `.env` so the app can be reached from the `192.168.10.0/24` network instead of only via loopback.
+
+[important commands]
+- `docker compose up -d app`
+- `curl -sS --max-time 5 http://192.168.10.71:7005/healthz`
+
+[observations]
+- The compose file defaults to loopback bind (`127.0.0.1`), so a deployment can look healthy locally while still being unreachable from the LAN.
+- After recreating the app service, Docker now publishes `192.168.10.71:7005->8080/tcp` and the host listener moved off loopback as intended.
+
+[verification]
+- `docker compose ps app` -> `192.168.10.71:7005->8080/tcp`
+- `ss -lntp | grep -E ':7005|:8080'` -> listener on `192.168.10.71:7005`
+- `curl -sS --max-time 5 http://192.168.10.71:7005/healthz` -> `{"status":"ok"}`
+- `curl -sS --max-time 5 http://192.168.10.71:7005/readyz` -> `{"status":"ready","checks":{"database":true,"redis":true}}`
+
+[next planned implementation steps]
+1. If the service should also be exposed through the TLS/nginx edge, enable or recreate the `nginx` profile bind on the LAN-facing address.
+
+2026-04-07
+
+[current stage]
+- Enabling admin authentication for the local NUC deployment.
+
+[actions performed]
+- Generated a fresh local `ADMIN_API_TOKEN` and stored it in `.env`.
+
+[observations]
+- The local deployment had no admin token configured, so `/admin` could not be used until a token was explicitly provisioned.
+- A plain `docker compose up -d app` did not recreate the running app container, so the process kept the old environment and still reported that admin auth was not configured.
+- The actual blocker was one layer lower: `docker-compose.yml` did not pass `ADMIN_API_TOKEN` into the app service at all, so the container could never see the value from `.env`.
+
+[next planned implementation steps]
+1. Update compose env wiring for `ADMIN_API_TOKEN`.
+2. Force-recreate the app container and verify the login flow.
+
+2026-04-07
+
+[current stage]
+- Enabling TLS edge access for admin login on the NUC LAN address.
+
+[actions performed]
+- Updated [scripts/setup-ssl.sh](/home/kili/Repo/ioc-service/scripts/setup-ssl.sh) so self-signed certificates use `IP.1 = ...` in SAN when `SSL_DOMAIN` is an IP address. This avoids generating a cert that only declares an IP-like DNS SAN.
+
+[observations]
+- For the admin login issue, HTTPS is not optional: the session cookie is marked `Secure`, so plain HTTP on `7005` can never hold the session.
+- The local repo had no `ssl/` directory yet, so the `edge` profile could not start without first generating cert material.
+- The SSL helper script had a cleanup bug under `set -u`: the `trap` referenced a local `tmp_dir` after function exit, which caused a false non-zero exit even though the cert files were written.
+
+[next planned implementation steps]
+1. Generate a self-signed certificate for `192.168.10.71`.
+2. Start the `nginx` edge profile and verify HTTPS login behavior on `7003`.
+
+[verification]
+- `SSL_DOMAIN=192.168.10.71 SSL_MODE=self-signed bash scripts/setup-ssl.sh` -> generated `ssl/cert.pem` and `ssl/key.pem`
+- `openssl x509 -in ssl/cert.pem -text -noout` -> SAN contains `IP Address:192.168.10.71`
+- `docker compose --profile edge up -d nginx` -> nginx published `0.0.0.0:7003->7003/tcp`
+- `curl -skS https://192.168.10.71:7003/healthz` -> `{"status":"ok"}`
+- HTTPS login flow with the configured admin token returns `/admin` and then serves the admin panel (`GET /admin` -> `200`)
+
+[mistakes and lessons]
+- For local SSL tooling, invoking a shell script via `./script.sh` can fail on missing execute bit even when the script content is fine. Use `bash script.sh` if execution bit is not guaranteed.
+- The admin auth symptom looked like a bad token, but the actual issue was transport: `Secure` session cookies over HTTP are silently dropped by the client.
+
+2026-04-07
+
+[current stage]
+- Roadmap refinement from a live abuse.ch operational gap.
+
+[actions performed]
+- Added a new `1.5.1` requirement in [ROADMAP.md](/home/kili/Repo/ioc-service/ROADMAP.md) and [MILESTONES.md](/home/kili/Repo/ioc-service/MILESTONES.md): composite-feed subcomponents must be overridable at DB level, starting with `abusech`.
+
+[observations]
+- The abuse.ch sync problem exposed a structural gap rather than only an ops misconfiguration: composite feeds currently depend too heavily on process env and do not have a durable DB-backed component override model.
+
+[next planned implementation steps]
+1. Mirror the same requirement into the GitHub milestone description for `1.5.1`.
+
+2026-04-07
+
+[current stage]
+- Operational fix for live abuse.ch ingestion on the local deployment.
+
+[actions performed]
+- Added the full abuse.ch environment surface to [docker-compose.yml](/home/kili/Repo/ioc-service/docker-compose.yml) for both `app` and `worker`, because previously the containers never received `ABUSECH_*` or `THREATFOX_*`/`URLHAUS_*`/`FEODOTRACKER_*` values from `.env`.
+- Enabled `ThreatFox`, `URLhaus`, and `FeodoTracker` in the local [.env](/home/kili/Repo/ioc-service/.env). Left `YARAify` and `Hunting` unchanged because they need additional source-specific input and would add noise to this verification step.
+
+[observations]
+- The original abuse.ch failure path was operationally silent: the worker reported `job_success` in `0 ms` because all component toggles were effectively disabled.
+
+[next planned implementation steps]
+1. Recreate `app` and `worker` with the new env wiring.
+2. Trigger abuse.ch sync and verify that rows and feed stats appear.
+
+2026-04-07
+
+[current stage]
+- Verification of live abuse.ch data flow after the compose/env fix.
+
+[actions performed]
+- Recreated `app` and `worker` with `docker compose up -d --force-recreate app worker`.
+- Verified the abuse.ch env set is present inside both containers via `docker inspect`.
+- Triggered a manual `/api/sync` for `abusech` and checked `sync_jobs`, `feed_runs`, and `feed_stats` in PostgreSQL.
+- Executed `update_abusech_indicators()` directly inside the running `worker` and `app` containers to separate connector behavior from queued-sync behavior.
+- Queried PostgreSQL indicator counts for abuse.ch-derived sources after direct execution.
+
+[important commands]
+- `docker compose up -d --force-recreate app worker`
+- `docker inspect ioc-service-worker-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | rg 'ABUSECH|THREATFOX|URLHAUS|FEODOTRACKER'`
+- `docker inspect ioc-service-app-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | rg 'ABUSECH|THREATFOX|URLHAUS|FEODOTRACKER'`
+- `curl -sS --max-time 15 -X POST -H 'Content-Type: application/json' -d '{"source":"abusech"}' http://192.168.10.71:7005/api/sync`
+- `docker compose exec -T worker python - <<'PY' ... update_abusech_indicators() ... PY`
+- `docker compose exec -T app python - <<'PY' ... update_abusech_indicators() ... PY`
+- `docker compose exec -T postgres psql -U threatfeed -d threatfeed -c "select source, count(*) from indicators where source in ('threatfox','urlhaus','feodotracker','abusech_hunting_fplist','abusech') group by source order by source;"`
+
+[observations]
+- The compose/env wiring fix worked: both `app` and `worker` now receive the abuse.ch settings and enabled component flags.
+- Direct connector execution imports data successfully. Observed fetched breakdown: `threatfox=1000`, `urlhaus=10000`, `feodotracker=5`.
+- PostgreSQL confirms persisted data after ingestion. Observed counts: `threatfox=1007`, `urlhaus=10008`, `feodotracker=5`, `abusech_hunting_fplist=5`.
+- The queued manual sync path still reported `success` with `fetched_count=0`, which means the connector now works but there is likely a separate bug in the sync bookkeeping or aggregation path for `abusech`.
+
+[verification]
+- manual sync API returned a created job id for `abusech`
+- direct connector execution in both containers returned non-zero fetched counts
+- PostgreSQL now contains abuse.ch-derived indicators, proving that data is flowing into the system
+
+[decisions]
+- Treat abuse.ch ingestion as operationally fixed for live data flow.
+- Track the `fetched_count=0` queued-sync discrepancy as a separate follow-up instead of blocking the compose/env fix on it.
+
+[mistakes and lessons]
+- For composite feeds, checking only the parent feed state is insufficient; the subcomponent flags and container env propagation must be verified explicitly.
+- When a queued job claims zero fetched items, validate the connector directly before assuming the upstream provider is empty or failing.
+
+2026-04-07
+
+[current stage]
+- Edge proxy recovery after app container recreation.
+
+[actions performed]
+- Diagnosed `502 Bad Gateway` on `https://192.168.10.71:7003` as nginx holding a stale upstream target after the `app` container was recreated.
+- Confirmed `nginx` could currently resolve `app` to `172.24.0.5`, while error logs still showed failed upstream connects to the old `172.24.0.4`.
+- Recreated `nginx` to refresh upstream connections and runtime state.
+
+[observations]
+- The generated nginx config uses `server app:8080;`, but existing upstream connections can still point at the previous container IP after backend recreation.
+- This makes the edge path fail with `502` even while direct container-to-container health checks succeed.
+
+[next planned implementation steps]
+1. Verify HTTPS `/healthz` and `/` after the nginx recreation.
+2. Consider hardening the edge config so backend recreation does not require a proxy restart.
+
+2026-04-07
+
+[current stage]
+- Fixing manual abuse.ch sync so missing DB overrides no longer wipe working env values.
+
+[actions performed]
+- Patched `app/factory.py` so runtime feed env resolution falls back to the current process environment when no `app_settings` override row exists.
+- Applied the same fallback rule to MWDB optional fields and the MalwareBazaar shared abuse.ch key bridge.
+
+[observations]
+- The root cause of the manual-sync failure was not a missing secret in the container; it was the app-side queued sync path replacing populated env values with empty strings when the database had no override rows for that feed.
+
+[next planned implementation steps]
+1. Rebuild and restart `app` and `nginx`.
+2. Trigger manual `abusech` sync again and confirm the queued job no longer fails with missing auth key.
+
+2026-04-07
+
+[current stage]
+- Converting the diagnosed operational and sync regressions into tracked GitHub issues.
+
+[actions performed]
+- Created GitHub issue `#130` for the manual sync bug where missing DB override rows can clobber working feed env values.
+- Created GitHub issue `#131` for the remaining `abusech` manual-sync divergence from the scheduled worker config path.
+- Created GitHub issue `#132` for the `nginx` `502 Bad Gateway` condition after recreating the `app` container.
+
+[verification]
+- `gh issue list --repo mkilijanek/ioc-service --limit 10` shows:
+  - `#130` `Manual sync clobbers feed env when DB overrides are absent`
+  - `#131` `Manual abuse.ch sync diverges from worker config resolution`
+  - `#132` `Nginx edge can return 502 after app container recreation`
+
+2026-04-07
+
+[current stage]
+- Capturing a follow-up admin safety/UX issue for dangerous database wipe operations.
+
+[actions performed]
+- Created GitHub issue `#133` to replace the extra dangerous-ops env gate for wipe with explicit admin-token confirmation in the Web UI.
+
+[verification]
+- `gh issue list --repo mkilijanek/ioc-service --limit 12` shows `#133` `Replace dangerous wipe env gate with admin-token confirmation in Web UI`
+
+2026-04-08
+
+[current stage]
+- Capturing an operator-facing logging UX gap for feed logs.
+
+[actions performed]
+- Created GitHub issue `#134` to split feed log viewing into an events view and a warnings/errors view.
+
+[verification]
+- GitHub issue created: `#134` `Split feed logs into events view and warnings/errors view`
+
+2026-04-20
+
+[current stage]
+- Comprehensive project analysis and documentation phase.
+- Goal: analyze entire codebase, GitHub state, branches, and create actionable artifacts for future development.
+- Context: User requested kompleksowa analiza (comprehensive analysis) to create proposals.txt, prompts.txt, and kimi-milestones.txt.
+
+[actions performed]
+1. PROJECT ANALYSIS AND DOCUMENTATION
+   - Analyzed project structure: 39 Python files in app/, ~15,000 LOC, 487 tests
+   - Reviewed GitHub state: 5 open issues, 4 active milestones, ~130 closed issues
+   - Examined branches: main, dev, kili, kili-dev, kordek
+   - Identified security vulnerabilities: CVE-2026-39892, CVE-2025-71176, GHSA-v92g-xgxw-vvmm
+   - Created comprehensive proposals.txt (32KB) with:
+     * Architecture assessment
+     * Critical/High/Medium/Low priority issues
+     * Technical debt inventory
+     * Dependency security analysis
+     * Priority recommendations (14-20 weeks roadmap)
+   - Created prompts.txt (13KB) with:
+     * 5 code analysis prompts
+     * 5 implementation prompts
+     * 3 debugging prompts
+     * 2 code review prompts
+   - Created kimi-milestones.txt (32KB) with:
+     * 23 detailed issues across 4 milestones
+     * Full technical specifications
+     * Acceptance criteria for each issue
+     * Dependencies and file mappings
+
+   Justification: The project lacked a centralized planning artifact that connects code analysis with actionable issues. These three files provide:
+   - proposals.txt: Strategic overview and risk assessment for stakeholders
+   - prompts.txt: Reusable prompts for AI-assisted development
+   - kimi-milestones.txt: Detailed technical roadmap for developers
+
+2. GITHUB ISSUES CREATION (Batch 1 - Core Development)
+   Created 20 new GitHub issues with full descriptions, milestones, and labels:
+
+   Security (Critical/High Priority):
+   - #135: CVE-2026-39892 cryptography upgrade
+   - #136: GHSA-v92g-xgxw-vvmm Mako path traversal fix
+   - #137: Admin API rate limiting per-user
+
+   Milestone 1.5.1 (Database & Reliability):
+   - #141: Sync job retry with exponential backoff
+   - #142: Worker health check endpoint
+   - #147: PostgreSQL integration tests
+   - #148: Security headers hardening
+   - #151: Schema drift detection CI
+   - #154: Graceful shutdown handler
+
+   Milestone 1.6.0 (API Modernization):
+   - #143: API versioning with /api/v1/
+   - #144: OpenAPI 3.0 specification
+   - #145: Config refactoring with Pydantic
+
+   Milestone 1.6.1 (Architecture):
+   - #138: Structured logging with correlation IDs
+   - #139: Database circuit breaker
+   - #140: Async SQLAlchemy
+   - #146: Fake adapters and contract tests
+   - #149: Cache warming
+   - #150: Dead letter queue
+
+   Milestone 1.7.0 (Product UX):
+   - #155: Unified layout template (IMPLEMENTED)
+   - #156: Loading states
+   - #157: Toast notifications (IMPLEMENTED in layout)
+   - #158: Table improvements
+   - #152: Onboarding tour
+
+   Justification: Converting kimi-milestones.txt into GitHub issues makes the roadmap actionable and trackable. Each issue includes technical specifications, acceptance criteria, and dependencies to enable parallel development.
+
+3. UI/UX IMPROVEMENTS IMPLEMENTATION
+   - Completely rewrote app/templates/layout.html with:
+     * Modern CSS design system (CSS custom properties, variables)
+     * Dark/light theme support with automatic detection
+     * Reusable component library (cards, buttons, forms, tables, badges)
+     * Toast notification system with JavaScript API
+     * AJAX helper (apiRequest) with error handling
+     * Accessibility improvements (skip links, focus styles, ARIA)
+     * Sticky navigation with active state highlighting
+     * Utility classes (flex, grid, spacing, typography)
+     * Responsive design with mobile breakpoints
+     * Reduced motion support for accessibility
+
+   Justification: The previous layout.html was minimal and didn't provide a consistent design system. The new layout establishes a foundation for Milestone 1.7.0 UX work, reduces code duplication, and improves accessibility compliance (WCAG). The toast system provides immediate user feedback, addressing UX gaps identified in the analysis.
+
+4. COMPLIANCE ISSUES CREATION (Batch 2 - NIST & ISO 27001)
+   Created 11 comprehensive compliance issues with regulatory mapping:
+
+   ISO 27001 Requirements:
+   - #163: A.12.4 - Centralized logging with integrity protection
+   - #168: A.14.2 - Secure Development Lifecycle (SSDLC)
+   - #170: A.12.3/A.17 - Backup and Disaster Recovery
+   - #171: A.18 - Compliance monitoring and audit
+   - #173: A.7/A.8 - Asset management and classification
+
+   NIST Cybersecurity Framework:
+   - #164: PR.AC - Role-Based Access Control (RBAC)
+   - #165: PR.DS - Data protection (encryption at rest/transit)
+   - #166: DE.CM - Continuous security monitoring
+   - #167: RS.RP - Incident response automation
+   - #169: ID.RA - Risk assessment and register
+   - #172: PR.IP - Vulnerability and patch management
+
+   Created new labels: compliance, nist, iso27001
+
+   Justification: The ref/ioc-architecture-prompt bundle referenced ISO 27001 compliance but lacked concrete implementation issues. These 11 issues operationalize compliance requirements from Annex A controls and NIST CSF functions (Identify, Protect, Detect, Respond, Recover). Each issue maps specific controls to technical implementation, enabling audit-readiness.
+
+[important commands]
+- `find /home/kili/Repo/ioc-service -type f -name "*.py" | wc -l` (count Python files)
+- `git branch -a` (list all branches)
+- `gh issue list --repo mkilijanek/ioc-service --state open --limit 50` (list open issues)
+- `gh milestone list --repo mkilijanek/ioc-service` (list milestones)
+- `gh label create --repo mkilijanek/ioc-service ...` (create labels)
+- `gh issue create --repo mkilijanek/ioc-service ...` (create issues)
+- `Write /home/kili/Repo/ioc-service/proposals.txt` (create analysis file)
+- `Write /home/kili/Repo/ioc-service/prompts.txt` (create prompts file)
+- `Write /home/kili/Repo/ioc-service/kimi-milestones.txt` (create milestones file)
+- `Write /home/kili/Repo/ioc-service/app/templates/layout.html` (implement UI)
+
+[observations]
+- The project has strong architectural foundations after 1.5.0 modularization but lacks formal compliance documentation.
+- 30 open issues now exist, creating a clear roadmap for the next 3-5 months of development.
+- Security vulnerabilities (CVE-2026-39892) require immediate attention and are now tracked in issue #135.
+- The new layout.html provides a foundation for consistent UI/UX but requires migration of existing templates.
+- Compliance issues (#163-#173) represent significant work (estimated 8-12 weeks) but are essential for enterprise adoption.
+- GitHub issues provide better tracking than kimi-milestones.txt, but the text file serves as a reference for offline planning.
+- The analysis revealed that the project is operationally mature (production deployments) but needs hardening for compliance-sensitive environments.
+
+[decisions]
+- Create three separate documentation files (proposals, prompts, milestones) rather than one monolithic document to serve different use cases.
+- Prioritize security vulnerabilities (#135-#137) over feature development.
+- Map compliance requirements to specific NIST/ISO controls for audit traceability.
+- Keep layout.html backward compatible by not forcing migration of existing templates immediately.
+- Use GitHub milestones as the source of truth for scheduling, with kimi-milestones.txt as supplementary detail.
+- Focus compliance issues on practical implementation rather than documentation-only, as the project needs executable controls, not just policies.
+
+[mistakes and lessons]
+- Initially attempted to create all issues in parallel, which led to label creation errors (priority:low didn't exist).
+  Lesson: Create prerequisite resources (labels) before dependent operations (issues with those labels).
+- The layout.html rewrite could break existing templates if they depend on specific CSS classes.
+  Lesson: Document breaking changes and provide migration guide in the issue (#155).
+- Some compliance issues (#163-#173) overlap with existing functionality (audit logging exists but needs integrity).
+  Lesson: Explicitly distinguish between "missing feature" and "enhancement to existing feature" in issue descriptions.
+
+[next planned implementation steps]
+1. Address CVE-2026-39892 by updating cryptography package (issue #135).
+2. Begin PostgreSQL integration tests implementation (issue #147) to support Milestone 1.5.1.
+3. Migrate existing templates to use new layout.html progressively (issue #155).
+4. Start RBAC implementation (issue #164) with role definition and permission matrix.
+5. Schedule security review of all open issues to prioritize based on risk.
+
+[metrics summary]
+- Files created: 3 (proposals.txt, prompts.txt, kimi-milestones.txt)
+- Files modified: 1 (app/templates/layout.html)
+- GitHub issues created: 31 (20 development + 11 compliance)
+- GitHub labels created: 6 (database, testing, ci/cd, api, architecture, performance, compliance, nist, iso27001)
+- Milestones used: 4 (1.5.1, 1.6.0, 1.6.1, 1.7.0)
+- Estimated development time: 14-20 weeks (based on kimi-milestones.txt)

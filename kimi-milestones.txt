@@ -1,0 +1,2133 @@
+# IOC Service - KIMI Milestones i Issues
+# Wygenerowano: 2026-04-20
+# Szczegółowy plan rozwoju z dokładnymi opisami issues
+
+================================================================================
+MILESTONE 1.5.1 — Database Convergence & PostgreSQL Validation
+================================================================================
+Cel: Usunięcie dualizmu schematu SQL/ORM i dodanie prawdziwej walidacji PostgreSQL
+Timeline: 2-3 tygodnie
+Priority: HIGH
+
+Issue 1.5.1-01: Reconcile SQL schema, ORM metadata and Alembic migrations
+---------------------------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: database, schema, alembic
+
+Opis:
+Aktualnie istnieją trzy źródła definicji schematu bazy danych:
+1. database/init/ SQL scripts (initial schema)
+2. app/models.py (SQLAlchemy ORM)
+3. alembic/versions/ (migracje)
+
+Wymagania:
+- Wybrać jedno źródło prawdy dla schematu (zalecane: ORM jako source of truth)
+- Wygenerować SQL z ORM i porównać z database/init/
+- Upewnić się że migracje Alembic są kompletne
+- Uspójnić namespace (ti.* vs public.*)
+- Usunąć redundantne definicje
+
+Kryteria akceptacji:
+- [ ] database/init/ jest generowane z ORM lub usunięte
+- [ ] Alembic migrations są w stanie upgrade'ować z czystej bazy do current
+- [ ] Brak błędów przy porównaniu SQL z ORM
+- [ ] Dokumentacja opisuje flow migracji
+
+Pliki do modyfikacji:
+- database/init/01-schema.sql
+- database/init/02-functions.sql
+- alembic/versions/*.py
+- app/models.py (jeśli wymaga update)
+
+---
+
+Issue 1.5.1-02: Add PostgreSQL integration test suite in CI
+-----------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: database, testing, ci/cd, postgresql
+
+Opis:
+Obecnie testy używają SQLite lub mocked DB. Potrzeba testów z prawdziwym
+PostgreSQL aby weryfikować PostgreSQL-specific features (JSONB, ARRAY, FTS).
+
+Wymagania:
+1. Utworzyć test fixtures z PostgreSQL container:
+   - postgres_container (użyć pytest-docker lub testcontainers)
+   - migrated_db (alembic upgrade head)
+   - db_session (scoped session per test)
+
+2. Napisać testy dla:
+   - JSONB operations (metadata storage, indexing)
+   - ARRAY operations (tags, @> operator)
+   - Full-text search (jeśli używane)
+   - SQL functions (ti.export_indicators)
+   - Triggers (audit, timestamps)
+   - Connection pooling
+
+3. Dodać do CI:
+   - GitHub Actions job z PostgreSQL service
+   - Uruchamianie na każdym PR
+   - Coverage reporting
+
+Kryteria akceptacji:
+- [ ] Testy integracyjne uruchamiają się lokalnie z docker
+- [ ] CI job dla PostgreSQL tests
+- [ ] Test coverage dla JSONB/ARRAY > 80%
+- [ ] Dokumentacja jak uruchamiać testy integracyjne
+
+Pliki do utworzenia:
+- tests/integration/conftest.py
+- tests/integration/test_postgres_features.py
+- tests/integration/test_migrations.py
+- .github/workflows/ci.yml (update)
+- docker-compose.test.yml
+
+Zależności: 1.5.1-01
+
+---
+
+Issue 1.5.1-03: Add relational integrity constraints and config-aligned export limits
+------------------------------------------------------------------------------------
+Status: OPEN
+Priority: MEDIUM
+Assignee: TBD
+Labels: database, integrity, performance
+
+Opis:
+Dodać brakujące foreign keys i constraints w bazie danych.
+
+Wymagania:
+1. Foreign keys:
+   - feed_runs.feed_id -> feeds.id
+   - feed_stats.feed_id -> feeds.id
+   - sync_jobs.feed_source_id -> feeds.id (opcjonalnie)
+   - audit_log.user_id -> users.id (jeśli tabela users istnieje)
+
+2. Constraints:
+   - Check constraints dla confidence (0-100)
+   - Check constraints dla TLP values (WHITE, GREEN, AMBER, RED)
+   - Not null constraints gdzie logicznie wymagane
+
+3. Config-aligned export limits:
+   - Usunąć hardcoded limits w SQL functions
+   - Przekazywać runtime config do export_indicators()
+   - Walidacja limitów w aplikacji przed DB call
+
+Kryteria akceptacji:
+- [ ] Foreign keys dodane i testowane
+- [ ] Check constraints działają
+- [ ] Export limits są konfigurowalne
+- [ ] Migracje Alembic dla wszystkich zmian
+
+Pliki do modyfikacji:
+- app/models.py (dodać relationships)
+- database/init/02-functions.sql
+- alembic/versions/ (nowa migracja)
+
+Zależności: 1.5.1-01, 1.5.1-02
+
+---
+
+Issue 1.5.1-04: Persist composite-feed component overrides in DB
+------------------------------------------------------------------
+Status: OPEN
+Priority: MEDIUM
+Assignee: TBD
+Labels: database, feeds, configuration
+
+Opis:
+Dla composite feedów (np. abusech zawierający ThreatFox, URLhaus, etc.)
+pozwolić na nadpisywanie komponentów w bazie danych zamiast tylko env.
+
+Wymagania:
+1. Tabela feed_component_overrides:
+   - id (PK)
+   - feed_id (FK -> feeds.id)
+   - component_name (np. 'threatfox', 'urlhaus')
+   - enabled (bool)
+   - config (JSONB - dodatkowe parametry)
+   - created_at, updated_at
+
+2. API do zarządzania overrides:
+   - GET /api/v1/feeds/{source}/components
+   - PUT /api/v1/feeds/{source}/components/{component}
+
+3. Runtime logic:
+   - Przy ładowaniu feedu sprawdzić overrides z DB
+   - Merge z env vars (DB wins)
+   - Cache z invalidation na update
+
+4. UI Admin:
+   - Checkboxy dla komponentów w feed config
+   - Per-component settings (np. days, limit)
+
+Kryteria akceptacji:
+- [ ] Tabela feed_component_overrides istnieje
+- [ ] API działa dla CRUD operations
+- [ ] Runtime honors DB overrides
+- [ ] Testy pokrywają edge cases
+
+Pliki do utworzenia/modyfikacji:
+- app/models.py (dodać FeedComponentOverride)
+- app/routes/ops_admin.py (dodać endpoints)
+- app/templates/admin/feed_configure.html (dodać UI)
+- app/services/abusech.py (użyć overrides)
+- alembic/versions/ (migracja)
+
+Zależności: 1.5.1-01, 1.5.1-03
+
+---
+
+Issue 1.5.1-05: Detect schema drift automatically between SQL, ORM and migrations
+--------------------------------------------------------------------------------
+Status: OPEN
+Priority: MEDIUM
+Assignee: TBD
+Labels: database, ci/cd, automation
+
+Opis:
+Automatyczne wykrywanie rozbieżności między różnymi definicjami schematu.
+
+Wymagania:
+1. Narzędzie CLI: python -m app.cli validate-schema
+   - Porównuje ORM models z Alembic migrations
+   - Porównuje z running database (introspection)
+   - Generuje raport różnic
+
+2. Checki do wykonania:
+   - Brakujące kolumny w jednym z źródeł
+   - Typy kolumn (mismatch)
+   - Brakujące/dodatkowe indexy
+   - Brakujące constraints
+   - Brakujące defaults
+
+3. Integracja z CI:
+   - GitHub Actions step
+   - Fail build przy drift
+   - Post PR comment z raportem
+
+4. Notification:
+   - Slack/email gdy drift detected na main
+
+Kryteria akceptacji:
+- [ ] CLI command działa
+- [ ] CI integration
+- [ ] Dokumentacja użycia
+- [ ] Testy jednostkowe dla validatora
+
+Pliki do utworzenia:
+- app/schema_validator.py
+- app/cli.py (dodać komendę)
+- .github/workflows/schema-check.yml
+- tests/test_schema_validation.py
+
+Zależności: 1.5.1-01, 1.5.1-02
+
+================================================================================
+MILESTONE 1.6.0 — API & Configuration Modernization
+================================================================================
+Cel: Stabilizacja kontraktu API i uproszczenie zarządzania konfiguracją
+Timeline: 3-4 tygodnie
+Priority: HIGH
+
+Issue 1.6.0-01: Introduce versioned API surface and migration path
+-----------------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: api, versioning, rest
+
+Opis:
+Wprowadzenie wersjonowania API /api/v1/ z zachowaniem backwards compatibility.
+
+Wymagania:
+1. Utworzyć strukturę:
+   ```
+   app/api/
+   ├── __init__.py
+   ├── v1/
+   │   ├── __init__.py
+   │   ├── routes/
+   │   │   ├── __init__.py
+   │   │   ├── indicators.py
+   │   │   ├── feeds.py
+   │   │   ├── sync.py
+   │   │   ├── correlations.py
+   │   │   └── health.py
+   │   ├── schemas/
+   │   │   ├── __init__.py
+   │   │   ├── indicator.py (Pydantic models)
+   │   │   ├── feed.py
+   │   │   └── common.py
+   │   └── dependencies.py
+   ```
+
+2. Endpointy do zaimplementowania:
+   - GET /api/v1/indicators (paginated, filtered)
+   - POST /api/v1/indicators/search (Kibana-like)
+   - GET /api/v1/indicators/{id}
+   - GET /api/v1/indicators/export/{format}
+   - POST /api/v1/sync/{source}
+   - GET /api/v1/sync/{job_id}
+   - GET /api/v1/feeds
+   - GET /api/v1/feeds/{source}/stats
+   - GET /api/v1/correlations
+   - GET /api/v1/health
+   - GET /api/v1/readyz
+   - GET /api/v1/metrics
+
+3. Features:
+   - API key authentication (Bearer token)
+   - Rate limiting per API key
+   - Pagination (cursor-based lub offset)
+   - Filtering (query params)
+   - Sorting
+   - Response compression
+   - Caching (Redis)
+
+4. Backwards compatibility:
+   - Stare endpointy działają dalej
+   - Deprecation headers (Sunset, Deprecation)
+   - Migration guide dla klientów
+
+Kryteria akceptacji:
+- [ ] Wszystkie endpointy v1 działają
+- [ ] Testy dla każdego endpointu
+- [ ] Rate limiting działa
+- [ ] Stare endpointy zwracają deprecation headers
+- [ ] Dokumentacja migration guide
+
+Pliki do utworzenia:
+- app/api/ (struktura jak wyżej)
+- tests/test_api_v1/
+- docs/migration-guide-v1.md
+
+Zależności: Brak (może być równolegle z 1.5.1)
+
+---
+
+Issue 1.6.0-02: Publish and maintain OpenAPI specification
+----------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: api, documentation, openapi
+
+Opis:
+Generowanie i utrzymywanie specyfikacji OpenAPI 3.0 dla API.
+
+Wymagania:
+1. Generowanie OpenAPI z kodu:
+   - Użyć flasgger, apispec lub fastapi-openapi
+   - Lub pisać ręcznie i walidować w CI
+
+2. Automatyczne generowanie przy build:
+   - Pre-commit hook lub CI step
+   - Walidacja spec (swagger-codegen validate)
+
+3. Publishing:
+   - Static file: /static/openapi.yaml
+   - Swagger UI: /api/docs
+   - Redoc: /api/redoc
+
+4. Maintenance:
+   - Version pinning spec (openapi: 3.0.3)
+   - CHANGELOG dla spec (breaking changes)
+   - Client SDK generation (opcjonalnie)
+
+Kryteria akceptacji:
+- [ ] OpenAPI spec generowana automatycznie
+- [ ] Swagger UI dostępne
+- [ ] Spec jest walidowana w CI
+- [ ] Dokumentacja opisuje jak używać
+
+Pliki do utworzenia:
+- static/openapi.yaml
+- app/routes/docs.py (Swagger UI)
+- .github/workflows/openapi-validate.yml
+
+Zależności: 1.6.0-01
+
+---
+
+Issue 1.6.0-03: Refactor Config into grouped sections and modernize packaging
+-----------------------------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: config, refactoring, packaging
+
+Opis:
+Rozbicie monolitycznej klasy Config na domenowe sekcje.
+
+Wymagania:
+1. Struktura config:
+   ```
+   app/config/
+   ├── __init__.py
+   ├── base.py       (BaseConfig, walidacja)
+   ├── database.py   (DatabaseConfig)
+   ├── security.py   (SecurityConfig)
+   ├── feeds.py      (FeedsConfig)
+   ├── export.py     (ExportConfig)
+   ├── proxy.py      (ProxyConfig)
+   ├── redis.py      (RedisConfig)
+   └── logging.py    (LoggingConfig)
+   ```
+
+2. Każda sekcja powinna używać Pydantic Settings:
+   ```python
+   class DatabaseConfig(BaseSettings):
+       model_config = SettingsConfigDict(env_prefix='IOC_DB_')
+
+       url: PostgresDsn
+       pool_size: int = 6
+       max_overflow: int = 4
+       pool_timeout: int = 30
+       pool_recycle: int = 1800
+   ```
+
+3. Config aggregator:
+   ```python
+   class Config:
+       def __init__(self):
+           self.db = DatabaseConfig()
+           self.security = SecurityConfig()
+           # ... etc
+   ```
+
+4. Walidacja:
+   - URL format (PostgresDsn, RedisDsn)
+   - Port ranges (1-65535)
+   - File paths (istniejące pliki dla CA certs)
+   - Secret length (np. SECRET_KEY min 32 chars)
+
+5. Usunąć duplikację:
+   - Cały env parsing tylko w config/
+   - Brak os.environ poza config layer
+
+Kryteria akceptacji:
+- [ ] Config rozbita na sekcje
+- [ ] Pydantic Settings działa
+- [ ] Walidacja działa na startup
+- [ ] Stare Config działa (backwards compat) lub refactored
+- [ ] Testy dla config validation
+
+Pliki do utworzenia:
+- app/config/ (struktura jak wyżej)
+- tests/test_config.py
+
+Zależności: Brak
+
+---
+
+Issue 1.6.0-04: Separate production and development dependencies
+------------------------------------------------------------------
+Status: OPEN
+Priority: MEDIUM
+Assignee: TBD
+Labels: packaging, dependencies, dx
+
+Opis:
+Rozdzielenie zależności dev i prod + modernizacja packaging.
+
+Wymagania:
+1. Struktura pyproject.toml:
+   ```toml
+   [project]
+   name = "ioc-service"
+   version = "1.6.0"
+   dependencies = [
+       "Flask>=3.1.0",
+       # ... prod deps
+   ]
+
+   [project.optional-dependencies]
+   dev = [
+       "pytest>=8.0",
+       "pytest-cov",
+       # ... dev deps
+   ]
+
+   [project.optional-dependencies]
+   test = [
+       "pytest",
+       "fakeredis",
+       # ... test deps
+   ]
+   ```
+
+2. Usunąć requirements.txt lub zrobić go generowanym:
+   ```bash
+   pip-compile pyproject.toml -o requirements.txt
+   pip-compile pyproject.toml --extra dev -o requirements-dev.txt
+   ```
+
+3. Update Dockerfile:
+   - Multi-stage build (smaller final image)
+   - Nie instalować dev deps w prod
+
+4. Lock files:
+   - requirements.txt (prod, pinned)
+   - requirements-dev.txt (dev, pinned)
+
+Kryteria akceptacji:
+- [ ] pyproject.toml z dependencies
+- [ ] Prod image nie zawiera dev deps
+- [ ] Lock files są generowane
+- [ ] CI używa lock files
+
+Pliki do utworzenia/modyfikacji:
+- pyproject.toml (rozszerzyć)
+- requirements.txt (zaktualizować lub usunąć)
+- requirements-dev.txt (nowy)
+- Dockerfile (multi-stage)
+
+Zależności: 1.6.0-03
+
+================================================================================
+MILESTONE 1.6.1 — Integration Adapter Boundary & Runtime Resilience
+================================================================================
+Cel: Ułatwienie wymiany integracji zewnętrznych i usunięcie kruchych zachowań runtime
+Timeline: 3-4 tygodnie
+Priority: HIGH
+
+Issue 1.6.1-01: Define adapter contracts for feeds and export targets
+-----------------------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: architecture, adapters, interfaces
+
+Opis:
+Zdefiniowanie formalnych interfejsów dla adapterów feedów i eksportu.
+
+Wymagania:
+1. Interfejs FeedAdapter (abstract base class):
+   ```python
+   class FeedAdapter(ABC):
+       @abstractmethod
+       async def fetch(self, ctx: FetchContext) -> FetchResult:
+           ...
+
+       @abstractmethod
+       def validate_config(self, config: dict) -> ValidationResult:
+           ...
+
+       @abstractmethod
+       def get_capabilities(self) -> CapabilityMetadata:
+           ...
+
+       @abstractmethod
+       async def health_check(self) -> HealthStatus:
+           ...
+   ```
+
+2. Interfejs ExportAdapter:
+   ```python
+   class ExportAdapter(ABC):
+       @abstractmethod
+       def export(self, indicators: Iterator[Indicator], format: str) -> ExportResult:
+           ...
+
+       @abstractmethod
+       def supports_format(self, format: str) -> bool:
+           ...
+   ```
+
+3. Modele danych:
+   - FetchResult (items, stats, stop_reason, details)
+   - FetchContext (since, until, limit, filters)
+   - CapabilityMetadata (supported_filters, max_limit, auth_type)
+   - HealthStatus (healthy, latency, message)
+   - ValidationResult (valid, errors)
+
+4. Protocol definitions (Python 3.8+):
+   - Dla duck typing gdy ABC za ciężkie
+
+Kryteria akceptacji:
+- [ ] Interfejsy zdefiniowane i udokumentowane
+- [ ] Type hints kompletne
+- [ ] Protocol classes dla duck typing
+- [ ] Testy dla interfejsów (abc meta tests)
+
+Pliki do utworzenia:
+- app/adapters/__init__.py
+- app/adapters/base.py (interfejsy)
+- app/adapters/types.py (modele danych)
+- tests/test_adapters_interfaces.py
+
+Zależności: Brak
+
+---
+
+Issue 1.6.1-02: Move provider-specific mapping behind adapter implementations
+---------------------------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: architecture, adapters, refactoring
+
+Opis:
+Przeniesienie kodu z app/services/ do struktury adapterów.
+
+Wymagania:
+1. Struktura adapterów:
+   ```
+   app/adapters/
+   ├── __init__.py
+   ├── base.py
+   ├── types.py
+   ├── registry.py
+   └── feed/
+       ├── __init__.py
+       ├── abusech.py      (obecny abusech.py)
+       ├── mwdb.py         (obecny mwdb.py)
+       ├── misp.py         (obecny misp.py)
+       ├── malwarebazaar.py
+       └── crowdsec.py
+   ```
+
+2. Każdy adapter implementuje FeedAdapter:
+   ```python
+   class AbuseChAdapter(FeedAdapter):
+       def __init__(self, config: AbuseChConfig):
+           self.config = config
+           self.http = HttpClient(...)
+
+       async def fetch(self, ctx: FetchContext) -> FetchResult:
+           # implementacja z abusech.py
+           ...
+   ```
+
+3. Payload mapping w adapterze:
+   - Mapowanie AbuseCh -> Indicator w adapterze
+   - Brak zależności od formatów zewnętrznych w app/services/
+
+4. HTTP client per adapter:
+   - Configurable timeouts
+   - Retry logic
+   - Circuit breaker
+   - Proxy support
+
+Kryteria akceptacji:
+- [ ] Wszystkie feedy w app/adapters/feed/
+- [ ] Każdy adapter implementuje FeedAdapter
+- [ ] Mapping payloadów w adapterze
+- [ ] Testy dla każdego adaptera
+
+Pliki do utworzenia/modyfikacji:
+- app/adapters/feed/ (wszystkie pliki)
+- app/services/abusech.py (usunąć lub zdeprecjonować)
+- app/services/mwdb.py (usunąć lub zdeprecjonować)
+- app/services/misp.py (usunąć lub zdeprecjonować)
+- app/services/malwarebazaar.py (usunąć lub zdeprecjonować)
+- app/services/crowdsec.py (usunąć lub zdeprecjonować)
+
+Zależności: 1.6.1-01
+
+---
+
+Issue 1.6.1-03: Add adapter fixtures and contract tests
+-------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: testing, adapters, quality
+
+Opis:
+Testy kontraktowe dla adapterów + fake implementacje.
+
+Wymagania:
+1. Fake adapters (do testów):
+   ```python
+   class FakeFeedAdapter(FeedAdapter):
+       def __init__(self, data: list[Indicator]):
+           self.data = data
+
+       async def fetch(self, ctx) -> FetchResult:
+           return FetchResult(items=self.data, ...)
+   ```
+
+2. Contract tests:
+   ```python
+   @pytest.mark.parametrize("adapter_class", [AbuseChAdapter, MWDBAdapter, ...])
+   def test_adapter_implements_interface(adapter_class):
+       assert issubclass(adapter_class, FeedAdapter)
+
+   def test_adapter_fetch_returns_fetch_result(adapter):
+       result = adapter.fetch(FetchContext())
+       assert isinstance(result, FetchResult)
+   ```
+
+3. Property-based tests (hypothesis):
+   - Losowe payloady z zewnętrznych API
+   - Sprawdzenie czy mapping nie rzuca wyjątków
+   - Sprawdzenie czy wyniki mają poprawne typy
+
+4. Integration tests z mock server:
+   - responses lub pytest-httpserver
+   - Symulacja różnych odpowiedzi API
+   - Testowanie retry logic
+
+Kryteria akceptacji:
+- [ ] Fake adapters działają
+- [ ] Contract tests dla wszystkich adapterów
+- [ ] Property-based tests
+- [ ] Integration tests z mock server
+
+Pliki do utworzenia:
+- tests/conftest.py (dodać fixtures)
+- tests/test_adapters_contract.py
+- tests/test_adapters_properties.py
+- tests/test_adapters_integration.py
+
+Zależności: 1.6.1-02
+
+---
+
+Issue 1.6.1-04: Remove runtime env mutation and duplicate proxy bootstrap logic
+------------------------------------------------------------------------------
+Status: OPEN
+Priority: MEDIUM
+Assignee: TBD
+Labels: runtime, refactoring, proxy
+
+Opis:
+Usunięcie mutacji os.environ i zduplikowanej logiki proxy.
+
+Wymagania:
+1. Current problem:
+   - app i worker ustawiają os.environ dla proxy
+   - Duplikacja konfiguracji proxy w wielu miejscach
+   - Globalny stan mutowany w runtime
+
+2. Solution:
+   - HttpClient z proxy config w konstruktorze
+   - Brak os.environ mutation
+   - Config przekazywana explicite
+
+3. Refactor:
+   ```python
+   # Zamiast:
+   os.environ['HTTP_PROXY'] = config.http_proxy
+   requests.get(url)
+
+   # Na:
+   client = HttpClient(proxy=config.http_proxy)
+   client.get(url)
+   ```
+
+4. Bootstrap unification:
+   - app/services/bootstrap.py (wspólny moduł)
+   - Używany przez app i worker
+
+Kryteria akceptacji:
+- [ ] Brak os.environ mutation w runtime
+- [ ] Proxy config w HttpClient
+- [ ] Bootstrap logic w jednym miejscu
+- [ ] Testy weryfikują brak mutation
+
+Pliki do utworzenia/modyfikacji:
+- app/services/bootstrap.py
+- app/services/common.py (dodać HttpClient)
+- app/factory.py (usunąć env mutation)
+- app/worker.py (usunąć env mutation)
+
+Zależności: 1.6.1-02
+
+---
+
+Issue 1.6.1-05: Add adapter registry, capability metadata and discovery flow
+-----------------------------------------------------------------------------
+Status: OPEN
+Priority: MEDIUM
+Assignee: TBD
+Labels: architecture, adapters, registry
+
+Opis:
+System rejestracji i discovery dla adapterów.
+
+Wymagania:
+1. AdapterRegistry:
+   ```python
+   class AdapterRegistry:
+       def register(self, source: str, adapter_class: Type[FeedAdapter]) -> None
+       def get(self, source: str) -> FeedAdapter
+       def list_available(self) -> list[str]
+       def get_capabilities(self, source: str) -> CapabilityMetadata
+       def health_check_all(self) -> dict[str, HealthStatus]
+   ```
+
+2. Discovery:
+   - Auto-discovery via entry_points
+   - Plugins mogą rejestrować własne adaptery
+   - Lazy loading adapterów
+
+3. Capability metadata:
+   - Co dany adapter wspiera (filters, formats, auth)
+   - Max limits
+   - Rate limits
+
+4. Health endpoint:
+   - /api/v1/feeds/health - health wszystkich feedów
+   - Per-feed health check
+
+Kryteria akceptacji:
+- [ ] Registry działa
+- [ ] Auto-discovery działa
+- [ ] Capability metadata dostępne via API
+- [ ] Health check dla wszystkich feedów
+
+Pliki do utworzenia:
+- app/adapters/registry.py
+- app/routes/feeds.py (dodać health endpointy)
+- pyproject.toml (entry_points jeśli plugin support)
+
+Zależności: 1.6.1-02, 1.6.1-03
+
+================================================================================
+MILESTONE 1.7.0 — Product UX & Scope Rationalization
+================================================================================
+Cel: Przekształcenie z technicznego panelu w czytelny produkt
+Timeline: 4-6 tygodni
+Priority: MEDIUM
+
+Issue 1.7.0-01: Redesign UI around primary workflows
+----------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: ui, ux, product
+
+Opis:
+Zdefiniowanie top 3 workflowów użytkownika i przedesignowanie UI.
+
+Wymagania:
+1. Research:
+   - Analiza użycia obecnego UI (logs, metrics)
+   - Interviews z użytkownikami
+   - Definicja primary personas
+
+2. Primary workflows (propozycja):
+   - W1: Threat Intelligence Analyst
+     "Szukam IOCów związanych z kampanią X, exportuję do SIEM"
+   - W2: Security Operator
+     "Sprawdzam czy feedy działają, troubleshootuję błędy"
+   - W3: Administrator
+     "Konfiguruję nowe źródło danych, zarządzam systemem"
+
+3. UI redesign:
+   - Landing page dla każdego workflow
+   - Contextual navigation (nie modułowa)
+   - Quick actions dla najczęstszych operacji
+   - Dashboard z KPIs
+
+4. Mobile-first responsive design
+
+Kryteria akceptacji:
+- [ ] Research completed
+- [ ] 3 workflows zdefiniowane
+- [ ] Wireframes/mockupy
+- [ ] New UI implemented
+- [ ] User testing
+
+Pliki do utworzenia/modyfikacji:
+- docs/ux-research/
+- app/templates/workflow_*.html
+- app/static/css/ (nowe styles)
+- app/routes/ (reorganizacja)
+
+Zależności: 1.6.0 (API v1 stabilne)
+
+---
+
+Issue 1.7.0-02: Separate business-facing UI from admin/debug tooling
+--------------------------------------------------------------------
+Status: OPEN
+Priority: HIGH
+Assignee: TBD
+Labels: ui, architecture, separation
+
+Opis:
+Rozdzielenie interfejsu dla użytkowników biznesowych od admin/debug.
+
+Wymagania:
+1. Struktura UI:
+   ```
+   / (landing - wybór roli)
+   /app/ (business UI)
+       /search
+       /export
+       /dashboard
+   /admin/ (admin UI)
+       /feeds
+       /settings
+       /logs
+   /debug/ (debug tooling)
+       /db-inspector
+       /cache-stats
+       /raw-queries
+   ```
+
+2. Access control:
+   - /app/ - authenticated users (różne role)
+   - /admin/ - admin only
+   - /debug/ - admin only, opcjonalnie IP-restricted
+
+3. Visual distinction:
+   - Różne themes dla app vs admin
+   - Clear labeling (badge: ADMIN, DEBUG)
+
+4. Navigation:
+   - Global nav pokazuje tylko odpowiednie sekcje
+   - Role-based menu
+
+Kryteria akceptacji:
+- [ ] Routes rozdzielone
+- [ ] Access control działa
+- [ ] Visual distinction
+- [ ] Testy dla access control
+
+Pliki do utworzenia/modyfikacji:
+- app/routes/ (reorganizacja)
+- app/templates/ (nowa struktura)
+- app/security.py (role checks)
+
+Zależności: 1.7.0-01
+
+---
+
+Issue 1.7.0-03: Audit features for simplification, deprecation or scope reduction
+--------------------------------------------------------------------------------
+Status: OPEN
+Priority: MEDIUM
+Assignee: TBD
+Labels: product, scope, audit
+
+Opis:
+Audyt features pod kątem użycia i kosztu utrzymania.
+
+Wymagania:
+1. Metryki do zebrania:
+   - Usage frequency (per feature)
+   - Error rates (per feature)
+   - Maintenance cost (lines of code, complexity)
+   - User feedback
+
+2. Feature categories:
+   - Core (must keep)
+   - Keep (używane, warto utrzymać)
+   - Deprecate (mało używane, duży koszt)
+   - Remove (unused, broken)
+
+3. Candidates for review:
+   - Export formats (które są używane?)
+   - Feed sources (które są aktywne?)
+   - Admin features (czy wszystkie są potrzebne?)
+   - Correlation features (czy używane?)
+
+4. Deprecation process:
+   - Deprecation notice
+   - Migration guide
+   - Sunset date
+   - User communication
+
+Kryteria akceptacji:
+- [ ] Metryki zebrane
+- [ ] Features skategoryzowane
+- [ ] Deprecation plan dla każdego feature do usunięcia
+- [ ] Documentation updated
+
+Pliki do utworzenia:
+- docs/feature-audit/
+- docs/deprecation/
+
+Zależności: Brak
+
+---
+
+Issue 1.7.0-04: Define and document the primary interface for onboarding
+-------------------------------------------------------------------------
+Status: OPEN
+Priority: MEDIUM
+Assignee: TBD
+Labels: documentation, onboarding, product
+
+Opis:
+Jasne wskazanie głównego interfejsu dla nowych użytkowników.
+
+Wymagania:
+1. Primary interface decision:
+   - Web UI dla analystów
+   - API dla integracji
+   - CLI dla adminów
+
+2. Onboarding flow:
+   - Quickstart guide
+   - Tutorial (step-by-step)
+   - Video demos
+
+3. Documentation:
+   - Getting Started guide
+   - FAQ
+   - Troubleshooting
+   - Use case guides
+
+4. In-product onboarding:
+   - Tooltips
+   - Tour (walkthrough)
+   - Contextual help
+
+Kryteria akceptacji:
+- [ ] Primary interface wybrany i udokumentowany
+- [ ] Quickstart guide
+- [ ] Tutorial
+- [ ] FAQ
+- [ ] In-product help
+
+Pliki do utworzenia:
+- docs/onboarding/
+- docs/getting-started.md
+- docs/faq.md
+- app/templates/help/ (in-product help)
+
+Zależności: 1.7.0-01, 1.7.0-02
+
+================================================================================
+MILESTONE 1.5.1 — CD/Security Hardening & Runtime Resilience (GitHub Issues)
+================================================================================
+
+Issue #135: CVE-2026-39892 - Upgrade cryptography to >= 47.0.0
+---------------------------------------------------------------
+GitHub: #135
+Priority: CRITICAL
+Status: OPEN
+Labels: security, CVE, dependencies
+
+Opis:
+Buffer overflow vulnerability in cryptography package (v46.0.6).
+CVSS score: 9.8 (Critical)
+
+Wymagania:
+- [ ] Upgrade cryptography to >= 47.0.0
+- [ ] Run full test suite
+- [ ] Security regression tests
+- [ ] Update SECURITY.md
+
+Pliki do modyfikacji:
+- requirements.txt
+- pyproject.toml
+
+Szacowany czas: 1 dzień
+
+---
+
+Issue #136: GHSA-v92g-xgxw-vvmm - Mako path traversal vulnerability
+------------------------------------------------------------------
+GitHub: #136
+Priority: HIGH
+Status: OPEN
+Labels: security, CVE, dependencies
+
+Opis:
+Path traversal vulnerability in Mako (via alembic dependency chain).
+
+Wymagania:
+- [ ] Upgrade Mako to patched version
+- [ ] Verify alembic compatibility
+- [ ] Test migrations
+
+Pliki do modyfikacji:
+- requirements.txt
+
+Szacowany czas: 1 dzień
+
+---
+
+Issue #137: Add per-user rate limiting for admin API
+----------------------------------------------------
+GitHub: #137
+Priority: HIGH
+Status: OPEN
+Labels: security, api, rate-limiting
+
+Opis:
+Brak per-user rate limiting dla admin API endpoints.
+
+Wymagania:
+- [ ] Implement per-user rate limits
+- [ ] Different tiers: admin vs operator vs viewer
+- [ ] Configurable limits via env
+- [ ] Tests for rate limiting
+
+Pliki do modyfikacji:
+- app/routes/auth.py
+- app/config.py (rate limit settings)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #141: Add automatic retry mechanism for failed sync jobs
+---------------------------------------------------------------
+GitHub: #141
+Priority: HIGH
+Status: OPEN
+Labels: reliability, sync, worker
+
+Opis:
+Failed sync jobs nie są automatycznie retryowane.
+
+Wymagania:
+- [ ] Exponential backoff retry (max 3 attempts)
+- [ ] Retry counter w DB
+- [ ] Dead letter queue po max retries
+- [ ] Alert dla jobs w DLQ
+
+Pliki do modyfikacji:
+- app/worker.py
+- app/models.py (dodać retry_count)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #142: Add worker health check endpoint
+---------------------------------------------
+GitHub: #142
+Priority: HIGH
+Status: OPEN
+Labels: observability, health, worker
+
+Opis:
+Brak endpointu do sprawdzania health worker process.
+
+Wymagania:
+- [ ] GET /healthz/worker endpoint
+- [ ] Sprawdza: DB connection, queue status, last run timestamp
+- [ ] Returns 200/503
+- [ ] Kubernetes-ready probe format
+
+Pliki do modyfikacji:
+- app/routes/health.py
+
+Szacowany czas: 1-2 dni
+
+---
+
+Issue #147: PostgreSQL integration test suite
+----------------------------------------------
+GitHub: #147
+Priority: HIGH
+Status: OPEN
+Labels: testing, database, postgresql
+
+Opis:
+Test integracyjne z prawdziwym PostgreSQL (duplikat 1.5.1-02, zlinkowany z GitHub).
+
+Wymagania:
+- [ ] testcontainers dla PostgreSQL
+- [ ] JSONB/ARRAY tests
+- [ ] CI integration
+
+Zobacz też: Issue 1.5.1-02
+
+Szacowany czas: 3-4 dni
+
+---
+
+Issue #148: Security headers review and hardening
+-------------------------------------------------
+GitHub: #148
+Priority: HIGH
+Status: OPEN
+Labels: security, headers, hardening
+
+Opis:
+Przegląd i hardening security headers.
+
+Wymagania:
+- [ ] Content-Security-Policy
+- [ ] Strict-Transport-Security (HSTS)
+- [ ] X-Content-Type-Options
+- [ ] Referrer-Policy
+- [ ] Permissions-Policy
+- [ ] Security headers test suite
+
+Pliki do modyfikacji:
+- app/factory.py (headers)
+- nginx.conf (headers)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #151: Schema drift detection in CI
+----------------------------------------
+GitHub: #151
+Priority: MEDIUM
+Status: OPEN
+Labels: ci/cd, database, schema
+
+Opis:
+Automatyczne wykrywanie rozbieżności schematu w CI (duplikat 1.5.1-05).
+
+Wymagania:
+- [ ] GitHub Actions step
+- [ ] Fail build on drift
+- [ ] Raport różnic
+
+Zobacz też: Issue 1.5.1-05
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #154: Implement graceful shutdown handler
+-----------------------------------------------
+GitHub: #154
+Priority: MEDIUM
+Status: OPEN
+Labels: runtime, reliability, shutdown
+
+Opis:
+Graceful shutdown dla worker i app containers.
+
+Wymagania:
+- [ ] Handle SIGTERM/SIGINT
+- [ ] Finish current jobs przed shutdown
+- [ ] Close DB connections gracefully
+- [ ] Health endpoint returns 503 during shutdown
+
+Pliki do modyfikacji:
+- app/worker.py
+- app/factory.py
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #163: ISO 27001 A.12.4 - Centralized logging
+--------------------------------------------------
+GitHub: #163
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, ISO27001, logging, A.12.4
+
+Opis:
+Implementacja wymagań ISO 27001 Annex A.12.4 (Logging and Monitoring).
+
+Wymagania:
+- [ ] Centralized log aggregation
+- [ ] Structured logging (JSON format)
+- [ ] Log retention policy (90 dni)
+- [ ] Tamper-proof logs (append-only)
+- [ ] Audit trail dla security events
+- [ ] Log review procedures
+
+Pliki do modyfikacji:
+- app/logging_config.py (nowy)
+- app/factory.py (setup logging)
+
+Szacowany czas: 3-4 dni
+
+---
+
+Issue #164: NIST PR.AC - Identity and Access Management
+-------------------------------------------------------
+GitHub: #164
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, NIST, RBAC, PR.AC
+
+Opis:
+Implementacja NIST Cybersecurity Framework PR.AC (Identity Management).
+
+Wymagania:
+- [ ] RBAC implementation (role-based access)
+- [ ] User provisioning/de-provisioning
+- [ ] Access review process (co 90 dni)
+- [ ] Least privilege principle
+- [ ] Service account management
+- [ ] MFA dla admin accounts
+
+Pliki do modyfikacji:
+- app/security.py (RBAC)
+- app/models.py (roles)
+
+Szacowany czas: 5-7 dni
+
+---
+
+Issue #165: NIST PR.DS - Data Protection Controls
+-------------------------------------------------
+GitHub: #165
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, NIST, data-protection, PR.DS
+
+Opis:
+Implementacja NIST CSF PR.DS (Data Security).
+
+Wymagania:
+- [ ] Data classification (TLP labels)
+- [ ] Encryption at rest (DB)
+- [ ] Encryption in transit (TLS 1.3)
+- [ ] Data retention policies
+- [ ] Secure deletion procedures
+- [ ] Data masking dla non-prod
+
+Pliki do modyfikacji:
+- docker-compose.yml (encryption settings)
+- app/models.py (data classification)
+
+Szacowany czas: 3-5 dni
+
+---
+
+Issue #169: NIST ID.RA - Risk Assessment Process
+------------------------------------------------
+GitHub: #169
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, NIST, risk, ID.RA
+
+Opis:
+Implementacja NIST CSF ID.RA (Risk Assessment).
+
+Wymagania:
+- [ ] Annual risk assessment procedure
+- [ ] Threat catalog (feed sources)
+- [ ] Vulnerability scanning process
+- [ ] Risk scoring methodology
+- [ ] Risk register maintenance
+- [ ] Risk treatment plans
+
+Pliki do modyfikacji:
+- docs/risk-assessment/
+- docs/threat-catalog.md
+
+Szacowany czas: 7-10 dni (procesowy)
+
+---
+
+Issue #172: NIST PR.IP - Vulnerability Management
+---------------------------------------------------
+GitHub: #172
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, NIST, vulnerability, PR.IP
+
+Opis:
+Implementacja NIST CSF PR.IP (Information Protection Processes).
+
+Wymagania:
+- [ ] Vulnerability management policy
+- [ ] Patch management process
+- [ ] Security update SLAs
+- [ ] Dependency scanning automation
+- [ ] Penetration testing schedule
+- [ ] Security metrics dashboard
+
+Pliki do modyfikacji:
+- .github/workflows/security-scan.yml
+- docs/vulnerability-management.md
+
+Szacowany czas: 5-7 dni
+
+================================================================================
+MILESTONE 1.6.0 — API & Configuration Modernization (GitHub Issues)
+================================================================================
+
+Issue #143: API versioning with /api/v1/ prefix
+-----------------------------------------------
+GitHub: #143
+Priority: HIGH
+Status: OPEN
+Labels: api, versioning, rest
+
+Opis:
+Wersjonowanie API /api/v1/ (duplikat 1.6.0-01).
+
+Zobacz też: Issue 1.6.0-01
+
+---
+
+Issue #144: OpenAPI 3.0 specification
+------------------------------------
+GitHub: #144
+Priority: HIGH
+Status: OPEN
+Labels: api, openapi, documentation
+
+Opis:
+Specyfikacja OpenAPI 3.0 (duplikat 1.6.0-02).
+
+Zobacz też: Issue 1.6.0-02
+
+---
+
+Issue #145: Config refactoring with Pydantic Settings
+----------------------------------------------------
+GitHub: #145
+Priority: HIGH
+Status: OPEN
+Labels: config, refactoring, pydantic
+
+Opis:
+Refaktoryzacja config z Pydantic (duplikat 1.6.0-03).
+
+Zobacz też: Issue 1.6.0-03
+
+---
+
+Issue #168: ISO 27001 A.14.2 - SSDLC Controls
+----------------------------------------------
+GitHub: #168
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, ISO27001, SSDLC, A.14.2
+
+Opis:
+Implementacja ISO 27001 A.14.2 (Secure Development Lifecycle).
+
+Wymagania:
+- [ ] Security requirements in development
+- [ ] Secure coding guidelines
+- [ ] Security testing in CI/CD
+- [ ] Code review requirements
+- [ ] Security training dla devs
+- [ ] Security acceptance criteria
+
+Pliki do modyfikacji:
+- docs/secure-development.md
+- .github/workflows/security-checks.yml
+
+Szacowany czas: 5-7 dni (procesowy)
+
+---
+
+Issue #170: ISO 27001 A.12.3 - Backup and Disaster Recovery
+------------------------------------------------------------
+GitHub: #170
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, ISO27001, backup, DR, A.12.3
+
+Opis:
+Implementacja ISO 27001 A.12.3 (Backup and DR).
+
+Wymagania:
+- [ ] Automated DB backups (daily)
+- [ ] Backup encryption
+- [ ] Backup testing (monthly restore)
+- [ ] DR plan documentation
+- [ ] RTO/RPO definitions
+- [ ] DR drills (co 6 miesięcy)
+
+Pliki do modyfikacji:
+- scripts/backup.sh
+- docs/disaster-recovery.md
+
+Szacowany czas: 3-5 dni
+
+---
+
+Issue #173: ISO 27001 A.7/A.8 - Asset Management
+-------------------------------------------------
+GitHub: #173
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, ISO27001, asset-management, A.7, A.8
+
+Opis:
+Implementacja ISO 27001 A.7 (HR) i A.8 (Asset Management).
+
+Wymagania:
+- [ ] Asset inventory (hardware/software/data)
+- [ ] Asset classification
+- [ ] Asset ownership assignment
+- [ ] Acceptable use policies
+- [ ] Termination procedures
+- [ ] Asset disposal procedures
+
+Pliki do modyfikacji:
+- docs/asset-management/
+- docs/acceptable-use-policy.md
+
+Szacowany czas: 5-7 dni (procesowy)
+
+================================================================================
+MILESTONE 1.6.1 — Integration Adapter Boundary & Runtime Resilience (GitHub Issues)
+================================================================================
+
+Issue #138: Structured logging with correlation IDs
+---------------------------------------------------
+GitHub: #138
+Priority: MEDIUM
+Status: OPEN
+Labels: observability, logging, tracing
+
+Opis:
+Structured logging z correlation IDs dla traceability.
+
+Wymagania:
+- [ ] JSON log format
+- [ ] Correlation ID per request
+- [ ] Trace context propagation
+- [ ] Centralized log aggregation
+- [ ] Log correlation dashboard
+
+Pliki do modyfikacji:
+- app/logging_config.py
+- app/middleware.py (nowy)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #139: Database circuit breaker
+------------------------------------
+GitHub: #139
+Priority: MEDIUM
+Status: OPEN
+Labels: reliability, database, circuit-breaker
+
+Opis:
+Circuit breaker dla operacji DB.
+
+Wymagania:
+- [ ] Circuit breaker pattern
+- [ ] Configurable thresholds
+- [ ] Fallback behavior
+- [ ] Health check integration
+- [ ] Metrics i alerting
+
+Pliki do modyfikacji:
+- app/services/common.py (dodać DBCircuitBreaker)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #140: Async SQLAlchemy for I/O bound operations
+----------------------------------------------------
+GitHub: #140
+Priority: MEDIUM
+Status: OPEN
+Labels: performance, async, sqlalchemy
+
+Opis:
+Async SQLAlchemy dla operacji I/O bound.
+
+Wymagania:
+- [ ] Migrate to async SQLAlchemy
+- [ ] Connection pool tuning
+- [ ] Async session management
+- [ ] Test updates
+- [ ] Performance benchmarks
+
+Pliki do modyfikacji:
+- app/db.py
+- app/models.py (async)
+
+Szacowany czas: 5-7 dni
+
+---
+
+Issue #146: Fake adapters and contract tests
+---------------------------------------------
+GitHub: #146
+Priority: MEDIUM
+Status: OPEN
+Labels: testing, adapters, contract
+
+Opis:
+Fake adapters i contract tests (duplikat 1.6.1-03).
+
+Zobacz też: Issue 1.6.1-03
+
+---
+
+Issue #149: Cache warming strategy
+----------------------------------
+GitHub: #149
+Priority: MEDIUM
+Status: OPEN
+Labels: performance, cache, redis
+
+Opis:
+Cache warming dla popularnych zapytań.
+
+Wymagania:
+- [ ] Identify hot queries
+- [ ] Warming strategy (on startup, scheduled)
+- [ ] Cache invalidation rules
+- [ ] Metrics (cache hit ratio)
+
+Pliki do modyfikacji:
+- app/services/cache_warming.py (nowy)
+- app/worker.py (scheduled warming)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #150: Dead letter queue dla failed sync jobs
+--------------------------------------------------
+GitHub: #150
+Priority: MEDIUM
+Status: OPEN
+Labels: reliability, worker, dlq
+
+Opis:
+Dead letter queue dla failed jobs (relacja z #141).
+
+Wymagania:
+- [ ] DLQ table w DB
+- [ ] Retry mechanism integration
+- [ ] Manual replay z DLQ
+- [ ] Alerting dla DLQ depth
+
+Pliki do modyfikacji:
+- app/models.py (dodać DLQ table)
+- app/services/dlq.py (nowy)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #153: Grafana dashboard dla feed health
+----------------------------------------------
+GitHub: #153
+Priority: LOW
+Status: OPEN
+Labels: observability, grafana, dashboard
+
+Opis:
+Dashboard Grafana dla monitoringu feedów.
+
+Wymagania:
+- [ ] Feed success/failure rates
+- [ ] Sync latency trends
+- [ ] Data freshness metrics
+- [ ] Alert panels
+- [ ] Export metrics (Prometheus)
+
+Pliki do modyfikacji:
+- grafana/dashboards/feed-health.json
+- app/metrics.py (dodać custom metrics)
+
+Szacowany czas: 3-4 dni
+
+---
+
+Issue #166: NIST DE.CM - Continuous Monitoring
+----------------------------------------------
+GitHub: #166
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, NIST, monitoring, DE.CM
+
+Opis:
+Implementacja NIST CSF DE.CM (Continuous Monitoring).
+
+Wymagania:
+- [ ] Continuous monitoring strategy
+- [ ] Security event monitoring
+- [ ] Anomaly detection rules
+- [ ] Alert thresholds
+- [ ] Incident response triggers
+- [ ] Metrics retention (1 rok)
+
+Pliki do modyfikacji:
+- docs/continuous-monitoring.md
+- monitoring/alerts.yml
+
+Szacowany czas: 4-5 dni
+
+---
+
+Issue #167: NIST RS.RP - Incident Response
+------------------------------------------
+GitHub: #167
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, NIST, incident-response, RS.RP
+
+Opis:
+Implementacja NIST CSF RS.RP (Response Planning).
+
+Wymagania:
+- [ ] Incident response plan
+- [ ] Response playbooks
+- [ ] Escalation procedures
+- [ ] Communication templates
+- [ ] Post-incident reviews
+- [ ] IR team contacts
+
+Pliki do modyfikacji:
+- docs/incident-response/
+- docs/playbooks/
+
+Szacowany czas: 7-10 dni (procesowy)
+
+---
+
+Issue #171: ISO 27001 A.18 - Compliance Monitoring
+---------------------------------------------------
+GitHub: #171
+Priority: MEDIUM
+Status: OPEN
+Labels: compliance, ISO27001, monitoring, A.18
+
+Opis:
+Implementacja ISO 27001 A.18 (Compliance).
+
+Wymagania:
+- [ ] Compliance monitoring dashboard
+- [ ] Control effectiveness metrics
+- [ ] Audit log review
+- [ ] Regular compliance scans
+- [ ] Gap analysis process
+- [ ] Management review (co kwartał)
+
+Pliki do modyfikacji:
+- docs/compliance/
+- reports/compliance/
+
+Szacowany czas: 5-7 dni (procesowy)
+
+================================================================================
+MILESTONE 1.7.0 — Product UX & Scope Rationalization (GitHub Issues)
+================================================================================
+
+Issue #152: In-product onboarding tour
+----------------------------------------
+GitHub: #152
+Priority: MEDIUM
+Status: OPEN
+Labels: ux, onboarding, product
+
+Opis:
+Interactive onboarding tour dla nowych użytkowników.
+
+Wymagania:
+- [ ] Step-by-step tour
+- [ ] Feature highlights
+- [ ] Skip/resume functionality
+- [ ] Progress tracking
+- [ ] Contextual tooltips
+
+Pliki do modyfikacji:
+- app/static/js/tour.js (nowy)
+- app/templates/onboarding/
+
+Szacowany czas: 3-4 dni
+
+---
+
+Issue #155: Unified layout template
+-----------------------------------
+GitHub: #155
+Priority: MEDIUM
+Status: IMPLEMENTED ✓
+Labels: ui, templates, css
+
+Opis:
+Unified layout template z modern CSS (ZAIMPLEMENTOWANE).
+
+Wymagania:
+- [x] Modern CSS variables
+- [x] Light/dark theme
+- [x] Component library
+- [x] Toast notifications
+- [x] Responsive design
+
+Pliki:
+- app/templates/layout.html (zaktualizowany)
+
+Data implementacji: 2026-04-20
+
+---
+
+Issue #156: Loading states and skeleton screens
+-----------------------------------------------
+GitHub: #156
+Priority: MEDIUM
+Status: OPEN
+Labels: ui, ux, loading
+
+Opis:
+Loading states i skeleton screens dla lepszego UX.
+
+Wymagania:
+- [ ] Skeleton loaders dla tables
+- [ ] Spinner dla async actions
+- [ ] Progress bars dla long operations
+- [ ] Optimistic UI updates
+
+Pliki do modyfikacji:
+- app/static/css/skeleton.css
+- app/templates/ (add skeletons)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #157: Toast notification system
+-------------------------------------
+GitHub: #157
+Priority: MEDIUM
+Status: IMPLEMENTED ✓
+Labels: ui, ux, notifications
+
+Opis:
+Toast notification system (ZAIMPLEMENTOWANE w layout).
+
+Wymagania:
+- [x] JavaScript showToast() API
+- [x] Success/warning/error/info types
+- [x] Auto-dismiss
+- [x] Animation
+
+Pliki:
+- app/templates/layout.html (zawiera implementację)
+
+Data implementacji: 2026-04-20
+
+---
+
+Issue #158: Indicators table improvements
+------------------------------------------
+GitHub: #158
+Priority: MEDIUM
+Status: OPEN
+Labels: ui, table, indicators
+
+Opis:
+Usprawnienia tabeli wskaźników.
+
+Wymagania:
+- [ ] Sortable columns
+- [ ] Column visibility toggle
+- [ ] Bulk actions
+- [ ] Advanced filters
+- [ ] Export selected rows
+
+Pliki do modyfikacji:
+- app/templates/indicators.html
+- app/static/js/table.js
+
+Szacowany czas: 3-4 dni
+
+---
+
+Issue #159: Keyboard shortcuts
+------------------------------
+GitHub: #159
+Priority: LOW
+Status: OPEN
+Labels: ui, accessibility, keyboard
+
+Opis:
+Keyboard shortcuts dla power users.
+
+Wymagania:
+- [ ] Shortcut documentation
+- [ ] Quick search (Ctrl+K)
+- [ ] Navigation shortcuts
+- [ ] Action shortcuts
+- [ ] Customizable shortcuts
+
+Pliki do modyfikacji:
+- app/static/js/shortcuts.js (nowy)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #160: Real-time data updates
+----------------------------------
+GitHub: #160
+Priority: MEDIUM
+Status: OPEN
+Labels: ui, real-time, websockets
+
+Opis:
+Real-time updates bez page refresh.
+
+Wymagania:
+- [ ] Server-sent events (SSE) lub WebSocket
+- [ ] Auto-refresh dla indicators
+- [ ] Live feed status
+- [ ] Connection status indicator
+
+Pliki do modyfikacji:
+- app/routes/events.py (nowy)
+- app/static/js/realtime.js (nowy)
+
+Szacowany czas: 3-5 dni
+
+---
+
+Issue #161: Search autocomplete
+-------------------------------
+GitHub: #161
+Priority: MEDIUM
+Status: OPEN
+Labels: ui, search, autocomplete
+
+Opis:
+Autocomplete dla search queries.
+
+Wymagania:
+- [ ] Suggestions dla IOC types
+- [ ] Recent searches
+- [ ] Popular searches
+- [ ] Keyboard navigation
+
+Pliki do modyfikacji:
+- app/routes/search.py (autocomplete endpoint)
+- app/static/js/search.js
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #162: Mobile-first responsive design
+------------------------------------------
+GitHub: #162
+Priority: MEDIUM
+Status: OPEN
+Labels: ui, mobile, responsive
+
+Opis:
+Mobile-first responsive design.
+
+Wymagania:
+- [ ] Mobile-optimized navigation
+- [ ] Touch-friendly controls
+- [ ] Responsive tables
+- [ ] Mobile-specific UX patterns
+- [ ] PWA support (opcjonalnie)
+
+Pliki do modyfikacji:
+- app/static/css/mobile.css
+- app/templates/ (responsive updates)
+
+Szacowany czas: 4-5 dni
+
+================================================================================
+BŁĘDY DO NAPRAWY (Z GitHub Issues)
+================================================================================
+
+Issue #134: Split feed logs into events view and warnings/errors view
+---------------------------------------------------------------------
+Priority: MEDIUM
+Status: OPEN
+
+Opis:
+Aktualnie feed logs pokazują wszystko razem. Trudno znaleźć błędy.
+
+Wymagania:
+1. Podział na zakładki:
+   - All (wszystkie logi)
+   - Events (INFO, SUCCESS)
+   - Warnings (WARNING)
+   - Errors (ERROR, CRITICAL)
+
+2. Default view: Errors (najważniejsze)
+
+3. Filtering:
+   - By level
+   - By feed source
+   - By date range
+
+4. UX:
+   - Badge z liczbą błędów
+   - Auto-refresh dla errors
+   - Export filtered logs
+
+Pliki do modyfikacji:
+- app/routes/logs.py
+- app/templates/logs.html
+- app/static/js/logs.js (nowy lub update)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #133: Replace dangerous wipe env gate with admin-token confirmation
+--------------------------------------------------------------------------
+Priority: HIGH
+Status: OPEN
+
+Opis:
+Aktualnie dangerous operations (wipe database) wymagają ADMIN_DANGEROUS_OPS=true
+w env. To nie jest bezpieczne rozwiązanie.
+
+Wymagania:
+1. Zamiast env gate:
+   - Form confirmation z admin token
+   - 2-step confirmation (type "DELETE" to confirm)
+   - Audit log z token hash
+
+2. UI:
+   - Red warning box
+   - Checkbox "I understand this cannot be undone"
+   - Input dla confirmation text
+
+3. Security:
+   - Rate limiting (max 3 attempts per hour)
+   - Alert na email/Slack
+   - Backup suggestion przed wipe
+
+Pliki do modyfikacji:
+- app/routes/ops_admin.py (wipe endpoint)
+- app/templates/admin/danger_zone.html
+- app/security.py (confirmation logic)
+
+Szacowany czas: 2-3 dni
+
+---
+
+Issue #132: Nginx edge can return 502 after app container recreation
+---------------------------------------------------------------------
+Priority: HIGH
+Status: OPEN
+
+Opis:
+Po recreacji app kontenera nginx zwraca 502 (stale upstream).
+
+Wymagania:
+1. Root cause fix:
+   - Resolver z TTL w nginx.conf
+   - Health check dla upstream
+   - Keepalive connections
+
+2. Config changes:
+   ```nginx
+   upstream app {
+       server app:8080;
+       keepalive 32;
+   }
+
+   server {
+       location / {
+           resolver 127.0.0.11 valid=10s;  # Docker DNS
+           proxy_pass http://app;
+           proxy_http_version 1.1;
+           proxy_set_header Connection "";
+       }
+   }
+   ```
+
+3. Alternative: consul-template lub nginx plus dla dynamic upstreams
+
+Pliki do modyfikacji:
+- nginx/templates/default.conf.template
+- docker-compose.yml (healthcheck dla app)
+
+Szacowany czas: 1-2 dni
+
+---
+
+Issue #131: Manual abuse.ch sync diverges from worker config resolution
+-------------------------------------------------------------------------
+Priority: HIGH
+Status: OPEN
+
+Opis:
+Ręczny sync abuse.ch daje inne wyniki niż scheduled worker.
+
+Wymagania:
+1. Unifikacja config resolution:
+   - Jeden kod path dla worker i manual sync
+   - app/services/deps.py jako źródło prawdy
+
+2. Debug logging:
+   - Log resolved config (bez secretów)
+   - Log które komponenty są enabled
+
+3. Test:
+   - Test że manual i scheduled dają ten sam config
+
+Pliki do modyfikacji:
+- app/services/deps.py (unified resolution)
+- app/routes/ops_api.py (użyć unified resolution)
+- app/worker.py (użyć unified resolution)
+
+Szacowany czas: 1-2 dni
+
+---
+
+Issue #130: Manual sync clobbers feed env when DB overrides are absent
+-------------------------------------------------------------------------
+Priority: HIGH
+Status: OPEN
+
+Opis:
+Gdy brak DB overrides, manual sync nadpisuje env wartościami pustymi.
+
+Wymagania:
+1. Fix logic:
+   - Sprawdzić czy DB value jest puste
+   - Jeśli puste, użyć env value (fallback)
+   - Nie nadpisywać env pustymi wartościami
+
+2. Dla wszystkich feedów:
+   - abusech
+   - mwdb
+   - misp
+   - malwarebazaar
+   - crowdsec
+
+3. Test:
+   - Test z pustym DB override
+   - Assert że env value jest użyte
+
+Pliki do modyfikacji:
+- app/factory.py (feed env resolution)
+- app/services/deps.py
+
+Szacowany czas: 1-2 dni
+
+================================================================================
+PODSUMOWANIE MILESTONES (ZAKTUALIZOWANO 2026-04-20)
+================================================================================
+
+Milestone | Status | Priority | Szacowany czas | Issues (oryginalne) | GitHub Issues
+----------|--------|----------|------------------|---------------------|---------------
+1.5.1     | OPEN   | HIGH     | 2-3 tygodnie     | 5                   | 11
+1.6.0     | OPEN   | HIGH     | 3-4 tygodnie     | 4                   | 6
+1.6.1     | OPEN   | HIGH     | 3-4 tygodnie     | 5                   | 10
+1.7.0     | OPEN   | MEDIUM   | 4-6 tygodni      | 4                   | 8 (2 done)
+GitHub    | OPEN   | HIGH     | 1-2 tygodnie     | 5                   | -
+
+RAZEM:
+- Issues oryginalne (kimi-milestones): 23
+- Issues GitHub stworzone dzisiaj: 31
+- Issues zamknięte dzisiaj: 0
+- Otwarte GitHub Issues: 40 (z #130 do #173)
+
+Priorytet CRITICAL (do natychmiastowej naprawy):
+- #135: CVE-2026-39892 - cryptography buffer overflow
+
+Priorytet HIGH (bezpieczeństwo/stabilność):
+- #136, #137, #130, #131, #132, #133, #141, #142, #148
+
+ZAIMPLEMENTOWANE w tej sesji (2026-04-20):
+- #155: Unified layout template ✓
+- #157: Toast notification system ✓
+
+Szacowany całkowity czas: 14-20 tygodni (3-5 miesięcy)
+
+================================================================================
+KONIEC PLIKU KIMI-MILESTONES
+================================================================================

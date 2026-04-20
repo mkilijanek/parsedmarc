@@ -109,7 +109,7 @@ mode_self_signed() {
 
   local tmp_dir
   tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "${tmp_dir}"' EXIT
+  trap "rm -rf '${tmp_dir}'" EXIT
 
   # Create an OpenSSL config with SAN
   local conf="${tmp_dir}/openssl.cnf"
@@ -128,8 +128,13 @@ extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1 = ${SSL_DOMAIN}
 EOF
+
+  if [[ "${SSL_DOMAIN}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "IP.1 = ${SSL_DOMAIN}" >>"${conf}"
+  else
+    echo "DNS.1 = ${SSL_DOMAIN}" >>"${conf}"
+  fi
 
   openssl req -x509 -nodes -newkey rsa:2048 \
     -keyout "${tmp_dir}/key.pem" \

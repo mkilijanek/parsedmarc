@@ -119,6 +119,7 @@ Implementation items:
 - Add PostgreSQL integration tests for triggers, views, JSONB, ARRAY, FTS, export SQL functions, and migrations.
 - Introduce missing foreign keys/relationships where they are part of the domain model.
 - Remove hardcoded export limits that bypass runtime configuration.
+- Add a database-backed override model for composite feed subcomponents, starting with `abusech`, so operators can enable/disable `ThreatFox`, `URLhaus`, `FeodoTracker`, `YARAify`, and `Hunting` per feed without depending only on process env.
 - Add schema drift detection to CI/CD.
 
 Definition of done:
@@ -126,6 +127,7 @@ Definition of done:
 - PostgreSQL-only features are exercised in CI/integration tests.
 - ORM and SQL schema drift is automatically detectable.
 - Inconsistent schema changes fail CI before merge.
+- Composite feed component overrides are persisted in DB and take precedence in runtime over static env defaults where configured.
 
 ### 1.6.0 — API & Configuration Modernization
 
