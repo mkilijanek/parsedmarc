@@ -1846,3 +1846,11 @@
 
 [observations]
 - The repository-wide `ruff` baseline still contains unrelated pre-existing findings, so it is not a useful gate for this one-line dependency PR. The dependency pin itself is isolated and validated separately.
+
+[actions performed]
+- Committed and pushed the dependency pin as `46e114f Pin zipp to address pending Snyk dependency PR`.
+- Verified PR `#175` is now closed on GitHub.
+- Removed an accidental untracked file `=3.19.1` created by a shell quoting mistake while composing a `gh pr close --comment` command.
+
+[mistakes and lessons]
+- Backticks inside a double-quoted shell argument trigger command substitution. Lesson: when passing GitHub CLI comments containing version strings or inline examples, prefer single quotes or a temporary file to avoid accidental command execution and stray files.
