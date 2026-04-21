@@ -1,6 +1,6 @@
 # Access Control Baseline
 
-Status: updated for `1.6.0` (2026-04-21).
+Status: updated for `1.6.1` (2026-04-21).
 
 This document defines the minimum access-control model currently enforced by IOC Service for the admin surface and the supported versioned API surface.
 
@@ -8,11 +8,13 @@ This document defines the minimum access-control model currently enforced by IOC
 
 - The `/admin` surface requires a successful session-based login.
 - Login uses the configured `ADMIN_API_TOKEN`.
+- Direct access to the plain HTTP app port for `/auth/*` and `/admin/*` is redirected to the canonical HTTPS edge entrypoint.
 - After a successful login, the session is marked with:
   - `admin_authenticated=true`
   - `admin_user_id=admin`
   - `admin_role=<ADMIN_ROLE>`
 - State-changing `/admin` requests also require a valid CSRF token.
+- The login surface is rate-limited and now returns an operator-facing HTML response when the limit is exceeded.
 - `/admin` requests are checked against a role-permission matrix before route execution.
 - `/api/v1/*` is the supported machine-facing API contract and remains unauthenticated in `1.6.0`, matching the legacy public API model.
 - Legacy `/api/*` routes with `/api/v1/*` successors are transitional compatibility routes, not a separate privilege plane.
@@ -64,6 +66,7 @@ Capabilities:
 ## Operational Requirements
 
 - `ADMIN_API_TOKEN` must be explicitly provisioned before using `/admin`.
+- Operators should use the HTTPS edge URL for admin login so the secure session cookie is preserved.
 - `SECRET_KEY` must be explicitly provisioned; container startup must fail without it.
 - Admin actions must be written to `audit_log` with actor, action, target, timestamp, and source IP.
 - Destructive operations require CSRF validation, the admin token, the `WIPE` confirmation phrase,
@@ -84,4 +87,4 @@ Capabilities:
 
 ## Scope Note
 
-`1.6.0` keeps RBAC in the current token-backed admin model and explicitly documents the public/versioned API boundary. It does not add a multi-user database yet; that remains a larger identity-management project. The effective role is selected with `ADMIN_ROLE` and defaults to `admin`.
+`1.6.1` keeps RBAC in the current token-backed admin model and explicitly documents the public/versioned API boundary. It does not add a multi-user database yet; that remains a larger identity-management project. The effective role is selected with `ADMIN_ROLE` and defaults to `admin`.

@@ -72,6 +72,7 @@ from .routes import (
     register_ops_routes,
     register_public_routes,
 )
+from .routes.auth import auth_surface_request_is_secure, canonical_https_url
 from .security import enforce_allowed_hosts, get_client_ip, validate_search_query
 from .services.common import (
     build_feed_session,
@@ -324,6 +325,42 @@ def create_app() -> Flask:
         )
         if request.path.startswith("/api/"):
             return jsonify({"error": err.description or "Rate limit exceeded", "correlation_id": corr}), 429
+        if request.path.startswith("/auth/login"):
+            retry_after = str(getattr(err, "retry_after", "") or request.headers.get("Retry-After") or "").strip()
+            wait_minutes = int(getattr(cfg, "ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES", 15) or 15)
+            secure_hint = ""
+            if not auth_surface_request_is_secure():
+                target = canonical_https_url(cfg)
+                secure_hint = (
+                    f"<p>If you opened the direct app port, switch to the HTTPS admin entrypoint: "
+                    f"<a href=\"{_esc(target)}\">{_esc(target)}</a>.</p>"
+                )
+            retry_hint = f"<p>Retry-After: about {retry_after} seconds.</p>" if retry_after else ""
+            html_body = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Login Temporarily Blocked</title>
+  <style>
+    body {{ font-family: sans-serif; margin: 2rem; max-width: 42rem; }}
+    code {{ background: #f3f3f3; padding: .1rem .25rem; }}
+  </style>
+</head>
+<body>
+  <h1>Too Many Login Attempts</h1>
+  <p>Admin login is temporarily rate-limited after repeated attempts from your IP address.</p>
+  <p>Wait about {wait_minutes} minutes and try again with the currently configured <code>ADMIN_API_TOKEN</code>.</p>
+  {retry_hint}
+  {secure_hint}
+  <p>Correlation ID: <code>{_esc(corr)}</code></p>
+</body>
+</html>"""
+            response = make_response(html_body, 429)
+            response.headers["Content-Type"] = "text/html; charset=utf-8"
+            if retry_after:
+                response.headers["Retry-After"] = retry_after
+            return response
         return err
 
     @app.get("/admin/audit/verify")

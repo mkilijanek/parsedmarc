@@ -34,6 +34,43 @@ ROLE_PERMISSIONS = {
 }
 
 
+def auth_surface_request_is_secure() -> bool:
+    forwarded_proto = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+    return bool(request.is_secure or forwarded_proto == "https")
+
+
+def canonical_https_url(cfg, target_path: str | None = None) -> str:
+    request_host = (request.host or "").strip()
+    request_host_name = request_host.split(":", 1)[0] if request_host else "localhost"
+    host = (getattr(cfg, "CANONICAL_HTTPS_HOST", "") or "").strip() or request_host_name
+    https_port = int(getattr(cfg, "HTTPS_PORT", 7003) or 7003)
+    path = target_path or request.full_path.rstrip("?") or request.path or "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    default_https_port = 443
+    netloc = host if https_port == default_https_port else f"{host}:{https_port}"
+    return f"https://{netloc}{path}"
+
+
+def should_redirect_auth_surface_to_https(cfg) -> bool:
+    if auth_surface_request_is_secure():
+        return False
+    path = request.path or ""
+    if not (path.startswith("/auth/") or path.startswith("/admin")):
+        return False
+    request_host = (request.host or "").strip()
+    if ":" not in request_host:
+        return False
+    _, request_port = request_host.rsplit(":", 1)
+    try:
+        incoming_port = int(request_port)
+    except ValueError:
+        return False
+    app_port = int(getattr(cfg, "APP_HOST_PORT", 7005) or 7005)
+    https_port = int(getattr(cfg, "HTTPS_PORT", 7003) or 7003)
+    return incoming_port == app_port and incoming_port != https_port
+
+
 def register_auth_routes(app, *, limiter, cfg) -> None:
     def _ensure_admin_csrf_token() -> str:
         token = str(session.get("admin_csrf_token") or "").strip()
@@ -66,6 +103,14 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             return "feed:configure"
         return "admin:read"
+
+    @app.before_request
+    def _redirect_auth_surface_to_https():
+        if not should_redirect_auth_surface_to_https(cfg):
+            return None
+        target = canonical_https_url(cfg)
+        status_code = 307 if request.method not in {"GET", "HEAD", "OPTIONS"} else 302
+        return redirect(target, code=status_code)
 
     @app.before_request
     def _require_admin_session():
@@ -123,11 +168,18 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         return response
 
     @app.get("/auth/login")
-    @limiter.limit("5 per 15 minute")
+    @limiter.limit(cfg.ADMIN_LOGIN_RATE_LIMIT)
     def auth_login():
         next_url = (request.args.get("next") or "/admin").strip() or "/admin"
         msg = (request.args.get("msg") or "").strip()
         configured = _admin_auth_configured()
+        canonical_url = canonical_https_url(cfg, f"/auth/login?next={quote(next_url, safe='/?:=&')}")
+        https_hint = ""
+        if should_redirect_auth_surface_to_https(cfg):
+            https_hint = (
+                "<p><strong>Use the HTTPS admin entrypoint.</strong> "
+                f"<a href=\"{canonical_url}\">{canonical_url}</a></p>"
+            )
         disabled_note = (
             "<p><strong>Admin authentication is not configured.</strong> "
             "Set <code>ADMIN_API_TOKEN</code> before using the admin panel.</p>"
@@ -154,6 +206,7 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
   <h1>Admin Login</h1>
   <p>Authenticate with the configured admin token to access <code>/admin</code>.</p>
   {disabled_note}
+  {https_hint}
   {message_html}
   <form method="post" action="/auth/login">
     <input type="hidden" name="next" value="{escaped_next}">
@@ -165,7 +218,7 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
 </html>"""
 
     @app.post("/auth/login")
-    @limiter.limit("5 per 15 minute")
+    @limiter.limit(cfg.ADMIN_LOGIN_RATE_LIMIT)
     def auth_login_post():
         next_url = (request.form.get("next") or "/admin").strip() or "/admin"
         expected = (cfg.ADMIN_API_TOKEN or "").strip()

@@ -1854,3 +1854,26 @@
 
 [mistakes and lessons]
 - Backticks inside a double-quoted shell argument trigger command substitution. Lesson: when passing GitHub CLI comments containing version strings or inline examples, prefer single quotes or a temporary file to avoid accidental command execution and stray files.
+
+[current stage]
+- Hardening the admin login flow after a real operator login failure on the live host.
+
+[task backlog with rationale]
+- admin-login-rate-limit-tuning: the current `5 per 15 minute` threshold is too easy to trip during recovery from a bad token or cookie issue.
+- auth-429-ui: login rate limiting currently falls back to a generic HTTP error instead of a useful operator-facing page.
+- admin-http-to-https-redirect: direct access to the app port can drop the secure session cookie; admin/auth traffic should be pushed to the canonical HTTPS edge.
+
+[actions performed]
+- Added explicit auth/login network settings to `Config` so the app can reason about the direct app port versus the canonical HTTPS edge.
+- Raised the admin login limiter from a hard-coded `5 per 15 minute` to a configurable `ADMIN_LOGIN_RATE_LIMIT` with a safer default of `10 per 15 minute`.
+- Added auth-surface HTTPS redirection logic so requests hitting `/auth/*` or `/admin/*` on the direct app port are redirected to the HTTPS edge port before login/session handling.
+- Added an operator-facing HTML response for login `429` events with a clear wait message and HTTPS usage hint.
+- Updated `.env.example` and `docs/access-control.md` to document the new login rate-limit and canonical HTTPS behavior.
+- Added regression tests for direct-port HTTPS redirects and for the login rate-limit HTML response.
+
+[verification]
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q tests/test_api.py::TestApiV1Endpoints::test_auth_login_redirects_direct_app_port_to_https_entrypoint tests/test_api.py::TestApiV1Endpoints::test_admin_redirects_direct_app_port_to_https_before_login tests/test_security.py::TestSessionSecurity::test_login_rate_limit_returns_operator_facing_html tests/test_security.py::TestSessionSecurity::test_admin_login_sets_admin_role_baseline` -> `4 passed`
+- `source .venv/bin/activate && python -m compileall -q app tests` -> success
+
+[decisions]
+- Kept the redirect narrowly scoped to the direct app port instead of forcing every insecure request through an HTTPS redirect; this fixes the operator problem on `7005` without changing unrelated test or local flows.

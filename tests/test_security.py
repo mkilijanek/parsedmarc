@@ -420,6 +420,17 @@ class TestSessionSecurity:
         assert response.status_code == 403
         assert "insufficient role permissions" in response.get_data(as_text=True)
 
+    def test_login_rate_limit_returns_operator_facing_html(self, client):
+        last_response = None
+        for _ in range(11):
+            last_response = client.get("/auth/login")
+
+        assert last_response is not None
+        assert last_response.status_code == 429
+        html = last_response.get_data(as_text=True)
+        assert "Too Many Login Attempts" in html
+        assert "Wait about 15 minutes" in html
+
 
 # ============================================================================
 # Rate Limiting Tests

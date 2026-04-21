@@ -279,6 +279,26 @@ class TestApiV1Endpoints:
         assert admin_response.status_code in {302, 303}
         assert "/auth/login" in (admin_response.headers.get("Location") or "")
 
+    def test_auth_login_redirects_direct_app_port_to_https_entrypoint(self, client):
+        response = client.get(
+            "/auth/login?next=/admin",
+            base_url="http://192.168.10.71:7005",
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        assert response.headers["Location"] == "https://192.168.10.71:7003/auth/login?next=/admin"
+
+    def test_admin_redirects_direct_app_port_to_https_before_login(self, client):
+        response = client.get(
+            "/admin",
+            base_url="http://192.168.10.71:7005",
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        assert response.headers["Location"] == "https://192.168.10.71:7003/admin"
+
 
 # ============================================================================
 # Index/Dashboard Endpoint
