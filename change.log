@@ -1877,3 +1877,16 @@
 
 [decisions]
 - Kept the redirect narrowly scoped to the direct app port instead of forcing every insecure request through an HTTPS redirect; this fixes the operator problem on `7005` without changing unrelated test or local flows.
+
+[actions performed]
+- Rebuilt and recreated `app` and `nginx` on the current host with `docker compose --profile edge up -d --build --force-recreate app nginx`.
+- Verified direct app-port redirects:
+  - `http://192.168.10.71:7005/auth/login?next=/admin` -> `302` to `https://192.168.10.71:7003/auth/login?next=%2Fadmin`
+  - `http://192.168.10.71:7005/admin` -> `302` to `https://192.168.10.71:7003/admin`
+- Verified the operator-facing login lockout page on the live host: the 11th request to `https://127.0.0.1:7003/auth/login` returned `429` with the new HTML response.
+
+[verification]
+- `docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' ioc-service-nginx-1` -> `healthy`
+- `curl -sI http://192.168.10.71:7005/auth/login?next=%2Fadmin | grep -i '^location:'` -> canonical HTTPS redirect
+- `curl -sI http://192.168.10.71:7005/admin | grep -i '^location:'` -> canonical HTTPS redirect
+- looped `curl -sk https://127.0.0.1:7003/auth/login` 11 times -> `11:429` and the rendered HTML lockout page
