@@ -1,39 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ioc-service"
+version = "1.6.0"
+description = "Threat Intelligence Feed Aggregator and Export Service"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
-line-length = 120
-target-version = "py311"
-
-[tool.ruff.lint]
-select = ["E", "F", "I"]
-ignore = ["E501"]
-
-[tool.mypy]
-python_version = "3.11"
-ignore_missing_imports = true
-warn_unused_configs = true
-pretty = true
-disable_error_code = ["import-untyped"]
-
-[[tool.mypy.overrides]]
-module = [
-  "app.factory",
-  "app.formatters",
-  "app.routes.health",
-  "app.routes.public",
-  "app.services.*",
-]
-ignore_errors = true
+line-length = 160
 
 [tool.coverage.run]
-branch = true
-source = [
-  "app.main",
-  "app.factory",
-  "app.routes.ops",
-  "app.routes.ops_admin",
-  "app.routes.ops_api",
-  "app.views.legacy_public",
-]
-
-[tool.coverage.report]
-show_missing = true
-skip_covered = false
+source = ["app"]

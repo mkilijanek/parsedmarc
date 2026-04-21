@@ -1,6 +1,6 @@
 # Threat Intelligence Feed Aggregator
 
-Updated for release line `1.4.2` (2026-04-07).
+Updated for release line `1.6.0` (2026-04-21).
 
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
@@ -14,6 +14,15 @@ Production-ready threat feed aggregation and export service:
 - Admin feed configuration with `Test connection`, per-feed settings, and optional `custom filter`
 - Unified light/dark theme across overview, indicators, admin, logs, and feed forms
 - MISP integration is disabled by default and can be enabled from Admin feed controls
+
+## Release Highlights (1.6.0)
+
+- Added additive versioned API surface under `/api/v1/*`.
+- Published OpenAPI contract and built-in docs endpoints: `/api/v1/openapi.yaml`, `/api/v1/openapi.json`, `/api/v1/docs`.
+- Refactored runtime configuration into grouped sections with backward-compatible access.
+- Removed duplicated database environment parsing by routing DB bootstrap through `app.config`.
+- Split runtime and development dependencies into `requirements.txt` and `requirements-dev.txt`.
+- Added `pyproject.toml` with project and tool metadata.
 
 ## Release Highlights (1.4.2)
 
@@ -93,6 +102,15 @@ curl -k https://localhost:7003/readyz
 - `GET /healthz` – liveness probe (no external calls)
 - `GET /readyz` – readiness probe (DB + Redis)
 - `GET /health` – legacy health summary
+- `GET /api/v1/openapi.yaml` – versioned API contract
+- `GET /api/v1/openapi.json` – JSON rendering of the versioned API contract
+- `GET /api/v1/docs` – embedded docs viewer for the versioned API
+- `GET /api/v1/indicators` – versioned indicator query API
+- `POST /api/v1/sync` – versioned sync enqueue API
+- `GET /api/v1/feeds` – versioned feed inventory
+- `GET /api/v1/feeds/metrics` – versioned feed telemetry
+- `GET /api/v1/runs/current` – versioned current scheduler/job view
+- `GET /api/v1/logs` – versioned structured logs API
 - `GET /` – status overview
 - `GET /indicators` – unified view (HTML)
 - `GET /indicators/<fmt>` – export (TXT/CSV/JSON/XML + vendor formats)
@@ -145,6 +163,13 @@ Kibana-like:
 Create local dev environment (venv):
 ```bash
 bash scripts/dev-bootstrap.sh
+```
+
+Manual setup:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
 ```
 
 Run tests locally:

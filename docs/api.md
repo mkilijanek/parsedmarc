@@ -1,10 +1,15 @@
 # API Documentation
 
-Status: updated for `1.4.1` (2026-04-06).
+Status: updated for `1.6.0` (2026-04-21).
 
 ## Overview
 
-The Threat Feed Aggregator provides a RESTful API for querying and exporting Indicators of Compromise (IOCs). All endpoints support various formats and filtering options.
+The Threat Feed Aggregator provides a RESTful API for querying and exporting Indicators of Compromise (IOCs). Milestone `1.6.0` adds an additive versioned surface at `/api/v1/*` and publishes an OpenAPI contract for that supported subset.
+
+Versioning policy:
+- `/api/v1/*` is the supported contract surface for programmatic clients.
+- selected legacy `/api/*` routes remain available for compatibility but emit deprecation headers when a `/api/v1/*` replacement exists.
+- operational/admin endpoints outside `/api/v1/*` are documented, but they are not part of the versioned public contract.
 
 ---
 
@@ -22,15 +27,98 @@ The current implementation does not require authentication for API access. **For
 - Adding API key authentication
 - Implementing IP whitelisting at nginx level
 
+## OpenAPI
+
+The supported versioned API contract is published at:
+- `GET /api/v1/openapi.yaml`
+- `GET /api/v1/openapi.json`
+- `GET /api/v1/docs`
+
+`/api/v1/docs` serves a lightweight embedded Swagger UI using the checked-in `openapi-v1.yaml` artifact.
+
 ---
 
 ## Endpoints
+
+### Versioned API (`/api/v1`)
+
+#### `GET /api/v1/indicators`
+
+Versioned indicator query endpoint for API consumers.
+
+Response:
+- `200 OK` with JSON payload containing `items`, `count`, `limit`, and `offset`
+- `400` for invalid filters or invalid search query syntax
+
+Supported query parameters:
+- `q`
+- `type`
+- `tlp`
+- `source`
+- `min_conf`
+- `limit`
+- `offset`
+
+#### `POST /api/v1/sync`
+
+Versioned sync queue endpoint. Semantics match the supported sync job enqueue flow.
+
+Request example:
+```json
+{ "source": "abusech" }
+```
+
+Response:
+- `202 Accepted` with queued/reused job metadata (`job_id`, `feed_source_id`, `created`)
+- `400` for invalid source or incomplete config
+
+#### `GET /api/v1/feeds`
+
+Returns configured feed inventory and current state.
+
+#### `GET /api/v1/feeds/metrics`
+
+Returns feed telemetry window, job state, and fetched counters.
+
+#### `GET /api/v1/runs/current`
+
+Returns current scheduler heartbeat, queued/running jobs, and recent feed run state.
+
+#### `GET /api/v1/logs`
+
+Returns structured application logs with the same filtering model as the legacy logs API.
+
+Supported filters:
+- `feed`
+- `job_id` / `run_id`
+- `level`
+- `component`
+- `since`
+- `until`
+- `limit`
+
+### Legacy API status
+
+The following legacy routes remain available but are deprecated in favor of `/api/v1/*` replacements:
+
+| Legacy route | Replacement |
+|---|---|
+| `POST /api/sync` | `POST /api/v1/sync` |
+| `GET /api/feeds` | `GET /api/v1/feeds` |
+| `GET /api/feeds/metrics` | `GET /api/v1/feeds/metrics` |
+| `GET /api/runs/current` | `GET /api/v1/runs/current` |
+| `GET /api/logs` | `GET /api/v1/logs` |
+
+Deprecated legacy responses include:
+- `Deprecation: true`
+- `Sunset: Tue, 21 Oct 2026 00:00:00 GMT`
+- `Link: </api/v1/...>; rel="successor-version"`
 
 ### Synchronization Jobs
 
 #### `POST /api/sync`
 
-Enqueue sync job for single feed or all enabled feeds.
+Legacy sync queue endpoint. Prefer `POST /api/v1/sync` for stable integrations.
 
 Request example:
 ```json
@@ -84,6 +172,8 @@ Notes:
 
 #### `GET /api/logs`
 
+Legacy logs endpoint. Prefer `GET /api/v1/logs`.
+
 Supports filtering by:
 - `feed`
 - `job_id` (or `run_id`)
@@ -94,6 +184,8 @@ Supports filtering by:
 ### Current Runs / Queue
 
 #### `GET /api/runs/current`
+
+Legacy route. Prefer `GET /api/v1/runs/current`.
 
 Returns:
 - scheduler heartbeat

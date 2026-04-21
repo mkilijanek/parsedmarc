@@ -1393,3 +1393,113 @@
 
 [mistakes and lessons]
 - `gh release view --json isLatest` failed because this installed `gh` does not expose `isLatest`. Lesson: inspect `gh` available JSON fields from the error output or use documented fields (`tagName`, `name`, `url`, `publishedAt`, `targetCommitish`) for release verification.
+
+[actions performed]
+- Reviewed untracked artifacts: `artifacts/`, `ioc-service-refactored-v1.4.0.zip`, and `ioc-architecture-prompt.zip` for roadmap relevance.
+- Determined that only `ioc-architecture-prompt/06-milestones-roadmap.md` contained worthwhile planning detail not already reflected in the repository roadmap.
+- Updated `ROADMAP.md` and `MILESTONES.md` only for open milestones `1.6.0` and `1.6.1`.
+- Added implementation sequencing, explicit non-goals, acceptance refinements, and rollback/migration notes for API modernization and adapter-boundary work.
+
+[observations]
+- The Confluence export artifacts were inventory/reference material only and did not justify roadmap changes.
+- The refactored `v1.4.0` source archive is useful as historical context but not as a source of new forward roadmap scope.
+- The architecture prompt bundle contained useful detail, but some sections over-assumed a larger enterprise auth model than the repository currently needs; those parts were intentionally not imported.
+
+[decisions]
+- Limited roadmap changes to future milestones only; did not rewrite closed milestones based on stronger retrospective prompt claims.
+- Imported only detail that sharpens execution for `1.6.0` and `1.6.1`: sequencing, contract boundaries, migration constraints, and non-goals.
+
+[mistakes and lessons]
+- Architecture prompt bundles can mix planning detail with aspirational scope. Lesson: import execution detail, not aspirational claims, unless the repo has explicitly committed to that higher scope.
+
+[actions performed]
+- Mirrored the local roadmap refinement into GitHub milestone metadata for `1.6.0` and `1.6.1`.
+- Updated GitHub milestone `1.6.0` description to reflect incremental `/api/v1/` rollout, OpenAPI scoping to the supported versioned surface, and centralized config parsing.
+- Updated GitHub milestone `1.6.1` description to reflect DTO-first adapter work, shared ingestion pipeline, per-feed staged migration, and repo-local registry scope.
+- Updated issue bodies to match the narrowed execution scope:
+  - `#143`, `#144`, `#145` for the realistic `1.6.0` API/config plan,
+  - `#146` for adapter contract-test and fake-adapter expectations,
+  - `#163`, `#164`, `#165` to avoid overclaiming broader enterprise programs inside `1.6.0` / `1.6.1`.
+
+[important commands]
+- `gh api repos/mkilijanek/ioc-service/milestones?state=open&per_page=100 | jq '.[] | {number,title,description}'`
+- `gh issue list --repo mkilijanek/ioc-service --state open --milestone 1.6.0 --limit 100`
+- `gh issue list --repo mkilijanek/ioc-service --state open --milestone 1.6.1 --limit 100`
+- `gh issue edit <id> --repo mkilijanek/ioc-service --body-file /tmp/issue-<id>.md`
+- `gh api -X PATCH repos/mkilijanek/ioc-service/milestones/<number> -f description=\"$(cat /tmp/file.md)\"`
+
+[observations]
+- This `gh` version does not provide a `gh milestone` helper command, so milestone edits had to go through `gh api`.
+- Narrowing issue bodies was more valuable than creating new tracking issues, because the existing issues already mapped to the correct milestones and just needed realistic scope boundaries.
+
+[mistakes and lessons]
+- I first tried to update milestone descriptions with `gh api -f description@file`, which this client rejected. Lesson: for multiline milestone descriptions in this environment, inject file content into `-f description=\"$(cat file)\"` or use raw JSON input.
+
+[current stage]
+- Starting milestone `1.6.0` as documentation-driven delivery: plan and documentation first, then implementation, then tests, fixes, and final documentation sync.
+
+[next planned implementation steps]
+- Add documentation-driven delivery rules to `AGENTS.md` and `CLAUDE.md` so the repo instructions match the required execution model.
+- Document the `1.6.0` execution plan in repo docs and `change.log` before code changes.
+- Implement `/api/v1/` as an additive surface for stable existing API routes.
+- Publish an OpenAPI contract only for the supported versioned surface.
+- Refactor configuration into grouped sections while preserving backward compatibility for existing env names.
+- Remove duplicated env parsing from runtime modules, starting with `app/db.py`.
+- Add packaging metadata (`pyproject.toml`) and split runtime/dev dependencies without breaking existing workflows.
+- Expand tests for versioned API, OpenAPI artifact, config loading, and compatibility guarantees.
+
+[task backlog with rationale]
+- `1.6.0/api-v1-surface`: create an additive versioned API because the current public API has no stable contract boundary.
+- `1.6.0/openapi-contract`: publish machine-readable API documentation because repo docs alone are not a durable integration contract.
+- `1.6.0/config-grouping`: split `Config` into logical sections because one 100+ field object and duplicated env parsing create maintenance risk.
+- `1.6.0/db-config-unification`: move `app/db.py` off direct env parsing so configuration has one source of truth.
+- `1.6.0/packaging`: add `pyproject.toml` and runtime/dev dependency separation because the repo currently mixes packaging metadata and all dependencies in one file.
+- `1.6.0/docs-migration`: document legacy vs versioned API and migration status so clients know what is supported, deprecated, or internal-only.
+
+[actions performed]
+- Added `docs/milestone-1.6.0-plan.md` as the execution document for the milestone before code changes.
+- Linked the `1.6.0` execution plan from `docs/README.md`.
+
+[observations]
+- The current API is useful but inconsistent as a public contract: some endpoints are API-like, some are operational, and some are effectively internal/admin helpers.
+- Publishing OpenAPI without first defining the supported `v1` subset would create a misleading contract.
+
+[actions performed]
+- Added grouped configuration sections in `app/config.py` (`runtime`, `database`, `feeds`, `worker`, `security`) with compatibility accessors so existing `cfg.FIELD_NAME` lookups still work during migration.
+- Switched `app/db.py` to consume `DatabaseConfig.from_env()` instead of parsing database environment variables independently.
+- Added `app/routes/api_v1.py` and registered additive `/api/v1/*` routes for indicators, sync, feeds, feed metrics, current runs, logs, and OpenAPI document serving.
+- Added `app/static/openapi-v1.yaml` as the checked-in contract artifact for the supported versioned API subset.
+- Added deprecation headers for legacy `/api/*` routes that now have `/api/v1/*` successors.
+- Added `pyproject.toml` and `requirements-dev.txt`, reduced `requirements.txt` to runtime dependencies, and updated bootstrap/CI jobs to install the correct dependency set.
+- Added regression tests for `/api/v1/*`, OpenAPI serving, deprecation headers, and grouped config behavior.
+- Updated `README.md`, `docs/api.md`, `docs/configuration.md`, `QUICKSTART.md`, and `CONTRIBUTING.md` so docs now describe the `1.6.0` contract and local-development model.
+
+[important commands]
+- `PYTHONPATH=. .venv/bin/python -m compileall -q app`
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py::TestApiV1Endpoints tests/test_config.py`
+- `PYTHONPATH=. .venv/bin/python - <<'PY' ... create_app() ... print(sorted(rule.rule ...))`
+
+[decisions]
+- Kept `/api/v1/*` additive instead of renaming/removing legacy endpoints inside `1.6.0`, because the milestone goal is contract stabilization without forcing client breakage in the same release.
+- Limited the published OpenAPI document to the supported versioned surface and did not include admin-only or mixed HTML/operational endpoints.
+- Preserved existing environment variable names to keep `1.6.0` operationally safe while still reducing configuration sprawl in code.
+
+[mistakes and lessons]
+- `api_v1_feeds_metrics` initially called `_resolve_metrics_window_hours()` without passing request arguments, which broke the new test path. Lesson: when extracting versioned routes from existing helpers, verify helper signatures instead of assuming route-local defaults.
+
+[actions performed]
+- Added `docs/api-v1-migration.md` to make the legacy-to-versioned API transition explicit instead of keeping migration guidance scattered across other docs.
+- Updated `docs/access-control.md` so the `1.6.0` access boundary is explicit: `/api/v1/*` remains the supported public machine contract, while `/admin/*` stays session-protected.
+- Updated `docs/data-protection.md` to document the new centralized config/runtime security posture introduced by the grouped config refactor.
+- Added one more API test to assert the OpenAPI YAML contains the expected versioned paths and one access-boundary test covering public `/api/v1/*` vs protected `/admin/*`.
+- Re-ran targeted security/API tests, full `pytest`, `ruff`, and compile checks after the final docs/test changes.
+- Updated local milestone tracking docs (`ROADMAP.md`, `MILESTONES.md`) to mark `1.6.0` as completed pending final GitHub closure and release.
+
+[verification]
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py::TestApiV1Endpoints::test_api_v1_public_boundary_and_admin_protection` -> `1 passed`
+- `PYTHONPATH=. .venv/bin/pytest -q` -> `509 passed, 2 skipped`
+- `.venv/bin/ruff check app/config.py app/db.py app/factory.py app/routes/__init__.py app/routes/api_v1.py tests/test_api.py tests/test_config.py` -> success
+- `PYTHONPATH=. .venv/bin/python -m compileall -q app tests` -> success
+
+[mistakes and lessons]
+- I first anchored the new access-boundary test to `/admin/login`, but the current auth flow correctly redirects to `/auth/login`. Lesson: when asserting redirect boundaries, test the actual route contract from the running app instead of assuming historical path naming.

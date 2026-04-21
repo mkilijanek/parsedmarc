@@ -65,6 +65,7 @@ from .models import (
 )
 from .query_parser import Term, Token, parse_kibana_query
 from .routes import (
+    register_api_v1_routes,
     register_auth_routes,
     register_health_blueprint,
     register_logs_routes,
@@ -1799,6 +1800,35 @@ def create_app() -> Flask:
         deps={
             "_db": _db,
             "AppLog": AppLog,
+        },
+    )
+
+    register_api_v1_routes(
+        app,
+        limiter=limiter,
+        cfg=cfg,
+        logger=logger,
+        scheduler_state=scheduler_state,
+        deps={
+            "_apply_feed_filters_and_sort": apply_feed_filters_and_sort,
+            "_build_feed_items": _build_feed_items,
+            "_count_indicators": _count_indicators,
+            "_db": _db,
+            "_enqueue_sync_job": _enqueue_sync_job,
+            "_ensure_default_feeds": _ensure_default_feeds,
+            "_get_setting": _get_setting,
+            "_parse_limit_offset": _parse_limit_offset,
+            "_percentile": percentile,
+            "_query_indicators": _query_indicators,
+            "_read_feed_config_state": _read_feed_config_state,
+            "_read_feed_rows": _read_feed_rows,
+            "_resolve_metrics_window_hours": resolve_metrics_window_hours,
+            "validate_search_query": validate_search_query,
+            "AppLog": AppLog,
+            "Feed": Feed,
+            "FeedRun": FeedRun,
+            "Indicator": Indicator,
+            "SyncJob": SyncJob,
         },
     )
 

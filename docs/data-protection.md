@@ -1,6 +1,6 @@
 # Data Protection Baseline
 
-Status: introduced for `1.5.1`.
+Status: updated for `1.6.0` (2026-04-21).
 
 ## Classification
 
@@ -30,6 +30,13 @@ Status: introduced for `1.5.1`.
 - `SECRET_KEY` must be explicitly provisioned and at least 32 characters.
 - Rotate `SECRET_KEY` only with a planned maintenance window because it protects encrypted app settings and audit hash verification.
 - Feed API keys should be changed at the provider and then updated through the admin settings path.
+
+## Runtime and configuration posture in `1.6.0`
+
+- Security-relevant configuration is now centralized through `app.config` grouped sections instead of parallel environment parsing in multiple runtime modules.
+- `app/db.py` consumes `DatabaseConfig.from_env()` so database transport settings and pooling policy come from the same configuration layer as the rest of runtime policy.
+- `requirements.txt` is limited to runtime dependencies, while `requirements-dev.txt` holds development and audit tooling; this makes the runtime package boundary explicit.
+- `pyproject.toml` now carries project and tool metadata so packaging and quality controls are documented in one place.
 
 ## Release Gate
 

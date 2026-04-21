@@ -1,15 +1,28 @@
 # Contributing
 
-Status: updated for 1.1.x (2026-02-26).
+Status: updated for `1.6.0` (2026-04-21).
 
 This project uses a strict "green-only" merge policy.
+
+## Documentation-driven delivery
+
+This repository is maintained as documentation-driven engineering:
+
+1. define the need, scope, and justification for the change,
+2. document the intended behavior and acceptance criteria,
+3. implement the change,
+4. update user-facing and operator-facing documentation,
+5. run tests and fix regressions,
+6. finalize the documentation and milestone status.
+
+`change.log` is the execution journal for that process and should be updated with actions, rationale, observations, and lessons learned during implementation.
 
 ## Local Setup
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 Optional helper (if present):

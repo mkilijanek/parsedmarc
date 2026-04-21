@@ -1,8 +1,8 @@
 # Access Control Baseline
 
-Status: updated for `1.5.1` (2026-04-20).
+Status: updated for `1.6.0` (2026-04-21).
 
-This document defines the minimum access-control model currently enforced by IOC Service for the admin surface.
+This document defines the minimum access-control model currently enforced by IOC Service for the admin surface and the supported versioned API surface.
 
 ## Current Enforcement Model
 
@@ -14,6 +14,25 @@ This document defines the minimum access-control model currently enforced by IOC
   - `admin_role=<ADMIN_ROLE>`
 - State-changing `/admin` requests also require a valid CSRF token.
 - `/admin` requests are checked against a role-permission matrix before route execution.
+- `/api/v1/*` is the supported machine-facing API contract and remains unauthenticated in `1.6.0`, matching the legacy public API model.
+- Legacy `/api/*` routes with `/api/v1/*` successors are transitional compatibility routes, not a separate privilege plane.
+
+## Supported surface boundary
+
+| Surface | Access model | Notes |
+|---|---|---|
+| `/api/v1/indicators` | public read | versioned contract for programmatic queries |
+| `/api/v1/feeds` | public read | operational metadata, not admin session-backed |
+| `/api/v1/feeds/metrics` | public read | telemetry surface matching current public API posture |
+| `/api/v1/runs/current` | public read | scheduler/job state view |
+| `/api/v1/logs` | public read | structured logs API, same visibility model as legacy API |
+| `/api/v1/sync` | public write | queue trigger path preserved additively from legacy `/api/sync` |
+| `/admin/*` | authenticated session + CSRF for writes | protected operator/admin plane |
+
+Rationale for `1.6.0`:
+- the milestone stabilizes and documents the existing API boundary rather than introducing a new machine-client auth system mid-migration,
+- protected administration remains on `/admin/*`,
+- future stronger machine-client auth can be layered onto `/api/v1/*` in a later milestone without changing the current compatibility story.
 
 ## Active Roles
 
@@ -65,4 +84,4 @@ Capabilities:
 
 ## Scope Note
 
-`1.5.1` enforces RBAC in the current token-backed admin model. It does not add a multi-user database yet; that remains a larger identity-management project. The effective role is selected with `ADMIN_ROLE` and defaults to `admin`.
+`1.6.0` keeps RBAC in the current token-backed admin model and explicitly documents the public/versioned API boundary. It does not add a multi-user database yet; that remains a larger identity-management project. The effective role is selected with `ADMIN_ROLE` and defaults to `admin`.

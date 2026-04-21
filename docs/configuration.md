@@ -1,10 +1,53 @@
 # Configuration
 
-Status: updated for `1.1.x` (2026-03-01).
+Status: updated for `1.6.0` (2026-04-21).
 
 ## Environment Variables
 
-All configuration is done via environment variables. No config files required.
+All configuration is done via environment variables. No config files are required, but milestone `1.6.0` reorganizes the runtime config model into grouped sections while preserving backward compatibility for existing environment variable names.
+
+## Configuration model in `1.6.0`
+
+`app/config.py` now exposes grouped sections:
+- `runtime`
+- `database`
+- `feeds`
+- `worker`
+- `security`
+
+Example:
+
+```python
+from app.config import Config
+
+cfg = Config()
+cfg.database.DATABASE_URL
+cfg.security.ADMIN_SESSION_COOKIE_NAME
+cfg.worker.UPDATE_INTERVAL
+```
+
+Compatibility note:
+- existing code that still reads `cfg.DATABASE_URL` or `cfg.UPDATE_INTERVAL` continues to work through compatibility accessors.
+- environment variable names remain unchanged in `1.6.0`.
+
+## Configuration source of truth
+
+`app/db.py` no longer parses database environment variables independently. Database engine setup now reads from `DatabaseConfig.from_env()` in `app.config`, so runtime configuration has one parsing layer instead of duplicated environment reads.
+
+## Packaging and dependency split
+
+Milestone `1.6.0` introduces:
+- `pyproject.toml` for project metadata and tool configuration
+- `requirements.txt` for runtime dependencies only
+- `requirements-dev.txt` for local development, test, lint, and audit tooling
+
+Recommended local bootstrap:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
 
 ---
 

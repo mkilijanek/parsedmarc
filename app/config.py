@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from typing import Any, Iterable
+
 
 def _env_bool(name: str, default: bool = False) -> bool:
     v = os.getenv(name)
     if v is None:
         return default
-    return v.strip().lower() in {"1","true","yes","y","on"}
+    return v.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _env_str(name: str, default: str = "") -> str:
@@ -17,11 +19,9 @@ def _env_str(name: str, default: str = "") -> str:
 def _env_int(name: str, default: int) -> int:
     return int(os.getenv(name, str(default)))
 
-def _get_secret_key() -> str:
-    """Get SECRET_KEY from environment with validation.
 
-    SECURITY: Enforces that SECRET_KEY is set and strong enough.
-    """
+def _get_secret_key() -> str:
+    """Get SECRET_KEY from environment with validation."""
     key = os.getenv("SECRET_KEY", "")
     if not key:
         raise RuntimeError(
@@ -35,11 +35,10 @@ def _get_secret_key() -> str:
         )
     return key
 
+
 @dataclass(frozen=True)
-class Config:
-    # Core
+class RuntimeConfig:
     APP_ENV: str = field(default_factory=lambda: _env_str("APP_ENV", "development").strip().lower())
-    SECRET_KEY: str = field(default_factory=_get_secret_key)
     LOG_LEVEL: str = field(default_factory=lambda: _env_str("LOG_LEVEL", "INFO").upper())
     REQUESTS_PER_SECOND_MAX: int = field(default_factory=lambda: _env_int("REQUESTS_PER_SECOND_MAX", 1000000))
     RATE_LIMITS_ENABLED: bool = field(default_factory=lambda: _env_bool("RATE_LIMITS_ENABLED", True))
@@ -53,11 +52,6 @@ class Config:
     CORRELATION_SNAPSHOT_LIMIT: int = field(default_factory=lambda: _env_int("CORRELATION_SNAPSHOT_LIMIT", 1000))
     CORRELATION_SNAPSHOT_MIN_SOURCES: int = field(default_factory=lambda: _env_int("CORRELATION_SNAPSHOT_MIN_SOURCES", 2))
     CORRELATION_SNAPSHOT_TYPES: str = field(default_factory=lambda: _env_str("CORRELATION_SNAPSHOT_TYPES", "all,domain,ip,url,hash,email"))
-
-    # DB / Redis
-    DATABASE_URL: str = field(default_factory=lambda: _env_str("DATABASE_URL", "postgresql+psycopg2://threatfeed:threatfeed@localhost:5432/threatfeed"))
-    DATABASE_READ_URL: str = field(default_factory=lambda: _env_str("DATABASE_READ_URL", ""))
-    REDIS_URL: str = field(default_factory=lambda: _env_str("REDIS_URL", "redis://:changeme@localhost:6379/0"))
     CACHE_TTL: int = field(default_factory=lambda: _env_int("CACHE_TTL", 300))
     FEED_HTTP_TIMEOUT_S: int = field(default_factory=lambda: _env_int("FEED_HTTP_TIMEOUT_S", 30))
     FEED_RETRY_ATTEMPTS: int = field(default_factory=lambda: _env_int("FEED_RETRY_ATTEMPTS", 4))
@@ -65,28 +59,42 @@ class Config:
     EXPORT_JOB_DIR: str = field(default_factory=lambda: _env_str("EXPORT_JOB_DIR", "/tmp/ioc-export-jobs"))
     EXPORT_ASYNC_THRESHOLD: int = field(default_factory=lambda: _env_int("EXPORT_ASYNC_THRESHOLD", 5000))
 
-    # Integrations
+
+@dataclass(frozen=True)
+class DatabaseConfig:
+    DATABASE_URL: str = field(default_factory=lambda: _env_str("DATABASE_URL", "postgresql+psycopg2://threatfeed:threatfeed@localhost:5432/threatfeed"))
+    DATABASE_READ_URL: str = field(default_factory=lambda: _env_str("DATABASE_READ_URL", ""))
+    DB_POOL_SIZE: int = field(default_factory=lambda: _env_int("DB_POOL_SIZE", 6))
+    DB_MAX_OVERFLOW: int = field(default_factory=lambda: _env_int("DB_MAX_OVERFLOW", 4))
+    DB_POOL_RECYCLE: int = field(default_factory=lambda: _env_int("DB_POOL_RECYCLE", 1800))
+    DB_POOL_TIMEOUT: int = field(default_factory=lambda: _env_int("DB_POOL_TIMEOUT", 30))
+    REDIS_URL: str = field(default_factory=lambda: _env_str("REDIS_URL", "redis://:changeme@localhost:6379/0"))
+
+    @classmethod
+    def from_env(cls) -> "DatabaseConfig":
+        return cls()
+
+
+@dataclass(frozen=True)
+class FeedConfig:
     CROWDSEC_API_KEY: str = field(default_factory=lambda: _env_str("CROWDSEC_API_KEY", ""))
     CROWDSEC_LISTS: str = field(default_factory=lambda: _env_str("CROWDSEC_LISTS", ""))
 
     MISP_URL: str = field(default_factory=lambda: _env_str("MISP_URL", ""))
     MISP_API_KEY: str = field(default_factory=lambda: _env_str("MISP_API_KEY", ""))
-    # SECURITY: SSL verification enabled by default to prevent MITM attacks
     MISP_VERIFY_SSL: bool = field(default_factory=lambda: _env_bool("MISP_VERIFY_SSL", True))
     MISP_DAYS: int = field(default_factory=lambda: _env_int("MISP_DAYS", 7))
     MISP_SYNC_TIMEOUT_S: int = field(default_factory=lambda: _env_int("MISP_SYNC_TIMEOUT_S", 30))
     MISP_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("MISP_CIRCUIT_FAIL_THRESHOLD", 3))
     MISP_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("MISP_CIRCUIT_COOLDOWN_S", 300))
-    # Maximum TLP level to ingest from MISP; attributes with a higher TLP are silently skipped.
-    # Valid values: WHITE, GREEN, AMBER, RED. Default: AMBER (TLP:RED is not ingested).
     MISP_MAX_TLP: str = field(default_factory=lambda: _env_str("MISP_MAX_TLP", "AMBER"))
-    # Timeout (seconds) for the lightweight MISP health-check call (not full sync).
     MISP_HEALTH_TIMEOUT_S: int = field(default_factory=lambda: _env_int("MISP_HEALTH_TIMEOUT_S", 3))
 
     MALWAREBAZAAR_SINCE_DATE: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_SINCE_DATE", ""))
     MALWAREBAZAAR_API_URL: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_API_URL", "https://mb-api.abuse.ch/api/v1/"))
     MALWAREBAZAAR_TAGS: str = field(default_factory=lambda: _env_str("MALWAREBAZAAR_TAGS", ""))
     MALWAREBAZAAR_LIMIT: int = field(default_factory=lambda: _env_int("MALWAREBAZAAR_LIMIT", 1000))
+
     MWDB_URL: str = field(default_factory=lambda: _env_str("MWDB_URL", ""))
     MWDB_AUTH_KEY: str = field(default_factory=lambda: _env_str("MWDB_AUTH_KEY", ""))
     MWDB_CUSTOM_FILTER: str = field(default_factory=lambda: _env_str("MWDB_CUSTOM_FILTER", ""))
@@ -98,8 +106,6 @@ class Config:
     MWDB_CIRCUIT_FAIL_THRESHOLD: int = field(default_factory=lambda: _env_int("MWDB_CIRCUIT_FAIL_THRESHOLD", 3))
     MWDB_CIRCUIT_COOLDOWN_S: int = field(default_factory=lambda: _env_int("MWDB_CIRCUIT_COOLDOWN_S", 300))
     MWDB_MY_GROUP: str = field(default_factory=lambda: _env_str("MWDB_MY_GROUP", ""))
-    # Fallback Lucene query used when no tags or custom filter are configured.
-    # Prevents silent zero-result syncs on MWDB deployments that require a query param.
     MWDB_DEFAULT_QUERY: str = field(default_factory=lambda: _env_str("MWDB_DEFAULT_QUERY", "type:*"))
 
     ABUSECH_AUTH_KEY: str = field(default_factory=lambda: _env_str("ABUSECH_AUTH_KEY", ""))
@@ -147,7 +153,8 @@ class Config:
     AZURE_SENTINEL_CHUNK_SIZE: int = field(default_factory=lambda: _env_int("AZURE_SENTINEL_CHUNK_SIZE", 100))
 
 
-    # Worker
+@dataclass(frozen=True)
+class WorkerConfig:
     ENABLE_BACKGROUND_JOBS: bool = field(default_factory=lambda: _env_bool("ENABLE_BACKGROUND_JOBS", True))
     UPDATE_INTERVAL: int = field(default_factory=lambda: _env_int("UPDATE_INTERVAL", 600))
     DEP_HEALTH_INTERVAL_S: int = field(default_factory=lambda: _env_int("DEP_HEALTH_INTERVAL_S", 60))
@@ -159,7 +166,10 @@ class Config:
     SYNC_JOB_RETRY_BASE_DELAY_S: int = field(default_factory=lambda: _env_int("SYNC_JOB_RETRY_BASE_DELAY_S", 30))
     SYNC_JOB_RETRY_MAX_DELAY_S: int = field(default_factory=lambda: _env_int("SYNC_JOB_RETRY_MAX_DELAY_S", 900))
 
-    # Security
+
+@dataclass(frozen=True)
+class SecurityConfig:
+    SECRET_KEY: str = field(default_factory=_get_secret_key)
     ALLOWED_HOSTS: str = field(default_factory=lambda: _env_str("ALLOWED_HOSTS", "*"))
     CORS_ORIGINS: str = field(default_factory=lambda: _env_str("CORS_ORIGINS", "*"))
     SECURITY_ALLOW_PERMISSIVE_DEFAULTS: bool = field(default_factory=lambda: _env_bool("SECURITY_ALLOW_PERMISSIVE_DEFAULTS", False))
@@ -169,3 +179,27 @@ class Config:
     ADMIN_ROLE: str = field(default_factory=lambda: _env_str("ADMIN_ROLE", "admin"))
     INSTANCE_NAME: str = field(default_factory=lambda: _env_str("INSTANCE_NAME", "ioc-service"))
     AUDIT_INTEGRITY_VERIFY_INTERVAL_S: int = field(default_factory=lambda: _env_int("AUDIT_INTEGRITY_VERIFY_INTERVAL_S", 3600))
+
+
+@dataclass(frozen=True)
+class Config:
+    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
+    feeds: FeedConfig = field(default_factory=FeedConfig)
+    worker: WorkerConfig = field(default_factory=WorkerConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
+
+    def __getattr__(self, name: str) -> Any:
+        for section in self._sections():
+            if hasattr(section, name):
+                return getattr(section, name)
+        raise AttributeError(name)
+
+    def as_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        for section in self._sections():
+            data.update(section.__dict__)
+        return data
+
+    def _sections(self) -> Iterable[object]:
+        return (self.runtime, self.database, self.feeds, self.worker, self.security)

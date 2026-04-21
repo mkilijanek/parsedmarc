@@ -18,8 +18,7 @@ fi
 
 source "${VENV_DIR}/bin/activate"
 python -m pip install --upgrade pip
-pip install -r requirements.txt
-pip install pytest
+pip install -r requirements-dev.txt
 
 echo "Dev environment ready."
 echo "Python: $(python --version 2>&1)"

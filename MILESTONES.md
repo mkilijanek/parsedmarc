@@ -134,6 +134,8 @@ Status:
 
 ### 1.6.0 — API & Configuration Modernization
 
+Status: completed on `2026-04-21`
+
 Problem focus:
 - No API versioning
 - No OpenAPI specification
@@ -149,12 +151,27 @@ Implementation items:
 - Move the project toward `pyproject.toml` and split production vs development dependencies.
 - Define compatibility and migration guidance for the unversioned API surface.
 
+Execution notes:
+- Start with the stable subset of public API routes; do not version every historical endpoint in one batch.
+- Keep `/api/v1/` additive until migration notes and compatibility labels are published.
+- Scope OpenAPI to the supported versioned surface only.
+- Preserve existing environment variable names during the config refactor; grouping is internal first, deprecation second.
+
+Acceptance additions:
+- Each versioned endpoint must have an owner, request/response contract, and migration note from legacy behavior where applicable.
+- Legacy endpoints must be labeled `stable`, `deprecated`, or `internal-only` in docs.
+
+Out of scope:
+- Full redesign of payload shapes for already working clients.
+- Replacing the current security model solely because versioning is introduced.
+
 Definition of done:
 - Public API has a stable, versioned contract.
 - Integrators have machine-readable API documentation.
 - Configuration has one source of truth with typed grouping.
 - Packaging/dependency management is modernized.
 - Existing API consumers have a documented migration path.
+- Legacy and versioned surfaces are no longer mixed implicitly in documentation.
 
 ### 1.6.1 — Integration Adapter Boundary & Runtime Resilience
 
@@ -173,12 +190,29 @@ Implementation items:
 - Add bounded retry patterns for selected DB operations and invalidate caches on state-changing flows.
 - Add adapter registry, capability metadata, discovery hooks, fake adapters, and contract tests.
 
+Execution notes:
+- Define DTOs and contracts first: `CanonicalIOC`, `FetchResult`, `AdapterCapabilities`, `FeedAdapter`, and `ExportAdapter`.
+- Build one shared ingestion pipeline before migrating multiple providers.
+- Migrate adapters one provider at a time and retain a temporary fallback path per feed during rollout.
+- Keep registry/discovery repo-local first; do not introduce external plugin loading in this milestone.
+
+Acceptance additions:
+- Every migrated feed must pass the same contract-test suite.
+- Adapters must not persist directly outside the shared pipeline.
+- Capabilities metadata must be queryable without reading provider-specific code paths.
+
+Out of scope:
+- Community plugin marketplace.
+- Big-bang migration of all connectors in a single cutover.
+- Broad retry policies that make provider failures harder to diagnose.
+
 Definition of done:
 - Provider integrations follow one adapter model.
 - Runtime behavior does not depend on mutable global environment changes.
 - Shared infra/bootstrap logic is not duplicated across app and worker.
 - Cache and retry behavior is explicit and test-covered.
 - Adapters are discoverable, introspectable, and validated against one protocol.
+- The ingestion pipeline is shared by migrated adapters rather than reimplemented per provider.
 
 ### 1.7.0 — Product UX & Scope Rationalization
 
@@ -208,7 +242,8 @@ Definition of done:
 - Historical cleanup completed on 2026-04-07:
   - closed GitHub milestones: `1.1.x`, `1.2.1`, `1.3.0`, `1.4.0`
   - created missing GitHub releases for existing tags: `1.4.0`, `1.4.1`
-  - left `1.6.0`, `1.6.1`, `1.7.0` open because they are not yet fully delivered
+  - left `1.6.1` and `1.7.0` open because they are not yet fully delivered
 - Active delivery cleanup:
   - closed GitHub milestone `1.5.0` and released `1.5.0` on 2026-04-07
   - closed GitHub milestone `1.5.1` and released `1.5.1` on 2026-04-20
+  - completed local implementation/verification for `1.6.0` on 2026-04-21; GitHub closure and release follow the final push

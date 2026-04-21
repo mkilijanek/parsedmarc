@@ -12,11 +12,3 @@ python-dotenv==1.0.1
 Flask-Limiter==3.7.0
 prometheus-client==0.20.0
 cryptography==46.0.7
-
-# Testing dependencies
-pytest==9.0.3
-pytest-cov==6.0.0
-pytest-mock==3.14.0
-pytest-env==1.1.5
-fakeredis==2.25.1
-responses==0.25.3

@@ -338,6 +338,8 @@ Usunąć dualizm schematu SQL/ORM i dodać prawdziwą walidację zachowań Postg
 
 ## Milestone 1.6.0 — API & Configuration Modernization
 
+Status: completed on `2026-04-21`
+
 **Goal**
 Ustabilizować kontrakt API i uprościć zarządzanie konfiguracją oraz zależnościami.
 
@@ -355,11 +357,31 @@ Ustabilizować kontrakt API i uprościć zarządzanie konfiguracją oraz zależn
 - NEW-ISSUE: Refactor `Config` into grouped sections and modernize packaging
 - NEW-ISSUE: Separate production and development dependencies in project metadata
 
+**Implementation sequence**
+1. Wydzielić obecne endpointy publiczne/admin API do jawnej mapy kontraktów i oznaczyć, które z nich przechodzą do `/api/v1/` bez zmiany semantyki.
+2. Dodać minimalne `/api/v1/` dla istniejących, stabilnych ścieżek read/write zamiast wersjonować cały historyczny surface naraz.
+3. Wygenerować i utrzymywać OpenAPI tylko dla wersjonowanego surface, żeby spec nie opisywała legacy zachowań nieobjętych gwarancją kompatybilności.
+4. Rozbić konfigurację na sekcje `database`, `security`, `feeds`, `runtime`, pozostawiając jedną warstwę odczytu env i jedną warstwę walidacji.
+5. Przenieść metadata projektu do `pyproject.toml` i rozdzielić zależności runtime/dev bez zmiany sposobu uruchamiania produkcji.
+6. Dopisać notę migracyjną: które legacy endpointy pozostają wspierane przejściowo, które są deprecated i jaki jest plan wycofania.
+
+**Explicit non-goals**
+- brak przepisywania całego historycznego API do nowego namespace w jednym kroku,
+- brak równoczesnej zmiany payloadów tylko po to, by "upiększyć" kontrakt,
+- brak wymuszania nowego systemu auth dla machine clients ponad to, co wynika z wersjonowanego API i istniejących mechanizmów bezpieczeństwa.
+
 **Definition of Done**
 - API ma stabilny, wersjonowany kontrakt
 - integratorzy mają formalną specyfikację
 - konfiguracja ma jedno źródło prawdy i sensowne grupowanie
 - istnieje jawna ścieżka kompatybilności/migracji dla istniejących klientów
+- legacy surface ma udokumentowany status: `stable`, `deprecated` albo `internal-only`
+- OpenAPI opisuje wyłącznie wspierany kontrakt, a nie mieszankę legacy i implementacyjnych szczegółów
+- zmiana konfiguracji nie wymaga już równoległego utrzymywania parsowania env w wielu modułach
+
+**Rollback / migration notes**
+- `/api/v1/` powinno być wdrażane addytywnie; rollback nie może usuwać dotychczasowych endpointów bez okresu przejściowego,
+- refaktor config musi zachować kompatybilność nazw zmiennych środowiskowych do czasu jawnego deprecation notice.
 
 ---
 
@@ -385,12 +407,38 @@ Ułatwić wymianę integracji zewnętrznych i usunąć kruche zachowania runtime
 - NEW-ISSUE: Remove runtime env mutation and duplicate proxy bootstrap logic
 - NEW-ISSUE: Add adapter registry, capability metadata and discovery flow
 
+**Implementation sequence**
+1. Zdefiniować wspólne DTO i kontrakty: `FeedAdapter`, `ExportAdapter`, `CanonicalIOC`, `FetchResult`, `AdapterCapabilities`.
+2. Wydzielić wspólny ingestion pipeline: transport -> normalize -> dedup -> persist -> stats, tak aby adapter dostarczał dane wejściowe zamiast sterować całym przebiegiem.
+3. Dodać `AdapterRegistry` i capability metadata, ale bez przedwczesnego plugin systemu dla zewnętrznych pakietów.
+4. Przepiąć jeden referencyjny feed jako wzorzec migracji, potem kolejne istniejące integracje po jednej, z testami kontraktowymi po każdym kroku.
+5. Usunąć runtime mutation `os.environ` i scalić bootstrap proxy/app/worker do jednego modułu.
+6. Dodać bounded retry/cache invalidation tylko dla jasno wskazanych ścieżek, żeby nie ukrywać błędów domenowych pod "samoleczeniem".
+
+**Adapter acceptance baseline**
+- adapter musi expose `source_id`,
+- adapter musi deklarować capabilities i wspierane typy IOC,
+- adapter musi zwracać ustandaryzowany wynik z `items`, `stats`, `stop_reason`,
+- adapter nie może zapisywać bezpośrednio do DB poza wspólnym pipeline,
+- adapter musi przechodzić jeden zestaw contract tests i fixture-based smoke tests.
+
+**Explicit non-goals**
+- brak pełnego marketplace/plugin ecosystem na tym etapie,
+- brak równoczesnej przebudowy wszystkich connectorów bez ścieżki migracji etapami,
+- brak ukrywania problemów providerów za nadmiernie agresywnym retry lub fallbackami, które zaciemniają diagnostykę.
+
 **Definition of Done**
 - nowa integracja powstaje według jednego szablonu adaptera
 - use-case/domain code nie zależy od szczegółów payloadów providerów
 - testy adapterów bronią kontraktu integracyjnego
 - runtime nie polega na globalnych mutacjach środowiska procesu
 - adaptery są rejestrowane i introspekcyjne przez wspólne capability metadata
+- istnieje wspólny ingestion pipeline używany przez zmigrowane feedy
+- migracja adapterów jest etapowa i odwracalna per-feed, bez flag day refactor
+
+**Rollback / migration notes**
+- każdy feed powinien mieć możliwość czasowego powrotu do starej ścieżki wykonania do momentu stabilizacji adaptera,
+- registry/discovery ma zacząć się od lokalnej rejestracji w repo; dynamiczne plugin loading pozostaje przyszłym rozszerzeniem.
 
 ---
 
@@ -475,6 +523,6 @@ Przekształcić projekt z technicznego panelu w czytelniejszy produkt i ogranicz
 | 1.4.2 | Security & Runtime Hardening | lock down admin and startup/runtime safety | NEW admin auth + NEW CSRF + NEW SECRET_KEY + NEW dockerignore |
 | 1.5.0 | Core Modularization & Template Extraction | split monoliths + remove inline HTML | NEW ops split + NEW template migration + NEW boundary tests |
 | 1.5.1 | Database Convergence & PostgreSQL Validation | unify schema and verify PG behavior | NEW schema convergence + NEW PG integration tests + NEW FK/limits |
-| 1.6.0 | API & Configuration Modernization | versioned API + OpenAPI + config cleanup | NEW api v1 + NEW OpenAPI + NEW config/packaging refactor |
+| 1.6.0 | API & Configuration Modernization | versioned API + OpenAPI + config cleanup | DONE api v1 + DONE OpenAPI + DONE config/packaging refactor |
 | 1.6.1 | Integration Adapter Boundary & Runtime Resilience | decouple providers + harden infra behavior | NEW adapter contracts + NEW env/bootstrap cleanup + NEW cache/retry strategy |
 | 1.7.0 | Product UX & Scope Rationalization | business-ready workflows + scope pruning | NEW UI redesign + NEW admin split + NEW feature audit |

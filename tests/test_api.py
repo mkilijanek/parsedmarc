@@ -17,7 +17,7 @@ import json
 import csv
 import io
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -179,6 +179,84 @@ class TestFeedsApiEndpoint:
         assert data["window"] == "7d"
         assert data["hours"] == 168
         assert data["bucket"] == "day"
+
+
+class TestApiV1Endpoints:
+    def test_api_v1_indicators_returns_json(self, client, sample_indicators):
+        response = client.get("/api/v1/indicators?type=ip&limit=2")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "items" in data
+        assert "total" in data
+        assert data["limit"] == 2
+        assert all(item["type"] == "ip" for item in data["items"])
+
+    def test_api_v1_feeds_returns_paginated_items(self, client, sample_indicators, sample_feed_stats):
+        response = client.get("/api/v1/feeds?limit=25&offset=0")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert isinstance(data.get("items"), list)
+        assert isinstance(data.get("total"), int)
+        assert data.get("limit") == 25
+
+    def test_api_v1_feeds_metrics_returns_summary(self, client, sample_indicators, sample_feed_stats):
+        response = client.get("/api/v1/feeds/metrics?hours=24")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["hours"] == 24
+        assert "summary" in data
+        assert "items" in data
+
+    def test_api_v1_logs_returns_items(self, client):
+        response = client.get("/api/v1/logs?limit=10")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "count" in data
+        assert "items" in data
+
+    def test_api_v1_runs_current_returns_queue_state(self, client, sample_indicators, sample_feed_stats):
+        response = client.get("/api/v1/runs/current")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "queued_jobs" in data
+        assert "running" in data
+        assert "latest" in data
+
+    def test_api_v1_openapi_artifacts_are_published(self, client):
+        yaml_response = client.get("/api/v1/openapi.yaml")
+        assert yaml_response.status_code == 200
+        assert "application/yaml" in yaml_response.content_type
+        yaml_text = yaml_response.get_data(as_text=True)
+        assert "openapi: 3.1.0" in yaml_text
+        assert "/api/v1/indicators:" in yaml_text
+        assert "/api/v1/sync:" in yaml_text
+
+        json_response = client.get("/api/v1/openapi.json")
+        assert json_response.status_code == 200
+        payload = json_response.get_json()
+        assert payload["openapi"] == "3.1.0"
+        assert "/api/v1/feeds" in payload["paths"]
+
+    def test_api_v1_docs_page_links_to_contract(self, client):
+        response = client.get("/api/v1/docs")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert "/api/v1/openapi.yaml" in html
+        assert "/api/v1/openapi.json" in html
+
+    def test_legacy_api_routes_expose_deprecation_headers_when_v1_successor_exists(self, client, sample_indicators, sample_feed_stats):
+        response = client.get("/api/feeds")
+        assert response.status_code == 200
+        assert response.headers.get("Deprecation") == "true"
+        assert "/api/v1/feeds" in (response.headers.get("Link") or "")
+
+    def test_api_v1_public_boundary_and_admin_protection(self, client):
+        api_response = client.get("/api/v1/indicators")
+        assert api_response.status_code == 200
+
+        admin_response = client.get("/admin", follow_redirects=False)
+        assert admin_response.status_code in {302, 303}
+        assert "/auth/login" in (admin_response.headers.get("Location") or "")
 
 
 # ============================================================================

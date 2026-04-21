@@ -1,0 +1,13 @@
+-r requirements.txt
+pytest==9.0.3
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+pytest-env==1.1.5
+fakeredis==2.25.1
+responses==0.25.3
+ruff==0.13.1
+mypy==1.18.2
+radon==6.0.1
+types-requests==2.32.4.20250913
+pip-audit==2.9.0
+bandit==1.8.6

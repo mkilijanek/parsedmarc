@@ -1,6 +1,6 @@
 # Threat Feed Aggregator - Documentation
 
-Status: updated for `1.4.2` (2026-04-07).
+Status: updated for `1.6.0` (2026-04-21).
 
 Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed Aggregation system.
 
@@ -9,6 +9,8 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 ## Quick Links
 
 - 📖 **[API Documentation](api.md)** - REST endpoints, formats, and integration examples
+- 🔁 **[API v1 Migration](api-v1-migration.md)** - legacy-to-versioned API route mapping and migration notes
+- 🗺️ **[Milestone 1.6.0 Plan](milestone-1.6.0-plan.md)** - execution plan for versioned API, OpenAPI, config, and packaging changes
 - 🏗️ **[Architecture](architecture.md)** - System design and components
 - ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
 - 🔐 **[Access Control](access-control.md)** - Admin auth, roles, CSRF, and operational boundaries

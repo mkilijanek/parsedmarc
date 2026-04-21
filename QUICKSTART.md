@@ -1,6 +1,6 @@
 # THREAT FEED AGGREGATOR - SZYBKI START
 
-Aktualizacja: `1.1.x` (2026-02-26)
+Aktualizacja: `1.6.0` (2026-04-21)
 
 ## 📦 Zawartość Archiwum
 
@@ -121,6 +121,13 @@ bash scripts/dev-bootstrap.sh
 bash scripts/dev-test.sh
 ```
 
+Alternatywnie ręcznie:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
 ### Makefile
 ```bash
 make help          # Pokaż dostępne komendy
@@ -157,6 +164,10 @@ docker-compose exec db psql -U threatfeed
 ### API
 - `GET /healthz` - Liveness check
 - `GET /readyz` - Readiness check
+- `GET /api/v1/openapi.yaml` - kontrakt OpenAPI dla wspieranej wersji API
+- `GET /api/v1/docs` - podgląd dokumentacji wersjonowanego API
+- `GET /api/v1/indicators` - wersjonowane zapytania IOC
+- `POST /api/v1/sync` - wersjonowane kolejkowanie synców
 - `GET /api/stats` - Statystyki systemu
 - `GET /indicators` - Wszystkie wskaźniki (web UI)
 - `GET /indicators/<format>` - Export w formatach:

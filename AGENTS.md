@@ -169,12 +169,21 @@ pip install -r requirements.txt
 ### Local Execution Notes
 - Prefer running Python tooling inside the project virtual environment (`.venv`) when it exists or when dependencies need to be installed.
 - Use `sudo` only when a task genuinely requires elevated system privileges (for example, system package installation or service management).
+- Treat the project as **documentation-driven**:
+  - first identify the need, scope, and justification for a change,
+  - document the planned change and its acceptance criteria,
+  - implement the change,
+  - update documentation to match the implementation,
+  - run tests and fix regressions,
+  - finish with the documentation reflecting the final delivered state.
 - For implementation work, maintain a root-level `change.log` file:
   - use it as a running journal of actions actually performed by the agent,
   - record important commands, observations, decisions, blockers, and follow-up notes,
   - after each meaningful change, append what changed and why,
   - record mistakes or near-misses together with a short lesson to avoid repeating them,
   - keep the current project stage and active implementation context visible there.
+  - record planned tasks together with short justifications before major implementation phases,
+  - keep the active documentation-driven sequence visible there: need -> planned change -> implementation -> docs -> tests -> fixes -> final docs.
 
 ### Testing
 ```bash
