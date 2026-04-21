@@ -1766,3 +1766,34 @@
 - commit-m1-6-1: create an auditable milestone boundary before deployment and release tagging.
 - host-redeploy: replace the running image on the current host so the deployed service matches the delivered code.
 - release-1-6-1: every fully completed milestone must end with a release and corresponding tag.
+
+[current stage]
+- Post-deployment verification and release finalization for milestone 1.6.1.
+
+[actions performed]
+- Committed milestone 1.6.1 delivery as `c0e28f3 Deliver milestone 1.6.1 adapter boundary and runtime resilience`.
+- Rebuilt `app`, `worker`, and `migrate` images and recreated the host stack with `docker compose --profile edge`.
+- Verified app readiness on `http://192.168.10.71:7005/readyz` and interactive docs on `http://192.168.10.71:7005/api/swagger`.
+- Verified reverse proxy readiness on `https://127.0.0.1:7003/readyz` and `https://127.0.0.1:7003/api/swagger`.
+- Identified that `nginx` remained in `health: starting` because the healthcheck used `localhost`, which resolved to IPv6 and failed against an IPv4-only listener.
+- Corrected `nginx` healthchecks in `docker-compose.yml`, `docker-compose-release.yml`, and `docker-compose-dev.yml` to probe `127.0.0.1`.
+
+[important commands]
+- `docker compose --profile edge down`
+- `docker compose --profile edge up -d --build --force-recreate postgres redis`
+- `docker compose --profile edge run --rm migrate`
+- `docker compose --profile edge up -d --build --force-recreate app worker nginx`
+- `docker inspect ioc-service-nginx-1 --format '{{json .State.Health}}'`
+
+[observations]
+- The previous host failure (`postgres` DNS resolution inside `app`, then `nginx` upstream resolution to `app`) disappeared after recreating the compose network and services.
+- The standalone app port is intentionally bound to `192.168.10.71:7005`; probing `127.0.0.1:7005` is expected to fail on this host.
+
+[mistakes and lessons]
+- A container healthcheck that uses `localhost` can silently switch to IPv6 lookup and fail even while the service is healthy on IPv4. Lesson: prefer explicit `127.0.0.1` in Docker healthchecks unless the service is verified to listen on both stacks.
+- For HTTPS-only reverse proxies with self-signed certificates, probing plain HTTP readiness can follow a redirect into TLS verification failure. Lesson: point the healthcheck directly at the local TLS endpoint and disable certificate verification for the in-container self-probe.
+
+[next planned implementation steps]
+- Recreate `nginx` with the corrected healthcheck and confirm all services are healthy.
+- Commit the healthcheck correction.
+- Tag and publish release `1.6.1`, then push branch and tag.
