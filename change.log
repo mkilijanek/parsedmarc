@@ -1820,3 +1820,29 @@
 - Create tag `1.6.1` at `b368c2b`.
 - Push `main` and the release tag.
 - Publish GitHub release notes for milestone `1.6.1`.
+
+[current stage]
+- Addressing pending dependency PR #175 after milestone 1.6.1 rollout.
+
+[actions performed]
+- Reviewed open PR `#175` (`[Snyk] Security upgrade zipp from 3.15.0 to 3.19.1`) and confirmed it changes only `requirements.txt`.
+- Verified there were no actionable review threads attached; the remaining concern was simply whether to accept the dependency pin on top of current `main`.
+- Applied the equivalent dependency pin directly on `main` by adding `zipp>=3.19.1` to `requirements.txt`.
+
+[observations]
+- The PR branch is effectively stale relative to current `main`; taking the one-line dependency fix locally is lower-risk than trying to preserve the bot branch as the integration vehicle.
+
+[decisions]
+- Address the pending PR by absorbing its only material change directly into `main`, then close the PR as superseded by the integrated fix.
+
+[next planned implementation steps]
+- Reinstall/update Python dependencies in `.venv` and run targeted validation.
+- Commit and push the dependency pin.
+- Close PR `#175` with a short superseded comment.
+
+[verification]
+- `source .venv/bin/activate && pip install -r requirements.txt` -> upgraded `zipp` to `3.23.1`
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q tests/test_api.py::TestApiV1Endpoints` -> `11 passed`
+
+[observations]
+- The repository-wide `ruff` baseline still contains unrelated pre-existing findings, so it is not a useful gate for this one-line dependency PR. The dependency pin itself is isolated and validated separately.
