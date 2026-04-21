@@ -175,6 +175,8 @@ Definition of done:
 
 ### 1.6.1 — Integration Adapter Boundary & Runtime Resilience
 
+Status: completed on `2026-04-21`
+
 Problem focus:
 - External integrations too tightly embedded in implementation
 - Runtime mutation of process environment

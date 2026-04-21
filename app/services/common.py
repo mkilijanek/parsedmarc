@@ -13,6 +13,10 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 from requests import HTTPError
 from requests.exceptions import ProxyError, SSLError, ConnectTimeout, ReadTimeout, ConnectionError as RequestsConnectionError
+from requests.sessions import merge_setting
+from requests.utils import get_environ_proxies
+
+from ..runtime_env import get_proxy_settings, get_runtime_env
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -198,37 +202,12 @@ class DepStatusCache:
 # Shared dep status cache — updated by services, read by /deps endpoint
 _dep_status = DepStatusCache()
 
-_REQUESTS_PATCH_LOCK = threading.Lock()
-_REQUESTS_PATCHED = False
-_REQUESTS_ORIGINAL_REQUEST = None
-
-
 def configure_requests_tls_verify_from_env() -> None:
-    """Optionally force requests TLS verification off via env toggle.
+    """Compatibility no-op.
 
-    Controlled by `REQUESTS_SKIP_TLS_VERIFY` (`true`/`false`).
+    TLS verify and proxy behavior are applied per-session by ``build_feed_session``.
     """
-    global _REQUESTS_PATCHED, _REQUESTS_ORIGINAL_REQUEST
-    skip_verify = os.getenv("REQUESTS_SKIP_TLS_VERIFY", "false").strip().lower() in {"1", "true", "yes", "on"}
-    with _REQUESTS_PATCH_LOCK:
-        if skip_verify and not _REQUESTS_PATCHED:
-            _REQUESTS_ORIGINAL_REQUEST = requests.sessions.Session.request
-
-            def _patched_request(self, method, url, **kwargs):
-                kwargs.setdefault("verify", False)
-                return _REQUESTS_ORIGINAL_REQUEST(self, method, url, **kwargs)
-
-            requests.sessions.Session.request = _patched_request
-            warnings.filterwarnings("ignore", category=InsecureRequestWarning)
-            _REQUESTS_PATCHED = True
-            logger.warning("requests_tls_verify_disabled_by_env")
-            return
-        if (not skip_verify) and _REQUESTS_PATCHED and _REQUESTS_ORIGINAL_REQUEST is not None:
-            requests.sessions.Session.request = _REQUESTS_ORIGINAL_REQUEST
-            warnings.filterwarnings("default", category=InsecureRequestWarning)
-            _REQUESTS_PATCHED = False
-            _REQUESTS_ORIGINAL_REQUEST = None
-            logger.info("requests_tls_verify_restored")
+    return
 
 
 _PROXY_CRED_RE = re.compile(r"(https?://)([^:/@\s]+):([^/@\s]+)@")
@@ -240,6 +219,35 @@ def redact_proxy_credentials(text: str) -> str:
     return _PROXY_CRED_RE.sub(r"\1***:***@", text)
 
 
+class RuntimeSession(requests.Session):
+    def __init__(
+        self,
+        *,
+        runtime_proxies: dict[str, str] | None = None,
+        runtime_no_proxy: str | None = None,
+        runtime_verify: bool | str | None = None,
+    ) -> None:
+        super().__init__()
+        self.runtime_proxies = dict(runtime_proxies or {})
+        self.runtime_no_proxy = runtime_no_proxy or None
+        self.runtime_verify = runtime_verify
+        self.trust_env = True
+
+    def merge_environment_settings(self, url, proxies, stream, verify, cert):
+        env_proxies = get_environ_proxies(url, no_proxy=self.runtime_no_proxy) if self.trust_env else {}
+        merged_proxies = merge_setting(proxies, env_proxies)
+        merged_proxies = merge_setting(merged_proxies, self.runtime_proxies)
+        effective_verify = self.runtime_verify if self.runtime_verify is not None else verify
+        if effective_verify is False:
+            warnings.filterwarnings("ignore", category=InsecureRequestWarning)
+        return {
+            "proxies": merged_proxies,
+            "stream": stream,
+            "verify": effective_verify,
+            "cert": cert,
+        }
+
+
 def build_feed_session(*, source: str) -> requests.Session:
     """Build requests Session honoring global env and optional per-feed overrides.
 
@@ -249,17 +257,22 @@ def build_feed_session(*, source: str) -> requests.Session:
     - FEED_HTTPS_PROXY_<SOURCE>
     where SOURCE is uppercased with non-alnum replaced by underscore.
     """
-    session = requests.Session()
-    session.trust_env = True
+    proxy_settings = get_proxy_settings()
     suffix = _source_env_suffix(source)
-    all_proxy = os.getenv(f"FEED_PROXY_URL_{suffix}", "").strip()
-    http_proxy = os.getenv(f"FEED_HTTP_PROXY_{suffix}", "").strip() or all_proxy
-    https_proxy = os.getenv(f"FEED_HTTPS_PROXY_{suffix}", "").strip() or all_proxy
+    all_proxy = str(get_runtime_env(f"FEED_PROXY_URL_{suffix}", "") or "").strip()
+    http_proxy = str(get_runtime_env(f"FEED_HTTP_PROXY_{suffix}", "") or "").strip() or all_proxy or proxy_settings.http_url
+    https_proxy = str(get_runtime_env(f"FEED_HTTPS_PROXY_{suffix}", "") or "").strip() or all_proxy or proxy_settings.https_url
     proxies: dict[str, str] = {}
     if http_proxy:
         proxies["http"] = http_proxy
     if https_proxy:
         proxies["https"] = https_proxy
+    verify: bool | str = False if proxy_settings.skip_tls_verify else (proxy_settings.ca_bundle_path or True)
+    session = RuntimeSession(
+        runtime_proxies=proxies,
+        runtime_no_proxy=proxy_settings.no_proxy or None,
+        runtime_verify=verify,
+    )
     if proxies:
         session.proxies.update(proxies)
     return session
@@ -373,9 +386,10 @@ class ExternalFeedConnector:
 
 def get_feed_proxies(*, source: str) -> dict[str, str] | None:
     suffix = _source_env_suffix(source)
-    all_proxy = os.getenv(f"FEED_PROXY_URL_{suffix}", "").strip()
-    http_proxy = os.getenv(f"FEED_HTTP_PROXY_{suffix}", "").strip() or all_proxy
-    https_proxy = os.getenv(f"FEED_HTTPS_PROXY_{suffix}", "").strip() or all_proxy
+    proxy_settings = get_proxy_settings()
+    all_proxy = str(get_runtime_env(f"FEED_PROXY_URL_{suffix}", "") or "").strip()
+    http_proxy = str(get_runtime_env(f"FEED_HTTP_PROXY_{suffix}", "") or "").strip() or all_proxy or proxy_settings.http_url
+    https_proxy = str(get_runtime_env(f"FEED_HTTPS_PROXY_{suffix}", "") or "").strip() or all_proxy or proxy_settings.https_url
     proxies: dict[str, str] = {}
     if http_proxy:
         proxies["http"] = http_proxy

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import signal
 import time
 import schedule
@@ -17,9 +16,9 @@ from .services.abusech import update_abusech_indicators
 from .services.cleanup import cleanup_old_indicators, cleanup_export_files
 from .services.correlation_snapshot import refresh_correlation_snapshots
 from .services.deps import dep_health_refresh
-from .services.common import configure_requests_tls_verify_from_env
 from .db import SessionLocal, engine, get_session
 from .models import AppSetting
+from .runtime_env import update_proxy_settings_from_mapping
 from .worker_health import (
     WorkerHealthServer,
     active_jobs,
@@ -59,45 +58,13 @@ def _safe_job(name: str, fn):
             logger.error("job_failed", extra={"job": name, "error": str(e), "duration_ms": duration_ms}, exc_info=True)
     return _wrap
 
-def _bootstrap_proxy_env_from_settings() -> None:
+def _refresh_proxy_settings() -> None:
     db = get_session(read_only=False)
     try:
         keys = {"proxy.http_url", "proxy.https_url", "proxy.no_proxy", "proxy.ca_bundle_path", "proxy.skip_tls_verify"}
         rows = list(db.scalars(select(AppSetting).where(AppSetting.key.in_(keys))).all())
         settings = {str(r.key): str(r.value or "") for r in rows}
-        proxy_http = settings.get("proxy.http_url", "").strip()
-        proxy_https = settings.get("proxy.https_url", "").strip()
-        proxy_no = settings.get("proxy.no_proxy", "").strip()
-        proxy_ca_bundle = settings.get("proxy.ca_bundle_path", "").strip()
-        proxy_skip_tls_verify = settings.get("proxy.skip_tls_verify", "").strip()
-
-        if proxy_http:
-            os.environ["HTTP_PROXY"] = proxy_http
-            os.environ["http_proxy"] = proxy_http
-        else:
-            os.environ.pop("HTTP_PROXY", None)
-            os.environ.pop("http_proxy", None)
-        if proxy_https:
-            os.environ["HTTPS_PROXY"] = proxy_https
-            os.environ["https_proxy"] = proxy_https
-        else:
-            os.environ.pop("HTTPS_PROXY", None)
-            os.environ.pop("https_proxy", None)
-        if proxy_no:
-            os.environ["NO_PROXY"] = proxy_no
-            os.environ["no_proxy"] = proxy_no
-        else:
-            os.environ.pop("NO_PROXY", None)
-            os.environ.pop("no_proxy", None)
-        if proxy_ca_bundle:
-            os.environ["REQUESTS_CA_BUNDLE"] = proxy_ca_bundle
-        else:
-            os.environ.pop("REQUESTS_CA_BUNDLE", None)
-        if proxy_skip_tls_verify.lower() in {"1", "true", "yes", "on"}:
-            os.environ["REQUESTS_SKIP_TLS_VERIFY"] = "true"
-        else:
-            os.environ.pop("REQUESTS_SKIP_TLS_VERIFY", None)
-        configure_requests_tls_verify_from_env()
+        update_proxy_settings_from_mapping(settings)
     except Exception:
         logger.warning("worker_proxy_bootstrap_failed", exc_info=True)
     finally:
@@ -106,7 +73,7 @@ def _bootstrap_proxy_env_from_settings() -> None:
 def main():
     cfg = Config()
     setup_logging(cfg.LOG_LEVEL)
-    _bootstrap_proxy_env_from_settings()
+    _refresh_proxy_settings()
     health_server = WorkerHealthServer(
         cfg.WORKER_HEALTH_HOST,
         cfg.WORKER_HEALTH_PORT,

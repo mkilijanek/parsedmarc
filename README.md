@@ -1,6 +1,6 @@
 # Threat Intelligence Feed Aggregator
 
-Updated for release line `1.6.0` (2026-04-21).
+Updated for release line `1.6.1` (2026-04-21).
 
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
@@ -24,6 +24,14 @@ Production-ready threat feed aggregation and export service:
 - Split runtime and development dependencies into `requirements.txt` and `requirements-dev.txt`.
 - Added `pyproject.toml` with project and tool metadata.
 - Moved OpenAPI 3.1 to a generated source of truth with CI drift validation.
+
+## Release Highlights (1.6.1)
+
+- Added a repo-local adapter layer under `app/adapters/` with shared contracts, DTOs, capability metadata, and registry-backed feed dispatch.
+- Added a shared ingestion pipeline for migrated feed adapters, including bounded DB retry and explicit cache invalidation after state-changing feed updates.
+- Replaced scheduler runtime `os.environ` mutation with scoped runtime overrides and process-local proxy settings.
+- Consolidated app/worker proxy bootstrap into one runtime settings path and moved outbound HTTP behavior to runtime-aware sessions.
+- Added fake adapter and pipeline contract coverage in `tests/test_adapters.py`.
 
 ## Release Highlights (1.4.2)
 

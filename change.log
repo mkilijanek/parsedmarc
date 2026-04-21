@@ -49,6 +49,136 @@
 2. Add `.dockerignore` and remove implicit `SECRET_KEY` generation path.
 3. Update `change.log` after each code change, test run, and design decision during implementation.
 
+2026-04-21
+
+[current stage]
+- Kickoff for milestone `1.6.1` (`Integration Adapter Boundary & Runtime Resilience`).
+- Goal: finish the milestone end-to-end, then build and redeploy Docker images on the current host.
+
+[planned tasks and justifications]
+1. Narrow the effective `1.6.1` implementation scope to the roadmap contract.
+   Justification: the GitHub milestone currently mixes adapter work with unrelated compliance and observability backlog; implementation needs a clean execution target.
+2. Introduce adapter contracts, capability metadata, and a registry.
+   Justification: this is the core architectural boundary promised by `1.6.1`; without it, feed integrations remain ad hoc functions.
+3. Introduce a shared ingestion pipeline for migrated feeds.
+   Justification: adapters should not each persist indicators with duplicated upsert/deactivate/stats code.
+4. Remove runtime `os.environ` mutation for proxy/TLS behavior and consolidate runtime proxy resolution.
+   Justification: mutable process environment is explicitly called out as a `1.6.1` problem and is duplicated today in app and worker startup.
+5. Add fake adapters and contract tests.
+   Justification: acceptance criteria for `1.6.1` require one protocol and a shared validation suite.
+6. Update docs/roadmap/milestones/issues after implementation and only then build/redeploy.
+   Justification: this repo is documentation-driven; deployment should follow the documented delivered state, not precede it.
+
+[important commands]
+- `sed -n '1,220p' ROADMAP.md`
+- `sed -n '1,220p' MILESTONES.md`
+- `gh issue list --repo mkilijanek/ioc-service --state open --milestone 1.6.1 --limit 100`
+- `rg -n "os\\.environ|HTTP_PROXY|HTTPS_PROXY|NO_PROXY|REQUESTS_CA_BUNDLE|_bootstrap_proxy_env|_write_proxy_env|build_feed_session" app`
+- `docker compose ps`
+- `docker compose logs --tail=200 app worker`
+
+[observations]
+- `1.6.1` is still represented correctly in local docs, but the GitHub milestone contains extra issues that are not part of the milestone contract and will need cleanup after the implementation lands.
+- The existing code already has reusable building blocks (`ExternalFeedConnector`, `CircuitBreaker`, `standardized_update_result`) that can anchor the adapter migration instead of replacing everything.
+- Runtime proxy behavior is duplicated and currently implemented through `os.environ` mutation in both `app/factory.py` and `app/worker.py`.
+- The current host is not healthy before any `1.6.1` work: `app` is restarting and `worker` is unhealthy; app logs show a startup migration failure because host `postgres` could not be resolved.
+
+[decisions]
+- Implement `1.6.1` additively: introduce adapters and a shared pipeline behind the existing `update_*_indicators()` entry points, then migrate feeds to the new path while preserving the legacy return contract.
+- Treat fake adapters and contract tests as part of the main delivery, not a follow-up.
+- Replace mutable runtime environment behavior with explicit proxy/runtime config objects passed into requests/session builders.
+
+[mistakes and lessons]
+- Do not try to mark a milestone complete from GitHub issue labels alone; compare the actual roadmap contract with the codebase before closing milestone issues.
+  Lesson: milestone completion must be code-and-docs driven, then reflected in GitHub.
+
+[next planned implementation steps]
+1. Add documentation-driven guidance to repo control files if any file still misses it.
+2. Create adapter/proxy/pipeline modules and migrate the first feed paths.
+3. Add tests first for the new contracts and proxy configuration behavior before changing rollout-sensitive app/worker startup code.
+
+2026-04-21
+
+[actions performed]
+- Added `app/runtime_env.py` to centralize:
+  - runtime override context for config/env reads,
+  - process-local proxy settings cache,
+  - replacement for mutable `os.environ` based job overrides.
+- Added the `app/adapters/` package with:
+  - protocol definitions,
+  - registry,
+  - DTOs (`CanonicalIOC`, `FetchBatch`, `AdapterCapabilities`),
+  - shared persistence pipeline with bounded DB retry and cache invalidation,
+  - first concrete feed adapter implementations for `crowdsec`, `misp`, `malwarebazaar`, `mwdb`, and `abusech`.
+- Switched `app/config.py` environment readers to consult runtime overrides before real process env.
+- Switched `app/services/common.py` session building to per-session runtime proxy/TLS behavior instead of global request monkeypatching.
+- Replaced proxy bootstrap mutation in `app/worker.py` with proxy settings refresh into runtime cache.
+- Replaced scheduler env override mutation in `app/factory.py:_execute_sync_job()` with scoped runtime override context.
+- Switched selected direct HTTP call sites (`crowdsec`, `misp` health/test, Sentinel Graph, admin proxy test, feed connection tests) to runtime-aware sessions.
+- Switched sync worker dispatch in `app/factory.py` from a hardcoded `if/elif` tree to the feed adapter registry.
+
+[important commands]
+- `source .venv/bin/activate && python -m compileall -q app`
+
+[observations]
+- The cleanest migration point was `Config()`, not each individual service function. Once config reads runtime overrides, existing feed code becomes much easier to keep compatible.
+- The adapter milestone can be delivered incrementally without deleting the legacy `update_*_indicators()` functions immediately; the scheduler now uses the adapter registry as the orchestration boundary.
+
+[decisions]
+- Keep the old feed service entry points for backward compatibility and tests, while moving scheduler/runtime orchestration to adapters first.
+- Use a process-local runtime settings cache plus scoped context overrides instead of thread-global or process-global env mutation.
+
+[mistakes and lessons]
+- The first implementation instinct was to push more logic into each feed service separately.
+  Lesson: when config construction is centralized, refactor at that boundary first; it removes a large class of downstream changes.
+
+[next planned implementation steps]
+1. Add tests for runtime overrides, adapter registry/contracts, and the shared persistence pipeline.
+2. Run targeted service/API tests and fix integration breakage.
+3. Then clean up `1.6.1` milestone issues/docs and proceed to Docker rebuild and host replacement.
+
+2026-04-21
+
+[actions performed]
+- Added `tests/test_adapters.py` covering:
+  - runtime override reads in `Config()`,
+  - runtime-aware proxy session construction,
+  - feed registry contents/capability metadata,
+  - fake adapter contract shape,
+  - shared persistence pipeline DB writes.
+- Ran focused adapter/API/feed tests and fixed regressions in:
+  - proxy session compatibility (`session.proxies` visibility for existing tests),
+  - Sentinel Graph patchability in tests while preserving runtime-aware outbound HTTP behavior.
+- Ran full repository validation successfully:
+  - `ruff check ...`
+  - `PYTHONPATH=. pytest -q`
+  - final result: `516 passed, 2 skipped`
+- Updated milestone docs and architecture docs for `1.6.1`:
+  - `README.md`
+  - `docs/architecture.md`
+  - `docs/milestone-1.6.1-plan.md`
+  - `ROADMAP.md`
+  - `MILESTONES.md`
+
+[important commands]
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q tests/test_adapters.py tests/test_api.py::TestApiV1Endpoints`
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q tests/test_services.py::TestMWDBAutoUpdate tests/test_services.py::TestMalwareBazaarAutoUpdate tests/test_services.py::TestAbuseChUpdater`
+- `source .venv/bin/activate && ruff check app/runtime_env.py app/adapters app/config.py app/services/common.py app/services/crowdsec.py app/services/misp.py app/services/sentinel_graph.py app/worker.py app/factory.py tests/test_adapters.py`
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q`
+
+[observations]
+- The new adapter tests are lightweight enough to keep in the standard suite without adding noticeable runtime overhead.
+- The cleanest backward-compatibility path for existing tests was to preserve patchable call shapes where tests depended on them, even when the runtime implementation moved behind new helpers.
+
+[mistakes and lessons]
+- I first changed `sentinel_graph` to use `session.post()` directly, which broke tests patching `app.services.sentinel_graph.requests.post`.
+  Lesson: when a module is already patched in tests, preserve a patchable boundary or update the test suite in the same change; hidden call-site changes create avoidable regressions.
+
+[next planned implementation steps]
+1. Sync the delivered `1.6.1` scope back into GitHub issues/milestone state.
+2. Build Docker images from the delivered code and redeploy them on the current host.
+3. Verify the running host health after image replacement, then prepare release/tag state.
+
 2026-04-07
 
 [current stage]
@@ -1603,3 +1733,36 @@
 - generator-script: make the artifact reproducible for release packaging and human review.
 - ci-drift-check: fail fast when generated contract and shipped artifact diverge.
 - issue-174-closure: close the follow-up only after generation and validation are both in place.
+
+[current stage]
+- Finalizing milestone 1.6.1 for commit, host deployment, and release packaging.
+
+[actions performed]
+- Verified local milestone 1.6.1 implementation state after full regression run (`516 passed, 2 skipped`).
+- Checked GitHub milestone 1.6.1 and found it already closed while issue `#146` remained open.
+- Closed GitHub issue `#146` with a completion comment tied to the delivered adapter boundary and contract-test work.
+
+[important commands]
+- `gh issue list --repo mkilijanek/ioc-service --state open --milestone 1.6.1 --limit 100`
+- `gh api repos/mkilijanek/ioc-service/milestones/9`
+- `gh issue close 146 --repo mkilijanek/ioc-service --reason completed --comment "$comment"`
+
+[observations]
+- GitHub milestone `1.6.1` was already in `closed` state, so the remaining cleanup was only issue alignment, not milestone state mutation.
+- The local working tree now represents a full adapter-boundary/runtime-hardening delivery and is ready for commit and deployment.
+
+[decisions]
+- Kept milestone `1.6.1` focused on adapter boundaries, shared ingestion, runtime override cleanup, and contract tests; broader compliance and platform issues remain outside this release.
+
+[mistakes and lessons]
+- `gh issue close` on this host does not support `--comment-file`. Lesson: inspect local CLI help first and fall back to `--comment "$(cat file)"` when subcommand flag support is narrower than expected.
+
+[next planned implementation steps]
+- Commit the completed 1.6.1 milestone work.
+- Build replacement Docker images on the current host and recreate the running services with the new image.
+- Verify health/readiness and then publish the 1.6.1 release tag and notes.
+
+[task backlog with rationale]
+- commit-m1-6-1: create an auditable milestone boundary before deployment and release tagging.
+- host-redeploy: replace the running image on the current host so the deployed service matches the delivered code.
+- release-1-6-1: every fully completed milestone must end with a release and corresponding tag.

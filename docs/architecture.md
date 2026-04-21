@@ -1,6 +1,6 @@
 # Architecture
 
-Status: updated for `1.4.1` (2026-04-06).
+Status: updated for `1.6.1` (2026-04-21).
 
 ## Overview
 
@@ -190,6 +190,24 @@ schedule.every(10).minutes.do(update_all_feeds)
 - Failed feed updates don't block others
 - Errors logged with structured context
 - `feed_stats.last_fetch_error` tracking
+
+### 5. Adapter Boundary and Runtime Settings (`1.6.1`)
+
+The integration layer now has an explicit repository-local adapter boundary:
+- `app/adapters/contracts.py` defines the feed/export adapter protocols,
+- `app/adapters/types.py` defines shared DTOs (`CanonicalIOC`, `FetchBatch`, `AdapterCapabilities`),
+- `app/adapters/registry.py` provides repo-local registration/discovery,
+- `app/adapters/pipeline.py` provides the shared persistence path for migrated feed batches.
+
+Runtime feed configuration no longer depends on mutating process-global environment variables during sync execution.
+
+Instead:
+- `app/runtime_env.py` stores scoped runtime overrides for the active sync job,
+- `app/config.py` reads those overrides before falling back to process env,
+- `app/services/common.py` applies proxy/TLS behavior per session,
+- app and worker startup refresh the same proxy settings cache instead of rewriting `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`.
+
+This keeps provider configuration isolated to the current execution scope and removes cross-job/process leakage risk from mutable global env state.
 
 ### 5. Sync Scheduler / Queue (1.1.x)
 

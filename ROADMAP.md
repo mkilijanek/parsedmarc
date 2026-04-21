@@ -440,6 +440,9 @@ Ułatwić wymianę integracji zewnętrznych i usunąć kruche zachowania runtime
 - każdy feed powinien mieć możliwość czasowego powrotu do starej ścieżki wykonania do momentu stabilizacji adaptera,
 - registry/discovery ma zacząć się od lokalnej rejestracji w repo; dynamiczne plugin loading pozostaje przyszłym rozszerzeniem.
 
+**Status**
+- Done on 2026-04-21.
+
 ---
 
 ## Milestone 1.7.0 — Product UX & Scope Rationalization

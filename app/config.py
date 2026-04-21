@@ -1,28 +1,29 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+from .runtime_env import get_runtime_env
+
 
 def _env_bool(name: str, default: bool = False) -> bool:
-    v = os.getenv(name)
+    v = get_runtime_env(name)
     if v is None:
         return default
     return v.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _env_str(name: str, default: str = "") -> str:
-    return os.getenv(name, default)
+    return str(get_runtime_env(name, default) or default)
 
 
 def _env_int(name: str, default: int) -> int:
-    return int(os.getenv(name, str(default)))
+    return int(get_runtime_env(name, str(default)) or str(default))
 
 
 def _get_secret_key() -> str:
     """Get SECRET_KEY from environment with validation."""
-    key = os.getenv("SECRET_KEY", "")
+    key = str(get_runtime_env("SECRET_KEY", "") or "")
     if not key:
         raise RuntimeError(
             "SECURITY ERROR: SECRET_KEY environment variable must be set. "

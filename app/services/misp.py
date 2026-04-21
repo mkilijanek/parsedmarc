@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ..config import Config
 from ..db import SessionLocal
 from ..models import Indicator, FeedStats
-from .common import retry_with_backoff, _circuit_breaker, _dep_status, standardized_update_result
+from .common import build_feed_session, retry_with_backoff, _circuit_breaker, _dep_status, standardized_update_result
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +55,16 @@ def extract_tlp_from_tags(attr_tags: List[str] | None, event_tags: List[str] | N
 
 def compute_confidence(distribution: int, tags: List[str]) -> int:
     base = 70
-    if distribution == 0: base = 90
-    elif distribution == 1: base = 80
-    elif distribution == 2: base = 70
-    elif distribution == 3: base = 60
-    elif distribution == 4: base = 50
+    if distribution == 0:
+        base = 90
+    elif distribution == 1:
+        base = 80
+    elif distribution == 2:
+        base = 70
+    elif distribution == 3:
+        base = 60
+    elif distribution == 4:
+        base = 50
 
     tags_l = [t.lower() for t in (tags or [])]
     if any(t in tags_l for t in HIGH_CONF_TAGS):
@@ -128,14 +133,14 @@ def misp_health_check(cfg: "Config") -> Dict[str, object]:
     timeout = max(1, int(cfg.MISP_HEALTH_TIMEOUT_S))
     t0 = _time.monotonic()
     try:
-        import requests as _requests
-        resp = _requests.get(
-            cfg.MISP_URL.rstrip("/") + "/servers/getVersion.json",
-            headers={"Authorization": cfg.MISP_API_KEY, "Accept": "application/json"},
-            timeout=timeout,
-            verify=cfg.MISP_VERIFY_SSL,
-        )
-        resp.raise_for_status()
+        with build_feed_session(source="misp") as session:
+            resp = session.get(
+                cfg.MISP_URL.rstrip("/") + "/servers/getVersion.json",
+                headers={"Authorization": cfg.MISP_API_KEY, "Accept": "application/json"},
+                timeout=timeout,
+                verify=cfg.MISP_VERIFY_SSL,
+            )
+            resp.raise_for_status()
         duration_ms = int((_time.monotonic() - t0) * 1000)
         _dep_status.update("misp", "ok", duration_ms=duration_ms)
         return {"status": "ok", "duration_ms": duration_ms}
@@ -212,8 +217,6 @@ def update_misp_indicators() -> Dict[str, int]:
     try:
         # Group incoming by event id
         incoming_by_event: Dict[str, Set[str]] = {}
-        inserted = 0
-        updated = 0
         tlp_skipped = 0
 
         for a in attrs:

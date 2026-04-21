@@ -6,12 +6,21 @@ import json
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Tuple, cast
-
-import requests
+from types import SimpleNamespace
+from typing import Any, Dict, Iterable, List, cast
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+from .common import build_feed_session
+
+
+def _runtime_post(url: str, **kwargs: Any):
+    with build_feed_session(source="sentinel_graph") as session:
+        return session.post(url, **kwargs)
+
+
+requests = SimpleNamespace(post=_runtime_post)
 
 
 def _b64url(data: bytes) -> str:

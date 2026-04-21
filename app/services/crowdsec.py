@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import logging
-import requests
 from datetime import datetime, timezone
-from typing import List, Tuple, Dict, Set
+from typing import List, Dict, Set
 from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..config import Config
 from ..db import SessionLocal
 from ..models import Indicator, FeedStats
-from .common import retry_with_backoff, throttle_external_request, standardized_update_result
+from .common import build_feed_session, retry_with_backoff, throttle_external_request, standardized_update_result
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +20,12 @@ def _fetch_list(api_key: str, list_id: str, *, timeout_s: int, retry_attempts: i
     url = CROWDSEC_BASE.format(list_id=list_id)
 
     def _do():
-        throttle_external_request(source="crowdsec")
-        resp = requests.get(url, headers={"X-Api-Key": api_key}, timeout=max(1, timeout_s))
-        # Explicit status handling for monitoring
-        resp.raise_for_status()
-        lines = [ln.strip() for ln in resp.text.splitlines()]
-        # Only non-empty, no comments
-        return [ln for ln in lines if ln and not ln.startswith("#")]
+        with build_feed_session(source="crowdsec") as session:
+            throttle_external_request(source="crowdsec")
+            resp = session.get(url, headers={"X-Api-Key": api_key}, timeout=max(1, timeout_s))
+            resp.raise_for_status()
+            lines = [ln.strip() for ln in resp.text.splitlines()]
+            return [ln for ln in lines if ln and not ln.startswith("#")]
     return retry_with_backoff(
         _do,
         max_attempts=max(1, retry_attempts),
@@ -76,9 +74,6 @@ def update_crowdsec_list(list_id: str) -> Dict[str, int]:
                 .values(is_active=False, last_seen=now)
             )
 
-        inserted = 0
-        updated = 0
-
         for val in incoming:
             stmt = pg_insert(Indicator.__table__).values(
                 value=val,
@@ -102,8 +97,7 @@ def update_crowdsec_list(list_id: str) -> Dict[str, int]:
                     "metadata": {"raw": val, "list_id": list_id},
                 }
             )
-            res = db.execute(stmt)
-            # SQLAlchemy doesn't easily tell inserted vs updated here; approximate by lookup
+            db.execute(stmt)
         db.commit()
 
         # Update feed_stats fetch status

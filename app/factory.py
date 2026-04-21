@@ -20,7 +20,6 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Dict, List
 
-import requests
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Flask, Response, jsonify, make_response, request, session
 from flask_limiter import Limiter
@@ -63,6 +62,7 @@ from .models import (
     SyncJob,
     tags_contains,
 )
+from .runtime_env import push_runtime_env_overrides, update_proxy_settings_from_mapping
 from .query_parser import Term, Token, parse_kibana_query
 from .routes import (
     register_api_v1_routes,
@@ -74,6 +74,7 @@ from .routes import (
 )
 from .security import enforce_allowed_hosts, get_client_ip, validate_search_query
 from .services.common import (
+    build_feed_session,
     configure_requests_tls_verify_from_env,
     redact_proxy_credentials,
     sum_update_result,
@@ -455,38 +456,15 @@ def create_app() -> Flask:
         return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
     def _write_proxy_env(db: Session) -> None:
-        proxy_http = _get_setting(db, "proxy.http_url", "")
-        proxy_https = _get_setting(db, "proxy.https_url", "")
-        proxy_no = _get_setting(db, "proxy.no_proxy", "")
-        proxy_ca_bundle_path = _get_setting(db, "proxy.ca_bundle_path", "")
-        proxy_skip_tls_verify = _get_setting(db, "proxy.skip_tls_verify", "0")
-        if proxy_http:
-            os.environ["HTTP_PROXY"] = proxy_http
-            os.environ["http_proxy"] = proxy_http
-        else:
-            os.environ.pop("HTTP_PROXY", None)
-            os.environ.pop("http_proxy", None)
-        if proxy_https:
-            os.environ["HTTPS_PROXY"] = proxy_https
-            os.environ["https_proxy"] = proxy_https
-        else:
-            os.environ.pop("HTTPS_PROXY", None)
-            os.environ.pop("https_proxy", None)
-        if proxy_no:
-            os.environ["NO_PROXY"] = proxy_no
-            os.environ["no_proxy"] = proxy_no
-        else:
-            os.environ.pop("NO_PROXY", None)
-            os.environ.pop("no_proxy", None)
-        if proxy_ca_bundle_path:
-            os.environ["REQUESTS_CA_BUNDLE"] = proxy_ca_bundle_path
-        else:
-            os.environ.pop("REQUESTS_CA_BUNDLE", None)
-        if str(proxy_skip_tls_verify).strip().lower() in {"1", "true", "yes", "on"}:
-            os.environ["REQUESTS_SKIP_TLS_VERIFY"] = "true"
-        else:
-            os.environ.pop("REQUESTS_SKIP_TLS_VERIFY", None)
-        configure_requests_tls_verify_from_env()
+        update_proxy_settings_from_mapping(
+            {
+                "proxy.http_url": _get_setting(db, "proxy.http_url", ""),
+                "proxy.https_url": _get_setting(db, "proxy.https_url", ""),
+                "proxy.no_proxy": _get_setting(db, "proxy.no_proxy", ""),
+                "proxy.ca_bundle_path": _get_setting(db, "proxy.ca_bundle_path", ""),
+                "proxy.skip_tls_verify": _get_setting(db, "proxy.skip_tls_verify", "0"),
+            }
+        )
 
     def _bootstrap_runtime_settings() -> None:
         db = _db()
@@ -542,7 +520,8 @@ def create_app() -> Flask:
                 "error": "",
             }
             try:
-                resp = requests.get(target["url"], timeout=(5, 10))
+                with build_feed_session(source="admin_proxy_test") as session:
+                    resp = session.get(target["url"], timeout=(5, 10))
                 row["http"] = int(resp.status_code)
                 row["latency_ms"] = int((time.time() - t0) * 1000)
                 content_type = str(resp.headers.get("Content-Type") or "")
@@ -831,13 +810,14 @@ def create_app() -> Flask:
             api_key = field_values.get("api_key", "")
             if not api_key:
                 return False, "abuse.ch API key is required for connection test."
-            resp = requests.post(
-                cfg.THREATFOX_API_URL,
-                headers={"Auth-Key": api_key, "User-Agent": "ioc-threat-platform/1.0"},
-                json={"query": "get_iocs", "days": 1},
-                timeout=timeout_s,
-            )
-            resp.raise_for_status()
+            with build_feed_session(source="abusech") as session:
+                resp = session.post(
+                    cfg.THREATFOX_API_URL,
+                    headers={"Auth-Key": api_key, "User-Agent": "ioc-threat-platform/1.0"},
+                    json={"query": "get_iocs", "days": 1},
+                    timeout=timeout_s,
+                )
+                resp.raise_for_status()
             data = resp.json() if resp.content else {}
             status = str(data.get("query_status") or "ok")
             if status.lower() not in {"ok", "no_result"}:
@@ -848,25 +828,27 @@ def create_app() -> Flask:
             api_key = field_values.get("api_key", "")
             if not base_url or not api_key:
                 return False, "MISP URL and API key are required."
-            resp = requests.get(
-                f"{base_url}/users/view/me",
-                headers={"Authorization": api_key, "Accept": "application/json"},
-                timeout=timeout_s,
-                verify=cfg.MISP_VERIFY_SSL,
-            )
-            resp.raise_for_status()
+            with build_feed_session(source="misp") as session:
+                resp = session.get(
+                    f"{base_url}/users/view/me",
+                    headers={"Authorization": api_key, "Accept": "application/json"},
+                    timeout=timeout_s,
+                    verify=cfg.MISP_VERIFY_SSL,
+                )
+                resp.raise_for_status()
             return True, "MISP connection OK."
         if source_type == "malwarebazaar":
             api_key = (cfg.ABUSECH_AUTH_KEY or "").strip()
             if not api_key:
                 return False, "ABUSECH_AUTH_KEY is required for MalwareBazaar connection test."
-            resp = requests.post(
-                cfg.MALWAREBAZAAR_API_URL,
-                headers={"Auth-Key": api_key, "User-Agent": "ioc-threat-platform/1.0"},
-                data={"query": "get_taginfo", "tag": "exe", "limit": "1"},
-                timeout=timeout_s,
-            )
-            resp.raise_for_status()
+            with build_feed_session(source="malwarebazaar") as session:
+                resp = session.post(
+                    cfg.MALWAREBAZAAR_API_URL,
+                    headers={"Auth-Key": api_key, "User-Agent": "ioc-threat-platform/1.0"},
+                    data={"query": "get_taginfo", "tag": "exe", "limit": "1"},
+                    timeout=timeout_s,
+                )
+                resp.raise_for_status()
             data = resp.json() if resp.content else {}
             status = str(data.get("query_status") or "ok")
             if status.lower() not in {"ok", "no_result"}:
@@ -879,12 +861,13 @@ def create_app() -> Flask:
             list_ids = [x.strip() for x in (cfg.CROWDSEC_LISTS or "").split(",") if x.strip()]
             if not list_ids:
                 return False, "Set CROWDSEC_LISTS to test CrowdSec connectivity."
-            resp = requests.get(
-                f"https://api.crowdsec.net/v2/blocklists/{list_ids[0]}",
-                headers={"X-Api-Key": api_key},
-                timeout=timeout_s,
-            )
-            resp.raise_for_status()
+            with build_feed_session(source="crowdsec") as session:
+                resp = session.get(
+                    f"https://api.crowdsec.net/v2/blocklists/{list_ids[0]}",
+                    headers={"X-Api-Key": api_key},
+                    timeout=timeout_s,
+                )
+                resp.raise_for_status()
             return True, "CrowdSec connection OK."
         return False, f"No connection test handler for source_type={source_type}."
 
@@ -1259,23 +1242,11 @@ def create_app() -> Flask:
             db.commit()
 
     def _run_sync_worker_for_feed(feed: Feed) -> Dict[str, Any]:
-        source_type = feed.source_type
-        if source_type == "misp":
-            from .services.misp import update_misp_indicators
-            return {"source": feed.source_id, "result": update_misp_indicators()}
-        if source_type == "crowdsec":
-            from .services.crowdsec import update_crowdsec_indicators
-            return {"source": feed.source_id, "result": update_crowdsec_indicators()}
-        if source_type == "malwarebazaar":
-            from .services.malwarebazaar import update_malwarebazaar_indicators
-            return {"source": feed.source_id, "result": update_malwarebazaar_indicators()}
-        if source_type == "mwdb":
-            from .services.mwdb import update_mwdb_indicators
-            return {"source": feed.source_id, "result": update_mwdb_indicators()}
-        if source_type == "abusech":
-            from .services.abusech import update_abusech_indicators
-            return {"source": feed.source_id, "result": update_abusech_indicators()}
-        raise ValueError(f"Unknown source_type: {source_type}")
+        from .adapters import build_feed_registry
+
+        registry = build_feed_registry()
+        adapter = registry.get(str(feed.source_type))
+        return {"source": feed.source_id, "result": adapter.execute()}
 
     def _enqueue_sync_job(feed: Feed, *, trigger_type: str, db: Session | None = None) -> tuple[SyncJob, bool]:
         own_session = db is None
@@ -1348,7 +1319,6 @@ def create_app() -> Flask:
         scheduler_state["active_job_id"] = job.job_id
         scheduler_state["active_run_id"] = run_id
         updates: Dict[str, str | None] = {}
-        previous: Dict[str, str | None] = {}
         db = _db()
         try:
             feed = db.scalar(select(Feed).where(Feed.source_id == job.feed_source_id, Feed.deleted == False))  # noqa: E712
@@ -1421,25 +1391,19 @@ def create_app() -> Flask:
                 if shared_key:
                     updates["ABUSECH_AUTH_KEY"] = shared_key
 
-            previous = {k: os.environ.get(k) for k in updates.keys()}
-            for k, v in updates.items():
-                if v:
-                    os.environ[k] = str(v)
-                else:
-                    os.environ.pop(k, None)
-
             started = time.time()
-            if feed.source_type == "misp":
-                timeout_s = max(1, int(cfg.MISP_SYNC_TIMEOUT_S))
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(_run_sync_worker_for_feed, feed)
-                    try:
-                        result = future.result(timeout=timeout_s)
-                    except FuturesTimeoutError as e:
-                        future.cancel()
-                        raise TimeoutError(f"MISP sync timeout after {timeout_s}s") from e
-            else:
-                result = _run_sync_worker_for_feed(feed)
+            with push_runtime_env_overrides(updates):
+                if feed.source_type == "misp":
+                    timeout_s = max(1, int(cfg.MISP_SYNC_TIMEOUT_S))
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(_run_sync_worker_for_feed, feed)
+                        try:
+                            result = future.result(timeout=timeout_s)
+                        except FuturesTimeoutError as e:
+                            future.cancel()
+                            raise TimeoutError(f"MISP sync timeout after {timeout_s}s") from e
+                else:
+                    result = _run_sync_worker_for_feed(feed)
             result_data = result.get("result")
             fetched_count = _aggregate_fetched_count(result_data)
             dur_ms = int((time.time() - started) * 1000)
@@ -1561,12 +1525,6 @@ def create_app() -> Flask:
             _app_log("ERROR", "scheduler", "feed_sync_failed", feed_source_id=job.feed_source_id, run_id=run_id, metadata={"error": str(e)}, db=db)
             return {"source": job.feed_source_id, "error": str(e)}
         finally:
-            for k, v in updates.items():
-                prev = previous.get(k)
-                if prev is None:
-                    os.environ.pop(k, None)
-                else:
-                    os.environ[k] = prev
             scheduler_state["active_run_id"] = None
             scheduler_state["active_job_id"] = None
             db.close()
