@@ -1797,3 +1797,26 @@
 - Recreate `nginx` with the corrected healthcheck and confirm all services are healthy.
 - Commit the healthcheck correction.
 - Tag and publish release `1.6.1`, then push branch and tag.
+
+[current stage]
+- Release packaging for milestone 1.6.1 after successful host rollout.
+
+[actions performed]
+- Recreated `nginx` with the corrected self-probe healthcheck targeting `https://127.0.0.1:7003/readyz`.
+- Verified full host stack health with `docker compose --profile edge ps`: `app`, `worker`, `postgres`, `redis`, and `nginx` are all healthy.
+- Committed the deployment-specific compose correction as `b368c2b Fix nginx self-probe healthchecks for compose deployments`.
+
+[verification]
+- `docker compose --profile edge ps` -> all services healthy
+- `curl -fsS http://192.168.10.71:7005/readyz` -> `{"status":"ready","checks":{"database":true,"redis":true}}`
+- `curl -fsS http://192.168.10.71:7005/api/swagger` -> Swagger UI HTML returned
+- `curl -k -fsS https://127.0.0.1:7003/readyz` -> ready through nginx
+- `curl -k -I -fsS https://127.0.0.1:7003/api/swagger` -> `HTTP/2 200`
+
+[observations]
+- Release-ready commit for `1.6.1` is `b368c2b`, because it includes both the milestone code and the compose/healthcheck correction required for a healthy host deployment.
+
+[next planned implementation steps]
+- Create tag `1.6.1` at `b368c2b`.
+- Push `main` and the release tag.
+- Publish GitHub release notes for milestone `1.6.1`.
