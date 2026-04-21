@@ -5,10 +5,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
-from flask import Response, jsonify, request, send_file, send_from_directory
+from flask import Response, jsonify, request, send_from_directory
 from sqlalchemy import select
 from swagger_ui_bundle import swagger_ui_path
 
+from ..openapi_spec import build_openapi_spec, render_openapi_yaml
 
 _LEGACY_TO_V1 = {
     "/api/feeds": "/api/v1/feeds",
@@ -73,34 +74,12 @@ def register_api_v1_routes(
     @app.get("/api/v1/openapi.yaml")
     @limiter.limit("30 per minute")
     def api_v1_openapi_yaml():
-        return send_file(_openapi_yaml_path(), mimetype="application/yaml")
+        return Response(render_openapi_yaml(), mimetype="application/yaml")
 
     @app.get("/api/v1/openapi.json")
     @limiter.limit("30 per minute")
     def api_v1_openapi_json():
-        # The JSON endpoint is intentionally derived from the YAML source only through
-        # documentation parity, not dynamic schema generation in this milestone.
-        payload = {
-            "openapi": "3.1.0",
-            "info": {
-                "title": "IOC Service API",
-                "version": "1.6.0",
-                "description": "Supported versioned API surface for IOC Service.",
-            },
-            "externalDocs": {
-                "description": "Human-readable API and migration documentation",
-                "url": "/docs/api.md",
-            },
-            "paths": {
-                "/api/v1/indicators": {},
-                "/api/v1/feeds": {},
-                "/api/v1/feeds/metrics": {},
-                "/api/v1/logs": {},
-                "/api/v1/runs/current": {},
-                "/api/v1/sync": {},
-            },
-        }
-        return jsonify(payload)
+        return jsonify(build_openapi_spec())
 
     @app.get("/api/v1/docs")
     @limiter.limit("30 per minute")

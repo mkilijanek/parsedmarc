@@ -1567,3 +1567,39 @@
 - swagger-ui-bundling: bundle UI assets in the image so docs do not depend on external CDNs or network access.
 - api-swagger-route: expose a stable, operator-friendly URL for interactive docs.
 - openapi-generation-followup: keep dynamic/generated OpenAPI as a separate follow-up issue (#174) rather than silently overclaiming it in the current patch.
+
+[actions performed]
+- Added `app/openapi_spec.py` as the repo-local source of truth for the supported OpenAPI 3.1 contract.
+- Added `scripts/generate_openapi.py` to generate `app/static/openapi-v1.yaml` and to fail in `--check` mode when the checked-in artifact drifts from the source module.
+- Switched `/api/v1/openapi.yaml` and `/api/v1/openapi.json` to serve generated output from the same source of truth instead of maintaining divergent hand-written payloads.
+- Added CI validation in `.github/workflows/ci.yml` so schema drift detection now also verifies the generated OpenAPI artifact.
+- Regenerated the shipped YAML artifact from the source module and added tests asserting YAML/JSON contract parity.
+
+[verification]
+- `.venv/bin/ruff check app/openapi_spec.py app/routes/api_v1.py tests/test_api.py scripts/generate_openapi.py` -> success
+- `PYTHONPATH=. .venv/bin/python scripts/generate_openapi.py --check` -> `app/static/openapi-v1.yaml is up to date`
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py::TestApiV1Endpoints` -> `11 passed`
+- `PYTHONPATH=. .venv/bin/pytest -q` -> `511 passed, 2 skipped`
+- `PYTHONPATH=. .venv/bin/python -m compileall -q app tests scripts` -> success
+
+[decisions]
+- Kept generation repo-local and deterministic instead of introspecting Flask routes dynamically; this keeps the contract explicit and reviewable while still eliminating YAML/JSON drift.
+- Continued to publish only the supported `/api/v1/*` surface from the generated contract and did not auto-include internal or admin routes.
+
+[mistakes and lessons]
+- After switching YAML serving to generated content, `send_file` became dead code in the route module. Lesson: rerun lints immediately after replacing file-backed handlers with generated responses to catch leftover imports and helper paths.
+
+[current stage]
+- Implementing generated OpenAPI 3.1 workflow from a maintained source of truth and CI drift validation for issue #174.
+
+[next planned implementation steps]
+- Add a repo-local OpenAPI source module and switch /api/v1/openapi.{yaml,json} to use it.
+- Add a generator script that writes the shipped YAML artifact and can fail in --check mode on drift.
+- Update CI to validate that the checked-in artifact matches generated output.
+- Update docs to state that Swagger UI now consumes a generated contract.
+
+[task backlog with rationale]
+- openapi-source-module: keep one source of truth in code to remove YAML/JSON divergence.
+- generator-script: make the artifact reproducible for release packaging and human review.
+- ci-drift-check: fail fast when generated contract and shipped artifact diverge.
+- issue-174-closure: close the follow-up only after generation and validation are both in place.

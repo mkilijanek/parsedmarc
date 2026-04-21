@@ -157,6 +157,9 @@ jobs:
       - name: Validate ORM and Alembic schema alignment
         run: python scripts/validate_schema.py
 
+      - name: Validate generated OpenAPI artifact
+        run: python scripts/generate_openapi.py --check
+
   security-scan:
     name: security and dependency scan
     runs-on: ubuntu-latest

@@ -23,6 +23,7 @@ Production-ready threat feed aggregation and export service:
 - Removed duplicated database environment parsing by routing DB bootstrap through `app.config`.
 - Split runtime and development dependencies into `requirements.txt` and `requirements-dev.txt`.
 - Added `pyproject.toml` with project and tool metadata.
+- Moved OpenAPI 3.1 to a generated source of truth with CI drift validation.
 
 ## Release Highlights (1.4.2)
 

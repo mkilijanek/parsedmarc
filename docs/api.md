@@ -37,6 +37,7 @@ The supported versioned API contract is published at:
 
 `/api/v1/docs` serves a lightweight built-in docs page for the supported contract.
 `/api/swagger` serves bundled Swagger UI from assets shipped in the application image and points at `/api/v1/openapi.yaml`.
+The YAML and JSON documents are generated from a repo-local source of truth in `app/openapi_spec.py`; the shipped YAML artifact is validated in CI with `scripts/generate_openapi.py --check`.
 
 ---
 

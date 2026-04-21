@@ -4,55 +4,80 @@ info:
   version: 1.6.0
   description: Supported versioned API surface for IOC Service.
 servers:
-  - url: /
+- url: /
+externalDocs:
+  description: Human-readable API and migration documentation
+  url: /docs/api.md
 paths:
   /api/v1/indicators:
     get:
       summary: List indicators as JSON
       parameters:
-        - in: query
-          name: q
-          schema: { type: string }
-        - in: query
-          name: type
-          schema: { type: string, default: all }
-        - in: query
-          name: tlp
-          schema: { type: string, default: all }
-        - in: query
-          name: source
-          schema: { type: string, default: all }
-        - in: query
-          name: min_conf
-          schema: { type: integer, minimum: 0, maximum: 100 }
-        - in: query
-          name: max_conf
-          schema: { type: integer, minimum: 0, maximum: 100 }
-        - in: query
-          name: limit
-          schema: { type: integer, minimum: 1 }
-        - in: query
-          name: offset
-          schema: { type: integer, minimum: 0 }
+      - in: query
+        name: q
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+          default: all
+      - in: query
+        name: tlp
+        schema:
+          type: string
+          default: all
+      - in: query
+        name: source
+        schema:
+          type: string
+          default: all
+      - in: query
+        name: min_conf
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 100
+      - in: query
+        name: max_conf
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 100
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          minimum: 0
       responses:
-        "200":
+        '200':
           description: Indicators list
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  count: { type: integer }
-                  total: { type: integer }
-                  limit: { type: integer }
-                  offset: { type: integer }
-                  filters: { type: object }
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  filters:
+                    type: object
                   items:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Indicator"
-        "400":
-          $ref: "#/components/responses/Error"
+                      $ref: '#/components/schemas/Indicator'
+        '400':
+          $ref: '#/components/responses/Error'
   /api/v1/sync:
     post:
       summary: Enqueue a feed sync job
@@ -66,62 +91,91 @@ paths:
                 source:
                   type: string
                   description: Feed source id or `all`
-              required: [source]
+              required:
+              - source
       responses:
-        "202":
+        '202':
           description: Sync job(s) accepted
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  source: { type: string }
+                  source:
+                    type: string
                   jobs:
                     type: array
                     items:
                       type: object
                       properties:
-                        feed_source_id: { type: string }
-                        job_id: { type: string }
-                        created: { type: boolean }
+                        feed_source_id:
+                          type: string
+                        job_id:
+                          type: string
+                        created:
+                          type: boolean
                   blocked:
                     type: array
-                    items: { type: string }
-        "400":
-          $ref: "#/components/responses/Error"
+                    items:
+                      type: string
+        '400':
+          $ref: '#/components/responses/Error'
   /api/v1/feeds:
     get:
       summary: List feed operational state
       parameters:
-        - in: query
-          name: limit
-          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
-        - in: query
-          name: offset
-          schema: { type: integer, minimum: 0, default: 0 }
-        - in: query
-          name: sort
-          schema: { type: string, default: source }
-        - in: query
-          name: order
-          schema: { type: string, enum: [asc, desc], default: asc }
-        - in: query
-          name: status
-          schema: { type: string, default: all }
-        - in: query
-          name: datasource
-          schema: { type: string, default: all }
-        - in: query
-          name: configured
-          schema: { type: string, default: all }
-        - in: query
-          name: q
-          schema: { type: string }
-        - in: query
-          name: problems_only
-          schema: { type: boolean, default: false }
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - in: query
+        name: sort
+        schema:
+          type: string
+          default: source
+      - in: query
+        name: order
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
+          default: asc
+      - in: query
+        name: status
+        schema:
+          type: string
+          default: all
+      - in: query
+        name: datasource
+        schema:
+          type: string
+          default: all
+      - in: query
+        name: configured
+        schema:
+          type: string
+          default: all
+      - in: query
+        name: q
+        schema:
+          type: string
+      - in: query
+        name: problems_only
+        schema:
+          type: boolean
+          default: false
       responses:
-        "200":
+        '200':
           description: Feed inventory and state
           content:
             application/json:
@@ -130,144 +184,214 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { type: object }
-                  total: { type: integer }
-                  limit: { type: integer }
-                  offset: { type: integer }
-                  sort: { type: string }
-                  order: { type: string }
-                  filters: { type: object }
+                    items:
+                      type: object
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  sort:
+                    type: string
+                  order:
+                    type: string
+                  filters:
+                    type: object
   /api/v1/feeds/metrics:
     get:
       summary: Return feed operational metrics for a time window
       parameters:
-        - in: query
-          name: window
-          schema: { type: string, example: 24h }
-        - in: query
-          name: hours
-          schema: { type: integer }
-        - in: query
-          name: datasource
-          schema: { type: string, default: all }
+      - in: query
+        name: window
+        schema:
+          type: string
+          example: 24h
+      - in: query
+        name: hours
+        schema:
+          type: integer
+      - in: query
+        name: datasource
+        schema:
+          type: string
+          default: all
       responses:
-        "200":
+        '200':
           description: Feed metrics
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  window: { type: string }
-                  hours: { type: integer }
-                  bucket: { type: string }
-                  datasource: { type: string }
-                  total_feeds: { type: integer }
+                  window:
+                    type: string
+                  hours:
+                    type: integer
+                  bucket:
+                    type: string
+                  datasource:
+                    type: string
+                  total_feeds:
+                    type: integer
                   items:
                     type: array
-                    items: { type: object }
+                    items:
+                      type: object
                   timeseries:
                     type: array
-                    items: { type: object }
-                  summary: { type: object }
+                    items:
+                      type: object
+                  summary:
+                    type: object
   /api/v1/runs/current:
     get:
       summary: Return queue and run state
       responses:
-        "200":
+        '200':
           description: Current scheduler, queue, and run state
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  scheduler_heartbeat: { type: string }
-                  active_run_id: { type: string, nullable: true }
-                  active_job_id: { type: string, nullable: true }
+                  scheduler_heartbeat:
+                    type: string
+                  active_run_id:
+                    type: string
+                    nullable: true
+                  active_job_id:
+                    type: string
+                    nullable: true
                   queued_jobs:
                     type: array
-                    items: { type: object }
+                    items:
+                      type: object
                   running:
                     type: array
-                    items: { type: object }
+                    items:
+                      type: object
                   latest:
                     type: array
-                    items: { type: object }
+                    items:
+                      type: object
   /api/v1/logs:
     get:
       summary: Query application logs
       parameters:
-        - in: query
-          name: feed
-          schema: { type: string }
-        - in: query
-          name: job_id
-          schema: { type: string }
-        - in: query
-          name: run_id
-          schema: { type: string }
-        - in: query
-          name: level
-          schema: { type: string }
-        - in: query
-          name: component
-          schema: { type: string }
-        - in: query
-          name: since
-          schema: { type: string, format: date-time }
-        - in: query
-          name: until
-          schema: { type: string, format: date-time }
-        - in: query
-          name: limit
-          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      - in: query
+        name: feed
+        schema:
+          type: string
+      - in: query
+        name: job_id
+        schema:
+          type: string
+      - in: query
+        name: run_id
+        schema:
+          type: string
+      - in: query
+        name: level
+        schema:
+          type: string
+      - in: query
+        name: component
+        schema:
+          type: string
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: until
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 200
       responses:
-        "200":
+        '200':
           description: Log query results
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  count: { type: integer }
+                  count:
+                    type: integer
                   items:
                     type: array
                     items:
                       type: object
                       properties:
-                        created_at: { type: string }
-                        level: { type: string }
-                        component: { type: string }
-                        message: { type: string }
-                        feed_source_id: { type: string, nullable: true }
-                        run_id: { type: string, nullable: true }
-                        metadata: { type: object }
+                        created_at:
+                          type: string
+                        level:
+                          type: string
+                        component:
+                          type: string
+                        message:
+                          type: string
+                        feed_source_id:
+                          type: string
+                          nullable: true
+                        run_id:
+                          type: string
+                          nullable: true
+                        metadata:
+                          type: object
 components:
   schemas:
     Indicator:
       type: object
       properties:
-        id: { type: integer }
-        uuid: { type: string }
-        value: { type: string }
-        type: { type: string }
-        source: { type: string }
-        source_id: { type: string, nullable: true }
-        confidence: { type: integer }
-        tlp: { type: string }
-        is_active: { type: boolean }
+        id:
+          type: integer
+        uuid:
+          type: string
+        value:
+          type: string
+        type:
+          type: string
+        source:
+          type: string
+        source_id:
+          type: string
+          nullable: true
+        confidence:
+          type: integer
+        tlp:
+          type: string
+        is_active:
+          type: boolean
         tags:
           type: array
-          items: { type: string }
-        metadata: { type: object }
-        first_seen: { type: string, nullable: true }
-        last_seen: { type: string, nullable: true }
+          items:
+            type: string
+        metadata:
+          type: object
+        first_seen:
+          type: string
+          nullable: true
+        last_seen:
+          type: string
+          nullable: true
   responses:
     Error:
-      description: Request validation error
+      description: Validation or request error
       content:
         application/json:
           schema:
             type: object
             properties:
-              error: { type: string }
+              error:
+                type: string
+              correlation_id:
+                type: string

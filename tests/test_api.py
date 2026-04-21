@@ -236,6 +236,15 @@ class TestApiV1Endpoints:
         payload = json_response.get_json()
         assert payload["openapi"] == "3.1.0"
         assert "/api/v1/feeds" in payload["paths"]
+        assert payload["paths"]["/api/v1/indicators"]["get"]["summary"] == "List indicators as JSON"
+
+    def test_openapi_yaml_and_json_share_same_source_of_truth(self, client):
+        yaml_response = client.get("/api/v1/openapi.yaml")
+        json_response = client.get("/api/v1/openapi.json")
+        assert yaml_response.status_code == 200
+        assert json_response.status_code == 200
+        assert "/api/v1/logs" in yaml_response.get_data(as_text=True)
+        assert "/api/v1/logs" in json_response.get_json()["paths"]
 
     def test_api_v1_docs_page_links_to_contract(self, client):
         response = client.get("/api/v1/docs")
