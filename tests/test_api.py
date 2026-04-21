@@ -244,6 +244,18 @@ class TestApiV1Endpoints:
         assert "/api/v1/openapi.yaml" in html
         assert "/api/v1/openapi.json" in html
 
+    def test_api_swagger_ui_is_served_from_bundled_assets(self, client):
+        response = client.get("/api/swagger")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert "/api/swagger-assets/swagger-ui.css" in html
+        assert "/api/swagger-assets/swagger-ui-bundle.js" in html
+        assert "/api/v1/openapi.yaml" in html
+
+        asset_response = client.get("/api/swagger-assets/swagger-ui-bundle.js")
+        assert asset_response.status_code == 200
+        assert "javascript" in asset_response.content_type or "text/plain" in asset_response.content_type
+
     def test_legacy_api_routes_expose_deprecation_headers_when_v1_successor_exists(self, client, sample_indicators, sample_feed_stats):
         response = client.get("/api/feeds")
         assert response.status_code == 200

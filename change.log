@@ -1503,3 +1503,67 @@
 
 [mistakes and lessons]
 - I first anchored the new access-boundary test to `/admin/login`, but the current auth flow correctly redirects to `/auth/login`. Lesson: when asserting redirect boundaries, test the actual route contract from the running app instead of assuming historical path naming.
+
+[actions performed]
+- Committed milestone delivery as `f99098a` (`Deliver milestone 1.6.0`) and pushed it to `origin/main`.
+- Closed delivered GitHub issues for `1.6.0`: `#143`, `#144`, `#145`, `#164`, `#165`.
+- Removed wider compliance-program issues `#168`, `#170`, and `#173` from milestone `1.6.0` because they are not part of the delivered API/config modernization scope.
+- Waited for GitHub Actions run `24715659767`; CI, PostgreSQL integration, schema drift, security scan, and M15 release gate all completed successfully.
+- Closed GitHub milestone `1.6.0`.
+- Published annotated git tag `1.6.0` and GitHub release `1.6.0`.
+
+[verification]
+- GitHub Actions run `24715659767` -> `success`
+- GitHub milestone `1.6.0` -> `closed`, `0` open issues, `5` closed issues
+- GitHub release `1.6.0` -> `https://github.com/mkilijanek/ioc-service/releases/tag/1.6.0`
+
+[important commands]
+- `git commit -m "Deliver milestone 1.6.0"`
+- `git push origin main`
+- `gh issue close 143 144 145 164 165 ...`
+- `gh api -X PATCH repos/mkilijanek/ioc-service/issues/<id> --input <(printf '{"milestone":null}')`
+- `gh run watch 24715659767 --repo mkilijanek/ioc-service --exit-status`
+- `gh api -X PATCH repos/mkilijanek/ioc-service/milestones/8 -f state=closed`
+- `git tag -a 1.6.0 -m "Release 1.6.0" f99098a`
+- `git push origin 1.6.0`
+- `gh release create 1.6.0 --repo mkilijanek/ioc-service --title "1.6.0" --notes-file /tmp/release-1.6.0.md`
+
+[mistakes and lessons]
+- `gh issue edit` on this client does not support `--remove-milestone`. Lesson: remove milestones through `gh api` by PATCHing the issue with `"milestone": null`.
+- `gh api` endpoints with query strings must be quoted; otherwise the shell can split or reinterpret them. Lesson: wrap GitHub API paths containing `?` in single quotes.
+- `gh release create` rejected `--target f99098a` for an already existing tag. Lesson: when the tag already exists and points to the correct commit, create the release directly from the tag without re-supplying `target_commitish`.
+
+[actions performed]
+- Created GitHub issue `#174` to track a future generated OpenAPI 3.1 workflow for the supported API surface.
+- Added runtime dependency `swagger-ui-bundle` so Swagger UI assets can be shipped inside the Docker image instead of loaded from an external CDN.
+- Added `/api/swagger` to serve bundled Swagger UI and `/api/swagger-assets/<file>` to serve the vendored static assets from the installed package.
+- Pointed the bundled UI at `/api/v1/openapi.yaml` so the interactive docs follow the same shipped contract as the current versioned API.
+- Updated `README.md`, `docs/api.md`, `docs/README.md`, and `QUICKSTART.md` to document the new interactive docs entrypoint.
+- Added API tests for the bundled Swagger UI page and a served JavaScript asset.
+
+[decisions]
+- Did not rewrite the application to FastAPI just to get Swagger/OpenAPI output; that would be a disproportionate architecture change for a documentation feature.
+- Left issue `#174` open because the current patch ships Swagger UI for the existing contract but does not yet introduce a true generated OpenAPI 3.1 workflow.
+
+[verification]
+- `.venv/bin/ruff check app/routes/api_v1.py tests/test_api.py` -> success
+- `PYTHONPATH=. .venv/bin/pytest -q tests/test_api.py::TestApiV1Endpoints` -> `10 passed`
+- `PYTHONPATH=. .venv/bin/pytest -q` -> `510 passed, 2 skipped`
+- `PYTHONPATH=. .venv/bin/python -m compileall -q app tests` -> success
+
+[mistakes and lessons]
+- I first considered using FastAPI for Swagger generation, but that would have created a second web stack solely for documentation and increased maintenance cost. Lesson: solve the operational requirement with the smallest architecture change that preserves the existing service boundary.
+
+[current stage]
+- Adding bundled Swagger UI for the shipped OpenAPI contract after milestone 1.6.0 closure.
+
+[next planned implementation steps]
+- Add tracking issue for generated OpenAPI 3.1 workflow and keep current implementation focused on bundled Swagger UI for the existing supported contract.
+- Choose a lightweight Swagger UI asset bundle that can be installed into the Docker image with runtime dependencies.
+- Serve Swagger UI at /api/swagger and point it at the shipped OpenAPI artifact.
+- Update docs and tests for the new API documentation entrypoint.
+
+[task backlog with rationale]
+- swagger-ui-bundling: bundle UI assets in the image so docs do not depend on external CDNs or network access.
+- api-swagger-route: expose a stable, operator-friendly URL for interactive docs.
+- openapi-generation-followup: keep dynamic/generated OpenAPI as a separate follow-up issue (#174) rather than silently overclaiming it in the current patch.

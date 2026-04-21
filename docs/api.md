@@ -33,8 +33,10 @@ The supported versioned API contract is published at:
 - `GET /api/v1/openapi.yaml`
 - `GET /api/v1/openapi.json`
 - `GET /api/v1/docs`
+- `GET /api/swagger`
 
-`/api/v1/docs` serves a lightweight embedded Swagger UI using the checked-in `openapi-v1.yaml` artifact.
+`/api/v1/docs` serves a lightweight built-in docs page for the supported contract.
+`/api/swagger` serves bundled Swagger UI from assets shipped in the application image and points at `/api/v1/openapi.yaml`.
 
 ---
 

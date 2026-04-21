@@ -166,6 +166,7 @@ docker-compose exec db psql -U threatfeed
 - `GET /readyz` - Readiness check
 - `GET /api/v1/openapi.yaml` - kontrakt OpenAPI dla wspieranej wersji API
 - `GET /api/v1/docs` - podgląd dokumentacji wersjonowanego API
+- `GET /api/swagger` - Swagger UI serwowany lokalnie z assetów obrazu
 - `GET /api/v1/indicators` - wersjonowane zapytania IOC
 - `POST /api/v1/sync` - wersjonowane kolejkowanie synców
 - `GET /api/stats` - Statystyki systemu

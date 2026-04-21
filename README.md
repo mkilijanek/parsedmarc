@@ -105,6 +105,7 @@ curl -k https://localhost:7003/readyz
 - `GET /api/v1/openapi.yaml` – versioned API contract
 - `GET /api/v1/openapi.json` – JSON rendering of the versioned API contract
 - `GET /api/v1/docs` – embedded docs viewer for the versioned API
+- `GET /api/swagger` – bundled Swagger UI served from the application image
 - `GET /api/v1/indicators` – versioned indicator query API
 - `POST /api/v1/sync` – versioned sync enqueue API
 - `GET /api/v1/feeds` – versioned feed inventory

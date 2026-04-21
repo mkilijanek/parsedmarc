@@ -5,8 +5,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
-from flask import Response, jsonify, request, send_file
+from flask import Response, jsonify, request, send_file, send_from_directory
 from sqlalchemy import select
+from swagger_ui_bundle import swagger_ui_path
 
 
 _LEGACY_TO_V1 = {
@@ -20,6 +21,10 @@ _LEGACY_TO_V1 = {
 
 def _openapi_yaml_path() -> Path:
     return Path(__file__).resolve().parents[1] / "static" / "openapi-v1.yaml"
+
+
+def _swagger_ui_asset_path() -> Path:
+    return Path(swagger_ui_path)
 
 
 def register_api_v1_routes(
@@ -123,6 +128,43 @@ def register_api_v1_routes(
   <p>Legacy <code>/api/*</code> routes remain available additively during migration and may return deprecation headers when a versioned successor exists.</p>
 </body>
 </html>"""
+
+    @app.get("/api/swagger")
+    @limiter.limit("30 per minute")
+    def api_swagger_ui():
+        return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>IOC Service Swagger UI</title>
+  <link rel="stylesheet" href="/api/swagger-assets/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="/api/swagger-assets/swagger-ui-bundle.js"></script>
+  <script src="/api/swagger-assets/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function () {
+      window.ui = SwaggerUIBundle({
+        url: "/api/v1/openapi.yaml",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        layout: "StandaloneLayout"
+      });
+    };
+  </script>
+</body>
+</html>"""
+
+    @app.get("/api/swagger-assets/<path:filename>")
+    @limiter.limit("60 per minute")
+    def api_swagger_assets(filename: str):
+        return send_from_directory(str(_swagger_ui_asset_path()), filename)
 
     @app.get("/api/v1/indicators")
     @limiter.limit("60 per minute")
