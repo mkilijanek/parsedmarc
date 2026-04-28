@@ -40,7 +40,8 @@ curl http://localhost:7005/health
 #### `ioc-service-tls` (bundled edge TLS)
 - App/workers plus nginx edge image.
 - Intended when this stack terminates HTTPS itself.
-- Requires mounted certs under `./ssl`.
+- Uses `SSL_DIR` (defaults to `/home/kili/Repo/ioc-service/ssl`) for mounted certs on the deployment host.
+- If `cert.pem` / `key.pem` are missing in that directory, the image generates a short-lived self-signed fallback certificate so the stack still starts for lab or bootstrap use.
 
 ### Steps
 1. Clone repository

@@ -6,6 +6,10 @@ hsts_enabled="${NGINX_HSTS_ENABLED:-true}"
 http_port="${NGINX_HTTP_PORT:-80}"
 https_port="${NGINX_HTTPS_PORT:-7003}"
 public_https_port="${NGINX_PUBLIC_HTTPS_PORT:-$https_port}"
+cert_path="/etc/nginx/ssl/cert.pem"
+key_path="/etc/nginx/ssl/key.pem"
+fallback_cert_path="/tmp/nginx-selfsigned-cert.pem"
+fallback_key_path="/tmp/nginx-selfsigned-key.pem"
 
 write_common_headers() {
   cat <<'EOF'
@@ -18,6 +22,17 @@ EOF
 }
 
 if [ "$tls_enabled" = "true" ]; then
+  if [ ! -s "$cert_path" ] || [ ! -s "$key_path" ]; then
+    cert_path="$fallback_cert_path"
+    key_path="$fallback_key_path"
+    if [ ! -s "$cert_path" ] || [ ! -s "$key_path" ]; then
+      openssl req -x509 -nodes -newkey rsa:2048 \
+        -keyout "$key_path" \
+        -out "$cert_path" \
+        -days 7 \
+        -subj "${NGINX_SELF_SIGNED_SUBJECT:-/CN=localhost}" >/dev/null 2>&1
+    fi
+  fi
   cat > /etc/nginx/conf.d/default.conf <<EOF
 upstream app_upstream {
   server app:8080;
@@ -36,8 +51,8 @@ server {
   listen ${https_port} ssl http2;
   server_name _;
 
-  ssl_certificate     /etc/nginx/ssl/cert.pem;
-  ssl_certificate_key /etc/nginx/ssl/key.pem;
+  ssl_certificate     ${cert_path};
+  ssl_certificate_key ${key_path};
   ssl_protocols TLSv1.2 TLSv1.3;
   ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';
   ssl_prefer_server_ciphers off;

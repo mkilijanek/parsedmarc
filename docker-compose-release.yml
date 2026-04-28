@@ -180,7 +180,7 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-7003}:7003"
     volumes:
-      - ./ssl:/etc/nginx/ssl:ro
+      - ${SSL_DIR:-/home/kili/Repo/ioc-service/ssl}:/etc/nginx/ssl:ro
     depends_on:
       app:
         condition: service_healthy
