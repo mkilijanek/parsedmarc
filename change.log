@@ -2390,3 +2390,10 @@
 [decisions]
 - Used # type: ignore[attr-defined] rather than restructuring the compat shim, because the
   shim exists specifically for test patching and restructuring it would change test behaviour.
+
+[OSV scanner second fix]
+- CI run on 5880775 showed OSV Scanner still failing: "Code scanning is not enabled for this
+  repository" — the SARIF upload step requires GitHub Advanced Security which is not enabled.
+- Fix: set upload-sarif: false in .github/workflows/osv-scanner.yml.
+  The vulnerability scan itself still runs and blocks on CVEs; only the SARIF upload is skipped.
+- Committing this alongside the change.log update; this is the last blocking CI failure.

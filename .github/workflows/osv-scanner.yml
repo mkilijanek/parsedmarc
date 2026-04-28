@@ -28,7 +28,9 @@ jobs:
         -r
         ./
       fail-on-vuln: true
-      upload-sarif: true
+      # SARIF upload requires GitHub Advanced Security / Code Scanning to be enabled.
+      # Set to true if Code Scanning is activated for this repository.
+      upload-sarif: false
     permissions:
       actions: read
       contents: read
