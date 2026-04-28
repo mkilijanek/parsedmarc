@@ -126,6 +126,10 @@ def register_ops_admin_routes(
                     _get_setting(db, "sentinel.cert_private_key_pem", cfg.AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM, secret=True)
                 ),
             }
+            security_conf = {
+                "admin_login_rate_limit": _get_setting(db, "feedcfg.security.admin_login_rate_limit", cfg.ADMIN_LOGIN_RATE_LIMIT),
+                "admin_login_rate_limit_window_minutes": _get_setting(db, "feedcfg.security.admin_login_rate_limit_window_minutes", str(cfg.ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES)),
+            }
             proxy_test_raw = _get_setting(db, "proxy.last_test_result", "")
             proxy_test_results: List[Dict[str, Any]] = []
             if proxy_test_raw:
@@ -396,6 +400,7 @@ def register_ops_admin_routes(
             feed_rows_html=feed_rows_html,
             recent_jobs_html=recent_jobs_html,
             danger_zone_html=danger_zone_html,
+            security_conf={k: _esc(str(v or "")) for k, v in security_conf.items()},
         )
 
     @app.post("/admin/global-config")
@@ -426,6 +431,14 @@ def register_ops_admin_routes(
             sentinel_cert_private_key_pem = (request.form.get("sentinel_cert_private_key_pem") or "").strip()
             if sentinel_cert_private_key_pem:
                 _set_setting(db, "sentinel.cert_private_key_pem", sentinel_cert_private_key_pem, secret=True)
+
+            # Security settings (admin login rate limiting)
+            admin_login_rate_limit = (request.form.get("admin_login_rate_limit") or "").strip()
+            if admin_login_rate_limit:
+                _set_setting(db, "feedcfg.security.admin_login_rate_limit", admin_login_rate_limit)
+            admin_login_window = (request.form.get("admin_login_rate_limit_window_minutes") or "").strip()
+            if admin_login_window:
+                _set_setting(db, "feedcfg.security.admin_login_rate_limit_window_minutes", admin_login_window)
 
             db.commit()
             _write_proxy_env(db)

@@ -6,7 +6,12 @@ from urllib.parse import quote
 
 from flask import Response, current_app, redirect, request, session, url_for
 
-from ..settings_store import get_admin_login_rate_limit
+from ..settings_store import (
+    get_admin_api_token,
+    get_admin_auth_enabled,
+    get_admin_login_rate_limit,
+    get_admin_panel_enabled,
+)
 
 
 ROLE_PERMISSIONS = {
@@ -90,6 +95,11 @@ def should_redirect_auth_surface_to_https(cfg) -> bool:
     return incoming_port == app_port and incoming_port != https_port
 
 
+def _get_db():
+    from ..db import get_db
+    return next(get_db())
+
+
 def register_auth_routes(app, *, limiter, cfg) -> None:
     def _ensure_admin_csrf_token() -> str:
         token = str(session.get("admin_csrf_token") or "").strip()
@@ -98,12 +108,26 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
             session["admin_csrf_token"] = token
         return token
 
+    def _resolve_admin_api_token() -> str:
+        try:
+            return get_admin_api_token(_get_db(), cfg)
+        except Exception:
+            return (cfg.ADMIN_API_TOKEN or "").strip()
+
     def _admin_auth_configured() -> bool:
-        return bool((cfg.ADMIN_API_TOKEN or "").strip())
+        return bool(_resolve_admin_api_token())
 
     def _admin_auth_disabled() -> bool:
-        """Check if admin authentication is explicitly disabled (dev/test only)."""
-        return not getattr(cfg.security, "ADMIN_AUTH_ENABLED", True)
+        try:
+            return not get_admin_auth_enabled(_get_db(), cfg)
+        except Exception:
+            return not getattr(cfg.security, "ADMIN_AUTH_ENABLED", True)
+
+    def _admin_panel_disabled() -> bool:
+        try:
+            return not get_admin_panel_enabled(_get_db(), cfg)
+        except Exception:
+            return not getattr(cfg.security, "ADMIN_PANEL_ENABLED", True)
 
     def _auto_auth_if_disabled() -> None:
         """Automatically authenticate admin session when auth is disabled."""
@@ -148,6 +172,8 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
     def _require_admin_session():
         if not request.path.startswith("/admin"):
             return None
+        if _admin_panel_disabled():
+            return Response("Not found.", status=404)
         # Auto-authenticate if admin auth is disabled (dev/test mode)
         _auto_auth_if_disabled()
         if _admin_authenticated():
@@ -280,7 +306,7 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
     @limiter.limit(_get_dynamic_login_rate_limit)
     def auth_login_post():
         next_url = (request.form.get("next") or "/admin").strip() or "/admin"
-        expected = (cfg.ADMIN_API_TOKEN or "").strip()
+        expected = _resolve_admin_api_token()
         provided = (request.form.get("admin_token") or "").strip()
         if not expected:
             return redirect(url_for("auth_login", next=next_url, msg="Admin authentication is not configured."))

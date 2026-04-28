@@ -88,10 +88,105 @@
     .grid-2 { grid-template-columns: repeat(2, 1fr); }
     .grid-3 { grid-template-columns: repeat(3, 1fr); }
     @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+    .form-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+    .form-row .form-group { flex: 1; min-width: 150px; }
+    .form-checkbox { display: flex; align-items: center; gap: 0.5rem; }
+    .form-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
     .text-muted { color: var(--muted); }
     .text-center { text-align: center; }
     .skip-link { position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
     .skip-link:focus { position: fixed; left: 1rem; top: 1rem; width: auto; height: auto; padding: 0.75rem 1rem; background: var(--primary); color: white; z-index: 10000; border-radius: 8px; }
+
+    /* Mobile navigation */
+    .mobile-menu-btn { display: none; background: none; border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem; cursor: pointer; }
+    .mobile-menu-btn span { display: block; width: 20px; height: 2px; background: var(--fg); margin: 4px 0; transition: 0.3s; }
+    .nav-menu { display: flex; }
+
+    /* Touch-friendly sizes */
+    @media (pointer: coarse) {
+      .btn, button, input, select { min-height: 44px; min-width: 44px; }
+      .topbar nav a { padding: 0.75rem 1rem; }
+    }
+
+    /* Tablet breakpoint */
+    @media (max-width: 1024px) {
+      .container { padding: 0 1rem; }
+      .card { padding: 1rem; }
+      h1 { font-size: 1.5rem; }
+      h2 { font-size: 1.25rem; }
+    }
+
+    /* Mobile breakpoint */
+    @media (max-width: 768px) {
+      .container { padding: 0 0.75rem; }
+      .topbar-inner { flex-wrap: wrap; }
+      .mobile-menu-btn { display: block; }
+      .nav-menu {
+        display: none;
+        width: 100%;
+        flex-direction: column;
+        gap: 0;
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid var(--line);
+      }
+      .nav-menu.active { display: flex; }
+      .topbar nav a {
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin: 0.125rem 0;
+      }
+      .topbar nav a:hover { background: var(--bg); }
+      .card { padding: 0.75rem; margin-bottom: 0.75rem; }
+      h1 { font-size: 1.25rem; }
+      h2 { font-size: 1.125rem; }
+      h3 { font-size: 1rem; }
+      .btn { padding: 0.75rem 1rem; font-size: 0.875rem; }
+      .form-row { flex-direction: column; align-items: stretch; }
+      .form-row .form-group { min-width: auto; }
+      .form-actions { flex-direction: column; }
+      .form-actions .btn { width: 100%; justify-content: center; }
+      table { font-size: 0.8125rem; }
+      th, td { padding: 0.5rem 0.375rem; }
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+      .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .toast-container { left: 1rem; right: 1rem; top: auto; bottom: 1rem; }
+      .pager { justify-content: center; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    /* Small mobile breakpoint */
+    @media (max-width: 480px) {
+      .container { padding: 0 0.5rem; }
+      .metrics-grid { grid-template-columns: 1fr; }
+      .badge { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
+    }
+
+    /* Reduced motion preference */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* Loading states and skeletons */
+    .skeleton { background: linear-gradient(90deg, var(--line) 25%, var(--bg) 50%, var(--line) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-text { height: 1em; margin-bottom: 0.5rem; }
+    .skeleton-text:last-child { width: 80%; }
+    .skeleton-title { height: 1.5rem; width: 60%; margin-bottom: 1rem; }
+    .skeleton-row { height: 2.5rem; margin-bottom: 0.25rem; }
+    .skeleton-card { height: 100px; margin-bottom: 1rem; border-radius: 12px; }
+    .skeleton-circle { width: 40px; height: 40px; border-radius: 50%; }
+    .btn-loading { position: relative; color: transparent !important; pointer-events: none; }
+    .btn-loading::after { content: ''; position: absolute; width: 1rem; height: 1rem; border: 2px solid var(--line); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; top: 50%; left: 50%; margin-top: -0.5rem; margin-left: -0.5rem; }
+    .loading-overlay { position: absolute; inset: 0; background: rgba(var(--bg), 0.8); display: flex; align-items: center; justify-content: center; z-index: 10; border-radius: inherit; }
+    .loading-overlay .spinner { width: 2rem; height: 2rem; }
+    [data-loading] { position: relative; }
+    [data-loading] > *:not(.loading-overlay) { opacity: 0.6; pointer-events: none; }
+
     {% block extra_css %}{% endblock %}
   </style>
 </head>
@@ -100,7 +195,12 @@
 
   <header class="topbar">
     <div class="container topbar-inner">
-      <nav>
+      <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <nav class="nav-menu" id="navMenu">
         <a href="/" class="{% if active_page == 'home' %}active{% endif %}">Overview</a>
         <a href="/indicators" class="{% if active_page == 'indicators' %}active{% endif %}">Indicators</a>
         <a href="/admin" class="{% if active_page == 'admin' %}active{% endif %}">Admin</a>
@@ -134,6 +234,23 @@
         document.body.setAttribute('data-theme', next);
         localStorage.setItem(themeKey, next);
       });
+
+      // Mobile menu toggle
+      const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+      const navMenu = document.getElementById('navMenu');
+      if (mobileMenuBtn && navMenu) {
+        mobileMenuBtn.addEventListener('click', () => {
+          const isExpanded = navMenu.classList.toggle('active');
+          mobileMenuBtn.setAttribute('aria-expanded', isExpanded);
+        });
+        // Close menu when clicking a link
+        navMenu.querySelectorAll('a').forEach(link => {
+          link.addEventListener('click', () => {
+            navMenu.classList.remove('active');
+            mobileMenuBtn.setAttribute('aria-expanded', 'false');
+          });
+        });
+      }
     })();
 
     window.showToast = function(message, type = 'info', duration = 5000) {
@@ -168,6 +285,50 @@
     window.confirmAction = function(message, callback) {
       if (confirm(message)) { callback(); }
     };
+
+    // Loading state utilities
+    window.setLoading = function(element, loading = true) {
+      if (typeof element === 'string') element = document.querySelector(element);
+      if (!element) return;
+      if (loading) {
+        element.setAttribute('data-loading', 'true');
+        element.classList.add('btn-loading');
+        element.disabled = true;
+      } else {
+        element.removeAttribute('data-loading');
+        element.classList.remove('btn-loading');
+        element.disabled = false;
+      }
+    };
+
+    window.createSkeleton = function(container, type = 'text', count = 3) {
+      if (typeof container === 'string') container = document.querySelector(container);
+      if (!container) return;
+      container.innerHTML = '';
+      for (let i = 0; i < count; i++) {
+        const skeleton = document.createElement('div');
+        skeleton.className = `skeleton skeleton-${type}`;
+        container.appendChild(skeleton);
+      }
+    };
+
+    window.removeSkeleton = function(container) {
+      if (typeof container === 'string') container = document.querySelector(container);
+      if (!container) return;
+      container.querySelectorAll('.skeleton').forEach(el => el.remove());
+    };
+
+    // Auto-add loading states to forms
+    document.querySelectorAll('form').forEach(form => {
+      form.addEventListener('submit', function(e) {
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn && !submitBtn.disabled) {
+          setLoading(submitBtn, true);
+          // Auto-remove loading after 30s as safety
+          setTimeout(() => setLoading(submitBtn, false), 30000);
+        }
+      });
+    });
 
     {% block extra_js %}{% endblock %}
   </script>

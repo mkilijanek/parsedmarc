@@ -185,6 +185,7 @@ class SecurityConfig:
     ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES: int = field(default_factory=lambda: _env_int("ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES", 15))
     METRICS_AUTH_TOKEN: str = field(default_factory=lambda: _env_str("METRICS_AUTH_TOKEN", ""))
     ADMIN_DANGEROUS_OPS: bool = field(default_factory=lambda: _env_bool("ADMIN_DANGEROUS_OPS", False))
+    ADMIN_PANEL_ENABLED: bool = field(default_factory=lambda: _env_bool("ADMIN_PANEL_ENABLED", True))
     ADMIN_AUTH_ENABLED: bool = field(default_factory=lambda: _env_bool("ADMIN_AUTH_ENABLED", True))
     ADMIN_API_TOKEN: str = field(default_factory=lambda: _env_str("ADMIN_API_TOKEN", ""))
     ADMIN_ROLE: str = field(default_factory=lambda: _env_str("ADMIN_ROLE", "admin"))

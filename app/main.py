@@ -14,10 +14,10 @@ def _sync_factory_globals() -> None:
     # Keep compatibility with tests and runtime lookups that patch app.main symbols.
     from . import factory as _factory
 
-    _factory.requests = requests
-    _factory.get_redis = get_redis
-    _factory.SessionLocal = SessionLocal
-    _factory.query_correlations = query_correlations
+    _factory.requests = requests  # type: ignore[attr-defined]
+    _factory.get_redis = get_redis  # type: ignore[attr-defined]
+    _factory.SessionLocal = SessionLocal  # type: ignore[attr-defined]
+    _factory.query_correlations = query_correlations  # type: ignore[attr-defined]
 
 
 def create_app(*args: Any, **kwargs: Any):

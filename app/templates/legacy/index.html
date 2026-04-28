@@ -1,51 +1,30 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Threat Feed Aggregator</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }
-    body[data-theme="light"] { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }
-    body[data-theme="dark"] { --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }
-    body:not([data-theme]) { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }
-    .topbar { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }
-    .topbar nav a { margin-right:.8rem; }
-    .card { border: 1px solid var(--line); border-radius: 16px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; background: var(--card); }
-    a { color: #0b5; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid var(--line); padding: 0.5rem; text-align: left; }
-    .skip-link { position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
-    .skip-link:focus { left: 1rem; top: 1rem; width: auto; height: auto; background: #fff; padding: .5rem; border: 1px solid #000; }
-{{ startup_loader_style|safe }}
-  </style>
-</head>
-<body>
-{{ startup_loader_markup|safe }}
-<a href="#main-content" class="skip-link">Skip to main content</a>
-<header class="topbar" id="globalTopbar">
-  <nav>
-    <a href="/">Overview</a>
-    <a href="/indicators">Indicators</a>
-    <a href="/admin">Admin</a>
-    <a href="/logs">Logs</a>
-  </nav>
-  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
-</header>
-<main id="main-content" role="main">
-  <div class="card" role="region" aria-label="System overview">
-    <h1>Threat Feed Aggregator</h1>
-    <p>Total indicators: <strong>{{ total }}</strong> | Active: <strong>{{ active }}</strong></p>
-    <p><a href="/indicators" aria-label="Open unified indicators view">Open /indicators</a></p>
-    <p>Exports:
-      <a href="/indicators/txt">TXT</a> · <a href="/indicators/csv">CSV</a> · <a href="/indicators/json">JSON</a> · <a href="/indicators/fortigate">FortiGate</a> ·
-      <a href="/indicators/arcsight">ArcSight</a> · <a href="/indicators/elasticsearch">Elasticsearch</a> · <a href="/indicators/splunk">Splunk</a>
-    </p>
-  </div>
+{% extends "layout.html" %}
 
-  <div class="card" role="region" aria-label="Feed statistics">
-    <h2>Feed stats</h2>
+{% block title %}Threat Feed Aggregator{% endblock %}
+
+{% block content %}
+{% set active_page = 'home' %}
+
+{{ startup_loader_markup|safe }}
+
+<div class="card" role="region" aria-label="System overview">
+  <h1>Threat Feed Aggregator</h1>
+  <p>Total indicators: <strong>{{ total }}</strong> | Active: <strong>{{ active }}</strong></p>
+  <p><a href="/indicators" class="btn btn-primary" aria-label="Open unified indicators view">Open Indicators</a></p>
+  <p>Exports:
+    <a href="/indicators/txt" class="btn btn-sm">TXT</a>
+    <a href="/indicators/csv" class="btn btn-sm">CSV</a>
+    <a href="/indicators/json" class="btn btn-sm">JSON</a>
+    <a href="/indicators/fortigate" class="btn btn-sm">FortiGate</a>
+    <a href="/indicators/arcsight" class="btn btn-sm">ArcSight</a>
+    <a href="/indicators/elasticsearch" class="btn btn-sm">Elasticsearch</a>
+    <a href="/indicators/splunk" class="btn btn-sm">Splunk</a>
+  </p>
+</div>
+
+<div class="card" role="region" aria-label="Feed statistics">
+  <h2>Feed stats</h2>
+  <div class="table-container">
     <table role="table" aria-label="Feed statistics table">
       <thead>
         <tr role="row">
@@ -67,26 +46,12 @@
       </tbody>
     </table>
   </div>
-</main>
-<script>
-  const themeKey = 'ioc-theme';
-  const preferredTheme = localStorage.getItem(themeKey);
-  if (preferredTheme === 'dark' || preferredTheme === 'light') {
-    document.body.setAttribute('data-theme', preferredTheme);
-  } else {
-    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
-  }
-  const themeToggle = document.getElementById('themeToggleGlobal');
-  if (themeToggle) {
-    themeToggle.addEventListener('click', () => {
-      const curr = document.body.getAttribute('data-theme') || 'light';
-      const next = curr === 'dark' ? 'light' : 'dark';
-      document.body.setAttribute('data-theme', next);
-      localStorage.setItem(themeKey, next);
-    });
-  }
-  {{ startup_loader_script|safe }}
-</script>
-</body>
-</html>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  {{ startup_loader_style|safe }}
+</style>
+{% endblock %}

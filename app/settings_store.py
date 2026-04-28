@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import os
 from typing import Optional
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -12,6 +13,20 @@ from sqlalchemy.orm import Session
 
 from .config import Config
 from .models import AppSetting
+
+
+def _is_production(cfg: Config | None = None) -> bool:
+    """Return True when APP_ENV is 'production'."""
+    if cfg is not None:
+        env = str(getattr(cfg.runtime, "APP_ENV", "") or "").strip().lower()
+    else:
+        env = os.getenv("APP_ENV", "development").strip().lower()
+    return env == "production"
+
+
+def _env_var_is_set(env_name: str) -> bool:
+    """Return True when the env var is present and non-empty in the process environment."""
+    return bool(os.environ.get(env_name, "").strip())
 
 
 def _secret_enc_key_v2(cfg: Config | None = None) -> bytes:
@@ -82,6 +97,64 @@ def get_app_setting(
     return str(row.value or "")
 
 
+def _db_value(
+    db: Session,
+    setting_key: str,
+    *,
+    secret: bool = False,
+    cfg: Config | None = None,
+) -> Optional[str]:
+    """Return the raw DB value for *setting_key*, or None if absent / unreadable."""
+    try:
+        row: Optional[AppSetting] = db.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+    except SQLAlchemyError:
+        return None
+    if row is None:
+        return None
+    raw = str(row.value or "")
+    if not raw:
+        return None
+    if secret:
+        decrypted = decrypt_setting_value(raw, cfg)
+        return decrypted if decrypted else None
+    return raw
+
+
+def get_setting_with_priority(
+    db: Session,
+    *,
+    env_name: str,
+    setting_key: str,
+    default: str = "",
+    secret: bool = False,
+    cfg: Config | None = None,
+) -> str:
+    """Resolve a setting using environment-aware priority.
+
+    DEV  (APP_ENV != 'production'): env var → DB → default
+    PRD  (APP_ENV == 'production'): DB → env var → default
+
+    The env var wins in DEV so operators can iterate with .env files without touching
+    the database.  DB wins in PRD so live admin-panel changes survive container restarts
+    without the compose env silently overwriting them.
+    """
+    env_raw = os.environ.get(env_name, "").strip()
+    db_raw = _db_value(db, setting_key, secret=secret, cfg=cfg)
+
+    if _is_production(cfg):
+        # PRD: DB first
+        if db_raw is not None:
+            return db_raw
+        return env_raw if env_raw else default
+    else:
+        # DEV: env first
+        if env_raw:
+            return env_raw
+        if db_raw is not None:
+            return db_raw
+        return default
+
+
 def runtime_override_or_env(
     db: Session,
     *,
@@ -90,15 +163,16 @@ def runtime_override_or_env(
     secret: bool = False,
     cfg: Config | None = None,
 ) -> str:
-    try:
-        row: Optional[AppSetting] = db.scalar(select(AppSetting).where(AppSetting.key == setting_key))
-    except SQLAlchemyError:
-        return str(env_value or "")
-    if row is None:
-        return str(env_value or "")
-    if secret:
-        return decrypt_setting_value(str(row.value or ""), cfg)
-    return str(row.value or "")
+    """Legacy helper kept for backward compatibility.
+
+    Prefer get_setting_with_priority() for new callers — it respects APP_ENV.
+    This wrapper preserves the old DB-first behaviour for existing callers that
+    do not yet pass an env_name.
+    """
+    db_raw = _db_value(db, setting_key, secret=secret, cfg=cfg)
+    if db_raw is not None:
+        return db_raw
+    return str(env_value or "")
 
 
 def parse_bool_setting(value: object) -> bool:
@@ -109,20 +183,15 @@ def get_admin_login_rate_limit(
     db: Session,
     cfg: Config | None = None,
 ) -> str:
-    """Get admin login rate limit with DB override support.
-
-    Reads from app_settings first, falls back to config/env.
-    Expected DB key: feedcfg.security.admin_login_rate_limit
-    Expected value format: "10 per 15 minute" (Flask-Limiter format)
-    """
+    """Resolve admin login rate limit respecting APP_ENV priority."""
     from .config import Config as ConfigClass
     active_cfg = cfg or ConfigClass()
-    env_default = getattr(active_cfg.security, "ADMIN_LOGIN_RATE_LIMIT", "10 per 15 minute")
-    return runtime_override_or_env(
+    default = getattr(active_cfg.security, "ADMIN_LOGIN_RATE_LIMIT", "10 per 15 minute")
+    return get_setting_with_priority(
         db,
+        env_name="ADMIN_LOGIN_RATE_LIMIT",
         setting_key="feedcfg.security.admin_login_rate_limit",
-        env_value=env_default,
-        secret=False,
+        default=default,
         cfg=active_cfg,
     )
 
@@ -131,22 +200,83 @@ def get_admin_login_rate_limit_window(
     db: Session,
     cfg: Config | None = None,
 ) -> int:
-    """Get admin login rate limit window in minutes with DB override.
-
-    Reads from app_settings first, falls back to config/env.
-    Expected DB key: feedcfg.security.admin_login_rate_limit_window_minutes
-    """
+    """Resolve admin login rate-limit window in minutes respecting APP_ENV priority."""
     from .config import Config as ConfigClass
     active_cfg = cfg or ConfigClass()
-    env_default = str(getattr(active_cfg.security, "ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES", 15))
-    db_value = runtime_override_or_env(
+    default = str(getattr(active_cfg.security, "ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES", 15))
+    value = get_setting_with_priority(
         db,
+        env_name="ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES",
         setting_key="feedcfg.security.admin_login_rate_limit_window_minutes",
-        env_value=env_default,
-        secret=False,
+        default=default,
         cfg=active_cfg,
     )
     try:
-        return int(db_value) if db_value else 15
+        return int(value) if value else 15
     except (ValueError, TypeError):
         return 15
+
+
+def get_admin_auth_enabled(
+    db: Session,
+    cfg: Config | None = None,
+) -> bool:
+    """Resolve ADMIN_AUTH_ENABLED respecting APP_ENV priority.
+
+    DEV: env var wins — set ADMIN_AUTH_ENABLED=false in .env to skip login locally.
+    PRD: DB wins — toggled live from the admin panel without container restart.
+    """
+    from .config import Config as ConfigClass
+    active_cfg = cfg or ConfigClass()
+    default = "true" if getattr(active_cfg.security, "ADMIN_AUTH_ENABLED", True) else "false"
+    value = get_setting_with_priority(
+        db,
+        env_name="ADMIN_AUTH_ENABLED",
+        setting_key="feedcfg.security.admin_auth_enabled",
+        default=default,
+        cfg=active_cfg,
+    )
+    return parse_bool_setting(value)
+
+
+def get_admin_panel_enabled(
+    db: Session,
+    cfg: Config | None = None,
+) -> bool:
+    """Resolve ADMIN_PANEL_ENABLED respecting APP_ENV priority.
+
+    When False, all /admin/* routes return 404 — the panel is completely hidden.
+    DEV: env var wins.  PRD: DB wins.
+    """
+    from .config import Config as ConfigClass
+    active_cfg = cfg or ConfigClass()
+    default = "true" if getattr(active_cfg.security, "ADMIN_PANEL_ENABLED", True) else "false"
+    value = get_setting_with_priority(
+        db,
+        env_name="ADMIN_PANEL_ENABLED",
+        setting_key="feedcfg.security.admin_panel_enabled",
+        default=default,
+        cfg=active_cfg,
+    )
+    return parse_bool_setting(value)
+
+
+def get_admin_api_token(
+    db: Session,
+    cfg: Config | None = None,
+) -> str:
+    """Resolve ADMIN_API_TOKEN respecting APP_ENV priority.
+
+    DEV: env var wins.  PRD: DB wins (stored encrypted as feedsecret.*).
+    """
+    from .config import Config as ConfigClass
+    active_cfg = cfg or ConfigClass()
+    default = getattr(active_cfg.security, "ADMIN_API_TOKEN", "") or ""
+    return get_setting_with_priority(
+        db,
+        env_name="ADMIN_API_TOKEN",
+        setting_key="feedsecret.security.admin_api_token",
+        default=default,
+        secret=True,
+        cfg=active_cfg,
+    )

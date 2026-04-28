@@ -8,7 +8,7 @@ redis==5.0.8
 requests==2.33.0
 pymisp==2.4.179
 schedule==1.2.2
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 Flask-Limiter==3.7.0
 prometheus-client==0.20.0
 cryptography==46.0.7

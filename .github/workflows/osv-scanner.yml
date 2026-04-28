@@ -1,0 +1,53 @@
+name: OSV Scanner
+
+on:
+  push:
+    branches:
+      - main
+      - kili
+      - kili-dev
+  pull_request:
+    branches:
+      - main
+      - kili
+      - kordek
+  schedule:
+    # Run weekly on Mondays at 09:00 UTC
+    - cron: '0 9 * * 1'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  osv-scan:
+    name: Scan dependencies with OSV Scanner
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run OSV Scanner (requirements.txt)
+        uses: google/osv-scanner-action@v1
+        with:
+          scan-args: |
+            --format=sarif
+            --output=osv-results.sarif
+            --recursive
+            .
+
+      - name: Upload SARIF results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: osv-results.sarif
+
+      - name: Run OSV Scanner (blocking on vulnerabilities)
+        uses: google/osv-scanner-action@v1
+        with:
+          scan-args: |
+            --recursive
+            --fail-on-vuln
+            .

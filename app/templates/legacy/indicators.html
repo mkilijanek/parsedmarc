@@ -1,153 +1,157 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Indicators</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }
-    body[data-theme="light"] { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --muted: #64748b; --line: #dbe1ea; }
-    body[data-theme="dark"] { --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --muted: #94a3b8; --line: #334155; }
-    body:not([data-theme]) { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --muted: #64748b; --line: #dbe1ea; }
-    .topbar { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }
-    .topbar nav a { margin-right:.8rem; }
-    .toolbar { display: grid; grid-template-columns: 1fr; gap: .75rem; margin-bottom: 1rem; }
-    .filter-summary { position: sticky; top: 0; z-index: 2; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: .75rem; }
-    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-    input[type=text] { width: 100%; padding: .6rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
-    select { padding: .5rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
-    button { padding: .55rem .8rem; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
-    button:focus, a:focus, input:focus, select:focus { outline: 3px solid #000; outline-offset: 2px; }
-    .card { border: 1px solid var(--line); border-radius: 16px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 1rem; background: var(--card); }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid var(--line); padding: 0.5rem; text-align: left; vertical-align: top; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-    .badge { display: inline-block; padding: .15rem .5rem; border-radius: 999px; border: 1px solid var(--line); font-size: .85rem; }
-    .tag { display: inline-block; padding: .1rem .45rem; border-radius: 999px; border: 1px solid var(--line); font-size: .8rem; margin-right: .25rem; margin-bottom: .15rem; }
-    .confbar { width: 140px; height: 12px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
-    .confbar-in { height: 100%; background: var(--muted); }
-    .b-ip{} .b-domain{} .b-url{} .b-hash{} .b-email{} .b-other{}
-    .b-white{} .b-green{} .b-amber{} .b-red{}
-    .help { font-size: .95rem; }
-    .subtle { color: var(--muted); font-size: .9rem; }
-    .pager { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin: .75rem 0; }
-    .pager a, .pager span { padding:.35rem .6rem; border:1px solid var(--line); border-radius:8px; }
-    .status-live { min-height: 1.2rem; }
-    .skip-link { position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
-    .skip-link:focus { left: 1rem; top: 1rem; width: auto; height: auto; background: var(--card); padding: .5rem; border: 1px solid var(--line); }
-    @media (prefers-reduced-motion: reduce) {
-      * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
-    }
-    @media (max-width: 760px) {
-      .row label { width: 100%; }
-      th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8) { display: none; }
-      .card { padding: .65rem; }
-    }
-{{ startup_loader_style|safe }}
-  </style>
-</head>
-<body>
+{% extends "layout.html" %}
+
+{% block title %}Indicators{% endblock %}
+
+{% block extra_css %}
+<style>
+  .toolbar { display: grid; grid-template-columns: 1fr; gap: .75rem; margin-bottom: 1rem; }
+  .filter-summary { position: sticky; top: 0; z-index: 2; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: .75rem; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  input[type=text] { width: 100%; padding: .6rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); box-sizing: border-box; }
+  select { padding: .5rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  button:focus, a:focus, input:focus, select:focus { outline: 3px solid #000; outline-offset: 2px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  .tag { display: inline-block; padding: .1rem .45rem; border-radius: 999px; border: 1px solid var(--line); font-size: .8rem; margin-right: .25rem; margin-bottom: .15rem; }
+  .confbar { width: 140px; height: 12px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .confbar-in { height: 100%; background: var(--muted); }
+  .help { font-size: .95rem; }
+  .subtle { color: var(--muted); font-size: .9rem; }
+  .pager { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin: .75rem 0; }
+  .pager a, .pager span { padding:.35rem .6rem; border:1px solid var(--line); border-radius:8px; text-decoration: none; }
+  .status-live { min-height: 1.2rem; }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+  }
+  @media (max-width: 760px) {
+    .row label { width: 100%; }
+    th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8) { display: none; }
+  }
+  /* Autocomplete styles */
+  .autocomplete-container { position: relative; }
+  .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; max-height: 300px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .autocomplete-item { padding: 0.5rem 0.75rem; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .autocomplete-item:hover, .autocomplete-item[aria-selected="true"] { background: var(--bg); }
+  .autocomplete-item:last-child { border-bottom: none; }
+  .autocomplete-category { padding: 0.25rem 0.75rem; font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .autocomplete-no-results { padding: 0.75rem; color: var(--muted); text-align: center; }
+  .autocomplete-match { font-weight: 600; color: var(--primary); }
+  /* Table sorting and sticky headers */
+  .table-container { position: relative; }
+  table { position: relative; }
+  thead { position: sticky; top: 0; z-index: 10; }
+  th { background: var(--card); cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { background: var(--bg); }
+  th.sortable::after { content: ' ⇅'; opacity: 0.3; }
+  th.sort-asc::after { content: ' ↑'; opacity: 1; color: var(--primary); }
+  th.sort-desc::after { content: ' ↓'; opacity: 1; color: var(--primary); }
+  th[aria-sort="ascending"]::after { content: ' ↑'; }
+  th[aria-sort="descending"]::after { content: ' ↓'; }
+  {{ startup_loader_style|safe }}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set active_page = 'indicators' %}
+
 {{ startup_loader_markup|safe }}
-<a href="#main-content" class="skip-link">Skip to main content</a>
-<header class="topbar" id="globalTopbar">
-  <nav>
-    <a href="/">Overview</a>
-    <a href="/indicators">Indicators</a>
-    <a href="/admin">Admin</a>
-    <a href="/logs">Logs</a>
-  </nav>
-  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
-</header>
-<main id="main-content" role="main">
-  <div class="card">
-    <h1>Unified Indicators</h1>
-    <p class="subtle">
-      <a href="/indicators" aria-label="Reset filters and show unfiltered results">Reset filters</a>
-    </p>
-    <div class="filter-summary" role="status" aria-live="polite">
-      {% if has_filters %}
-      <p><strong>Active filters:</strong> yes</p>
-      {% else %}
-      <p class="subtle">Active filters: none</p>
-      {% endif %}
-      <p class="subtle">Results: <strong>{{ total_count }}</strong> | Page <strong>{{ page }}</strong> of <strong>{{ total_pages }}</strong> | Limit <strong>{{ limit }}</strong></p>
-    </div>
-    <form method="get" action="/indicators" class="toolbar" aria-label="Indicator search and filters">
-      <label for="searchBox"><strong>Search</strong></label>
+
+<div class="card">
+  <h1>Unified Indicators</h1>
+  <p class="subtle">
+    <a href="/indicators" class="btn btn-sm" aria-label="Reset filters and show unfiltered results">Reset filters</a>
+  </p>
+  <div class="filter-summary" role="status" aria-live="polite">
+    {% if has_filters %}
+    <p><strong>Active filters:</strong> yes</p>
+    {% else %}
+    <p class="subtle">Active filters: none</p>
+    {% endif %}
+    <p class="subtle">Results: <strong>{{ total_count }}</strong> | Page <strong>{{ page }}</strong> of <strong>{{ total_pages }}</strong> | Limit <strong>{{ limit }}</strong></p>
+  </div>
+  <form method="get" action="/indicators" class="toolbar" aria-label="Indicator search and filters" id="searchForm">
+    <label for="searchBox"><strong>Search</strong></label>
+    <div class="autocomplete-container" style="position: relative;">
       <input type="text" id="searchBox" name="q" value="{{ q or '' }}"
              aria-label="Search indicators using Kibana syntax"
-             aria-describedby="search-syntax"
-             placeholder="e.g. value:192.168.* AND confidence:>70" />
-      <div class="row">
-        <label for="typeSel">Type</label>
-        <select id="typeSel" name="type" aria-label="Filter by indicator type">
-          {% for option in type_options %}
-          <option value='{{ option }}' {% if type_filter == option %}selected{% endif %}>{{ option }}</option>
-          {% endfor %}
-        </select>
-
-        <label for="tlpSel">TLP</label>
-        <select id="tlpSel" name="tlp" aria-label="Filter by TLP level">
-          {% for option in tlp_options %}
-          <option value='{{ option }}' {% if tlp == option %}selected{% endif %}>{{ option }}</option>
-          {% endfor %}
-        </select>
-
-        <label for="srcSel">Source</label>
-        <select id="srcSel" name="source" aria-label="Filter by source">
-          {% for option in source_options %}
-          <option value='{{ option }}' {% if source == option %}selected{% endif %}>{{ option }}</option>
-          {% endfor %}
-        </select>
-
-        <label for="minConf">Min conf</label>
-        <select id="minConf" name="min_conf" aria-label="Minimum confidence">
-          {% for option in min_conf_options %}
-          <option value='{{ option.value }}' {% if min_conf == option.match_value %}selected{% endif %}>{{ option.label }}</option>
-          {% endfor %}
-        </select>
-
-        <label for="maxConf">Max conf</label>
-        <select id="maxConf" name="max_conf" aria-label="Maximum confidence">
-          {% for option in max_conf_options %}
-          <option value='{{ option.value }}' {% if max_conf == option.match_value %}selected{% endif %}>{{ option.label }}</option>
-          {% endfor %}
-        </select>
-
-        <button type="submit" aria-label="Apply search and filters">Apply</button>
-        <a href="/indicators" aria-label="Clear search and filters">Clear</a>
-        <a href="/indicators" aria-label="Return to unfiltered indicators view">Back to all indicators</a>
-      </div>
-    </form>
-
-    <div id="search-syntax" role="region" aria-label="Search syntax help" class="help">
-      <strong>Search Syntax (Kibana-like):</strong>
-      <ul>
-        <li><code>value:192.168.*</code> - Match IP pattern</li>
-        <li><code>confidence:>70</code> - Confidence greater than 70</li>
-        <li><code>tlp:RED</code> - Exact TLP match</li>
-        <li><code>type:ip AND confidence:>50</code> - Combined conditions</li>
-        <li><code>tags:apt</code> - Contains tag</li>
-      </ul>
-      <p><strong>Available fields:</strong> value, type, confidence, tlp, tags, source</p>
-      <p><strong>Operators:</strong> AND, OR, NOT, :, &gt;, &lt;, &gt;=, &lt;=, *, ?</p>
+             aria-describedby="search-syntax autocomplete-hint"
+             aria-autocomplete="list"
+             aria-controls="autocomplete-list"
+             placeholder="e.g. value:192.168.* AND confidence:>70"
+             autocomplete="off" />
+      <div id="autocomplete-list" class="autocomplete-dropdown" role="listbox" style="display: none;"></div>
     </div>
+    <div id="autocomplete-hint" class="subtle" style="margin-top: 0.25rem;">
+      Recent searches are saved locally. Press ↑↓ to navigate suggestions, Enter to select.
+    </div>
+    <div class="row">
+      <label for="typeSel">Type</label>
+      <select id="typeSel" name="type" aria-label="Filter by indicator type">
+        {% for option in type_options %}
+        <option value='{{ option }}' {% if type_filter == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
 
-    <p>Quick exports:
-      <a href="/indicators/txt{{ filter_suffix }}" aria-label="Export current filtered results as TXT">TXT</a> ·
-      <a href="/indicators/csv{{ filter_suffix }}" aria-label="Export current filtered results as CSV">CSV</a> ·
-      <a href="/indicators/json{{ filter_suffix }}" aria-label="Export current filtered results as JSON">JSON</a> ·
-      <a href="/indicators/fortigate{{ filter_suffix }}" aria-label="Export current filtered results as FortiGate list">FortiGate</a>
-    </p>
+      <label for="tlpSel">TLP</label>
+      <select id="tlpSel" name="tlp" aria-label="Filter by TLP level">
+        {% for option in tlp_options %}
+        <option value='{{ option }}' {% if tlp == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="srcSel">Source</label>
+      <select id="srcSel" name="source" aria-label="Filter by source">
+        {% for option in source_options %}
+        <option value='{{ option }}' {% if source == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="minConf">Min conf</label>
+      <select id="minConf" name="min_conf" aria-label="Minimum confidence">
+        {% for option in min_conf_options %}
+        <option value='{{ option.value }}' {% if min_conf == option.match_value %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="maxConf">Max conf</label>
+      <select id="maxConf" name="max_conf" aria-label="Maximum confidence">
+        {% for option in max_conf_options %}
+        <option value='{{ option.value }}' {% if max_conf == option.match_value %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+
+      <button type="submit" class="btn btn-primary" aria-label="Apply search and filters">Apply</button>
+      <a href="/indicators" class="btn" aria-label="Clear search and filters">Clear</a>
+    </div>
+  </form>
+
+  <div id="search-syntax" role="region" aria-label="Search syntax help" class="help">
+    <strong>Search Syntax (Kibana-like):</strong>
+    <ul>
+      <li><code>value:192.168.*</code> - Match IP pattern</li>
+      <li><code>confidence:>70</code> - Confidence greater than 70</li>
+      <li><code>tlp:RED</code> - Exact TLP match</li>
+      <li><code>type:ip AND confidence:>50</code> - Combined conditions</li>
+      <li><code>tags:apt</code> - Contains tag</li>
+    </ul>
+    <p><strong>Available fields:</strong> value, type, confidence, tlp, tags, source</p>
+    <p><strong>Operators:</strong> AND, OR, NOT, :, &gt;, &lt;, &gt;=, &lt;=, *, ?</p>
   </div>
 
-  <div class="card">
-    <div class="pager" aria-label="Pagination controls">
-      <a href="{{ prev_link }}" {% if offset <= 0 %}aria-disabled='true'{% endif %}>Prev</a>
-      <span>Page {{ page }}/{{ total_pages }}</span>
-      <a href="{{ next_link }}" {% if next_offset >= total_count %}aria-disabled='true'{% endif %}>Next</a>
-    </div>
+  <p>Quick exports:
+    <a href="/indicators/txt{{ filter_suffix }}" class="btn btn-sm" aria-label="Export current filtered results as TXT">TXT</a>
+    <a href="/indicators/csv{{ filter_suffix }}" class="btn btn-sm" aria-label="Export current filtered results as CSV">CSV</a>
+    <a href="/indicators/json{{ filter_suffix }}" class="btn btn-sm" aria-label="Export current filtered results as JSON">JSON</a>
+    <a href="/indicators/fortigate{{ filter_suffix }}" class="btn btn-sm" aria-label="Export current filtered results as FortiGate list">FortiGate</a>
+  </p>
+</div>
+
+<div class="card">
+  <div class="pager" aria-label="Pagination controls">
+    <a href="{{ prev_link }}" class="btn btn-sm" {% if offset <= 0 %}aria-disabled='true' style="opacity:0.5"{% endif %}>Prev</a>
+    <span>Page {{ page }}/{{ total_pages }}</span>
+    <a href="{{ next_link }}" class="btn btn-sm" {% if next_offset >= total_count %}aria-disabled='true' style="opacity:0.5"{% endif %}>Next</a>
+  </div>
+  <div class="table-container">
     <table role="table" aria-label="Threat indicators">
       <thead>
         <tr role="row">
@@ -188,48 +192,293 @@
         {% endif %}
       </tbody>
     </table>
-    <div class="pager" aria-label="Pagination controls (bottom)">
-      <a href="{{ prev_link }}" {% if offset <= 0 %}aria-disabled='true'{% endif %}>Prev</a>
-      <span>Page {{ page }}/{{ total_pages }}</span>
-      <a href="{{ next_link }}" {% if next_offset >= total_count %}aria-disabled='true'{% endif %}>Next</a>
-    </div>
   </div>
-</main>
+  <div class="pager" aria-label="Pagination controls (bottom)">
+    <a href="{{ prev_link }}" class="btn btn-sm" {% if offset <= 0 %}aria-disabled='true' style="opacity:0.5"{% endif %}>Prev</a>
+    <span>Page {{ page }}/{{ total_pages }}</span>
+    <a href="{{ next_link }}" class="btn btn-sm" {% if next_offset >= total_count %}aria-disabled='true' style="opacity:0.5"{% endif %}>Next</a>
+  </div>
+</div>
 
+{% endblock %}
+
+{% block extra_js %}
 <script>
-  const themeKey = 'ioc-theme';
-  const preferredTheme = localStorage.getItem(themeKey);
-  if (preferredTheme === 'dark' || preferredTheme === 'light') {
-    document.body.setAttribute('data-theme', preferredTheme);
-  } else {
-    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
+(function() {
+  const searchBox = document.getElementById('searchBox');
+  const dropdown = document.getElementById('autocomplete-list');
+  const STORAGE_KEY = 'ioc-recent-searches';
+  const MAX_RECENT = 5;
+
+  // Load recent searches from localStorage
+  function getRecentSearches() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
   }
 
-  const themeToggle = document.getElementById('themeToggleGlobal');
-  if (themeToggle) {
-    themeToggle.addEventListener('click', () => {
-      const curr = document.body.getAttribute('data-theme') || 'light';
-      const next = curr === 'dark' ? 'light' : 'dark';
-      document.body.setAttribute('data-theme', next);
-      localStorage.setItem(themeKey, next);
+  // Save search to recent
+  function saveSearch(query) {
+    if (!query || query.length < 2) return;
+    const recent = getRecentSearches();
+    const filtered = recent.filter(s => s.toLowerCase() !== query.toLowerCase());
+    filtered.unshift(query);
+    const limited = filtered.slice(0, MAX_RECENT);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(limited));
+    } catch {}
+  }
+
+  // Save search on form submit
+  document.getElementById('searchForm')?.addEventListener('submit', () => {
+    if (searchBox) saveSearch(searchBox.value.trim());
+  });
+
+  // Common search patterns
+  const commonPatterns = [
+    { text: 'type:ip', desc: 'Filter by IP indicators' },
+    { text: 'type:domain', desc: 'Filter by domain indicators' },
+    { text: 'type:hash', desc: 'Filter by hash indicators' },
+    { text: 'type:url', desc: 'Filter by URL indicators' },
+    { text: 'confidence:>70', desc: 'High confidence only' },
+    { text: 'confidence:>90', desc: 'Very high confidence' },
+    { text: 'tlp:RED', desc: 'TLP:RED indicators' },
+    { text: 'tlp:AMBER', desc: 'TLP:AMBER indicators' },
+    { text: 'source:mwdb', desc: 'From MWDB source' },
+    { text: 'source:misp', desc: 'From MISP source' }
+  ];
+
+  let selectedIndex = -1;
+  let suggestions = [];
+
+  function showDropdown() {
+    if (dropdown) dropdown.style.display = 'block';
+  }
+
+  function hideDropdown() {
+    if (dropdown) {
+      dropdown.style.display = 'none';
+      selectedIndex = -1;
+    }
+  }
+
+  function renderSuggestions(filterText) {
+    if (!dropdown) return;
+    const recent = getRecentSearches();
+    const filteredPatterns = commonPatterns.filter(p =>
+      p.text.toLowerCase().includes(filterText.toLowerCase()) ||
+      p.desc.toLowerCase().includes(filterText.toLowerCase())
+    );
+
+    let html = '';
+    suggestions = [];
+
+    if (recent.length > 0) {
+      html += '<div class="autocomplete-category">Recent searches</div>';
+      recent.forEach((text, i) => {
+        if (filterText && !text.toLowerCase().includes(filterText.toLowerCase())) return;
+        const highlighted = highlightMatch(text, filterText);
+        html += `<div class="autocomplete-item" role="option" data-index="${suggestions.length}" data-type="recent">${highlighted}</div>`;
+        suggestions.push({ text, type: 'recent' });
+      });
+    }
+
+    if (filteredPatterns.length > 0) {
+      html += '<div class="autocomplete-category">Suggestions</div>';
+      filteredPatterns.forEach((pattern, i) => {
+        const highlighted = highlightMatch(pattern.text, filterText);
+        html += `<div class="autocomplete-item" role="option" data-index="${suggestions.length}" data-type="pattern"><span class="autocomplete-match">${highlighted}</span> <span style="color: var(--muted); font-size: 0.875rem;">${pattern.desc}</span></div>`;
+        suggestions.push({ text: pattern.text, type: 'pattern' });
+      });
+    }
+
+    if (suggestions.length === 0) {
+      html = '<div class="autocomplete-no-results">No suggestions. Try typing to search.</div>';
+    }
+
+    dropdown.innerHTML = html;
+    selectedIndex = -1;
+
+    // Add click handlers
+    dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const idx = parseInt(item.dataset.index);
+        if (suggestions[idx]) {
+          searchBox.value = suggestions[idx].text;
+          hideDropdown();
+          document.getElementById('searchForm')?.submit();
+        }
+      });
     });
   }
 
-  const searchBox = document.getElementById('searchBox');
+  function highlightMatch(text, query) {
+    if (!query) return text;
+    const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+    return text.replace(regex, '<span class="autocomplete-match">$1</span>');
+  }
+
+  function escapeRegex(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function updateSelection() {
+    dropdown?.querySelectorAll('.autocomplete-item').forEach((item, i) => {
+      item.removeAttribute('aria-selected');
+      if (i === selectedIndex) {
+        item.setAttribute('aria-selected', 'true');
+        item.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  // Search box events
+  if (searchBox) {
+    searchBox.addEventListener('focus', () => {
+      renderSuggestions(searchBox.value);
+      showDropdown();
+    });
+
+    searchBox.addEventListener('input', () => {
+      renderSuggestions(searchBox.value);
+      showDropdown();
+    });
+
+    searchBox.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (suggestions.length > 0) {
+          selectedIndex = (selectedIndex + 1) % suggestions.length;
+          updateSelection();
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (suggestions.length > 0) {
+          selectedIndex = (selectedIndex - 1 + suggestions.length) % suggestions.length;
+          updateSelection();
+        }
+      } else if (e.key === 'Enter') {
+        if (selectedIndex >= 0 && suggestions[selectedIndex]) {
+          e.preventDefault();
+          searchBox.value = suggestions[selectedIndex].text;
+          hideDropdown();
+          document.getElementById('searchForm')?.submit();
+        }
+      } else if (e.key === 'Escape') {
+        hideDropdown();
+      }
+    });
+  }
+
+  // Hide dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.autocomplete-container')) {
+      hideDropdown();
+    }
+  });
+
+  // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (e.key === '/') {
-      e.preventDefault();
-      searchBox.focus();
-    }
-    if (e.key === 'Escape') {
-      if (document.activeElement === searchBox) {
-        searchBox.value = '';
-        searchBox.blur();
+      if (document.activeElement !== searchBox) {
+        e.preventDefault();
+        searchBox?.focus();
+        showToast('Search box focused (ESC to blur, ↑↓ for suggestions)', 'info', 2000);
       }
     }
   });
+
+  // Show toast on export
+  document.querySelectorAll('a[href^="/indicators/"][href*="txt"], a[href^="/indicators/"][href*="csv"], a[href^="/indicators/"][href*="json"]').forEach(link => {
+    link.addEventListener('click', () => {
+      showToast('Export started...', 'info', 2000);
+    });
+  });
+
   {{ startup_loader_script|safe }}
+
+  // Table sorting
+  (function() {
+    const table = document.querySelector('table[role="table"]');
+    if (!table) return;
+
+    const headers = table.querySelectorAll('thead th');
+    let currentSort = { column: null, direction: 'asc' };
+
+    // Map column index to sort type
+    const sortTypes = ['string', 'string', 'number', 'string', 'string', 'none', 'string', 'none'];
+
+    headers.forEach((th, index) => {
+      if (sortTypes[index] === 'none') return;
+
+      th.classList.add('sortable');
+      th.style.cursor = 'pointer';
+
+      th.addEventListener('click', () => {
+        // Toggle direction if same column
+        if (currentSort.column === index) {
+          currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          // Remove old sort indicators
+          headers.forEach(h => {
+            h.classList.remove('sort-asc', 'sort-desc');
+            h.setAttribute('aria-sort', 'none');
+          });
+          currentSort = { column: index, direction: 'asc' };
+        }
+
+        // Add sort indicator to current header
+        th.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+        th.setAttribute('aria-sort', currentSort.direction === 'asc' ? 'ascending' : 'descending');
+
+        // Sort the table
+        sortTable(index, sortTypes[index], currentSort.direction);
+        showToast(`Sorted by ${th.textContent} ${currentSort.direction === 'asc' ? 'ascending' : 'descending'}`, 'info', 2000);
+      });
+
+      // Keyboard support
+      th.setAttribute('tabindex', '0');
+      th.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          th.click();
+        }
+      });
+    });
+
+    function sortTable(colIndex, type, direction) {
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+
+      rows.sort((a, b) => {
+        const aCell = a.cells[colIndex];
+        const bCell = b.cells[colIndex];
+        if (!aCell || !bCell) return 0;
+
+        let aVal = aCell.textContent.trim();
+        let bVal = bCell.textContent.trim();
+
+        // Handle confidence (numeric)
+        if (type === 'number') {
+          // Extract number from confidence bar
+          const aMatch = aVal.match(/(\d+)/);
+          const bMatch = bVal.match(/(\d+)/);
+          aVal = aMatch ? parseInt(aMatch[1]) : 0;
+          bVal = bMatch ? parseInt(bMatch[1]) : 0;
+        }
+
+        if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      // Re-append rows in sorted order
+      rows.forEach(row => tbody.appendChild(row));
+    }
+  })();
+})();
 </script>
-</body>
-</html>
+{% endblock %}

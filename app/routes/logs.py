@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict
 
-from flask import jsonify, request
+from flask import jsonify, render_template, request
 from sqlalchemy import select
 
 
@@ -74,7 +74,10 @@ def register_logs_routes(
     @app.get("/logs")
     @limiter.limit("30 per minute")
     def logs_page():
-        return """<!doctype html>
+        return render_template("logs.html")
+
+    # Legacy inline HTML - migrated to logs.html template above
+    _ = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Logs</title>
 <style>
   :root { color-scheme: light dark; }
@@ -219,4 +222,4 @@ document.getElementById('filters').addEventListener('submit',(e)=>{e.preventDefa
 document.getElementById('copyBtn').addEventListener('click',copyVisibleLogs);
 document.getElementById('downloadBtn').addEventListener('click',downloadVisibleLogs);
 setInterval(()=>{if(document.getElementById('autorefresh').checked)refreshLogs();},5000);refreshLogs();
-</script></body></html>"""
+</script></body></html>"""  # noqa: F841

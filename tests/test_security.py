@@ -1110,3 +1110,170 @@ class TestTableSorting:
         html = response.get_data(as_text=True)
         assert "th.sort-asc" in html or "th.sort-desc" in html
         assert 'content:' in html or "::after" in html
+
+
+# ============================================================================
+# Setting Priority Model Tests (APP_ENV-aware env > DB vs DB > env)
+# ============================================================================
+
+class TestSettingPriorityModel:
+    """Verify env > DB (DEV) and DB > env (PRD) priority dispatch."""
+
+    def test_dev_env_var_wins_over_db(self, test_db):
+        """In DEV, env var takes priority over DB value."""
+        from app.models import AppSetting
+        from app.settings_store import get_setting_with_priority
+
+        test_db.add(AppSetting(
+            key="feedcfg.security.test_priority",
+            value="db-value",
+            is_secret=False,
+        ))
+        test_db.commit()
+
+        with patch.dict(os.environ, {"APP_ENV": "development", "TEST_PRIORITY_VAR": "env-value"}):
+            result = get_setting_with_priority(
+                test_db,
+                env_name="TEST_PRIORITY_VAR",
+                setting_key="feedcfg.security.test_priority",
+                default="default-value",
+            )
+        assert result == "env-value"
+
+    def test_prd_db_wins_over_env_var(self, test_db):
+        """In PRD, DB value takes priority over env var."""
+        from app.models import AppSetting
+        from app.settings_store import get_setting_with_priority
+
+        test_db.add(AppSetting(
+            key="feedcfg.security.test_priority_prd",
+            value="db-value",
+            is_secret=False,
+        ))
+        test_db.commit()
+
+        with patch.dict(os.environ, {"APP_ENV": "production", "TEST_PRIORITY_PRD_VAR": "env-value"}):
+            result = get_setting_with_priority(
+                test_db,
+                env_name="TEST_PRIORITY_PRD_VAR",
+                setting_key="feedcfg.security.test_priority_prd",
+                default="default-value",
+            )
+        assert result == "db-value"
+
+    def test_dev_falls_back_to_db_when_env_absent(self, test_db):
+        """In DEV, DB is used when env var is not set."""
+        from app.models import AppSetting
+        from app.settings_store import get_setting_with_priority
+
+        test_db.add(AppSetting(
+            key="feedcfg.security.test_fallback_dev",
+            value="db-only-value",
+            is_secret=False,
+        ))
+        test_db.commit()
+
+        env = {k: v for k, v in os.environ.items() if k != "TEST_FALLBACK_DEV_VAR"}
+        env["APP_ENV"] = "development"
+        with patch.dict(os.environ, env, clear=True):
+            result = get_setting_with_priority(
+                test_db,
+                env_name="TEST_FALLBACK_DEV_VAR",
+                setting_key="feedcfg.security.test_fallback_dev",
+                default="coded-default",
+            )
+        assert result == "db-only-value"
+
+    def test_prd_falls_back_to_env_when_db_absent(self, test_db):
+        """In PRD, env var is used when DB row is missing."""
+        from app.settings_store import get_setting_with_priority
+
+        with patch.dict(os.environ, {"APP_ENV": "production", "TEST_PRD_FALLBACK": "env-fallback"}):
+            result = get_setting_with_priority(
+                test_db,
+                env_name="TEST_PRD_FALLBACK",
+                setting_key="feedcfg.security.nonexistent_key_xyz",
+                default="coded-default",
+            )
+        assert result == "env-fallback"
+
+    def test_coded_default_used_when_nothing_set(self, test_db):
+        """Coded default is returned when neither env nor DB has a value."""
+        from app.settings_store import get_setting_with_priority
+
+        env = {k: v for k, v in os.environ.items() if k != "ABSENT_SETTING_XYZ"}
+        with patch.dict(os.environ, env, clear=True):
+            result = get_setting_with_priority(
+                test_db,
+                env_name="ABSENT_SETTING_XYZ",
+                setting_key="feedcfg.security.absent_setting_xyz",
+                default="my-default",
+            )
+        assert result == "my-default"
+
+
+# ============================================================================
+# ADMIN_PANEL_ENABLED Tests
+# ============================================================================
+
+class TestAdminPanelEnabled:
+    """Verify that ADMIN_PANEL_ENABLED=false returns 404 for all /admin/* routes."""
+
+    def test_admin_panel_enabled_by_default(self, admin_client):
+        """/admin is reachable when ADMIN_PANEL_ENABLED is not set (defaults true)."""
+        response = admin_client.get("/admin")
+        assert response.status_code == 200
+
+    def test_admin_panel_disabled_returns_404(self, app):
+        """ADMIN_PANEL_ENABLED=false makes /admin/* return 404."""
+        with app.test_client() as c:
+            with patch.dict(os.environ, {"ADMIN_PANEL_ENABLED": "false", "APP_ENV": "development"}):
+                response = c.get("/admin")
+        assert response.status_code == 404
+
+    def test_admin_panel_disabled_blocks_subpaths(self, app):
+        """ADMIN_PANEL_ENABLED=false blocks /admin/feeds and other subpaths."""
+        with app.test_client() as c:
+            with patch.dict(os.environ, {"ADMIN_PANEL_ENABLED": "false", "APP_ENV": "development"}):
+                response = c.get("/admin/feeds")
+        assert response.status_code == 404
+
+    def test_admin_panel_enabled_explicit_true(self, admin_client):
+        """ADMIN_PANEL_ENABLED=true keeps the panel reachable."""
+        with patch.dict(os.environ, {"ADMIN_PANEL_ENABLED": "true"}):
+            response = admin_client.get("/admin")
+        assert response.status_code == 200
+
+    def test_admin_panel_config_field_exists(self):
+        """SecurityConfig has ADMIN_PANEL_ENABLED field defaulting to True."""
+        from app.config import Config
+        cfg = Config()
+        assert hasattr(cfg.security, "ADMIN_PANEL_ENABLED")
+        assert cfg.security.ADMIN_PANEL_ENABLED is True
+
+
+# ============================================================================
+# DB-aware Admin Auth / Token Tests
+# ============================================================================
+
+class TestDbAwareAdminSettings:
+    """Verify get_admin_auth_enabled and get_admin_api_token respect priority."""
+
+    def test_get_admin_auth_enabled_defaults_true(self, test_db):
+        from app.settings_store import get_admin_auth_enabled
+        with patch.dict(os.environ, {"APP_ENV": "development"}, clear=False):
+            assert get_admin_auth_enabled(test_db) is True
+
+    def test_get_admin_auth_enabled_env_false_in_dev(self, test_db):
+        from app.settings_store import get_admin_auth_enabled
+        with patch.dict(os.environ, {"APP_ENV": "development", "ADMIN_AUTH_ENABLED": "false"}):
+            assert get_admin_auth_enabled(test_db) is False
+
+    def test_get_admin_panel_enabled_defaults_true(self, test_db):
+        from app.settings_store import get_admin_panel_enabled
+        assert get_admin_panel_enabled(test_db) is True
+
+    def test_get_admin_api_token_from_env_in_dev(self, test_db):
+        from app.settings_store import get_admin_api_token
+        with patch.dict(os.environ, {"APP_ENV": "development", "ADMIN_API_TOKEN": "mytoken123"}):
+            assert get_admin_api_token(test_db) == "mytoken123"

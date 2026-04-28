@@ -1,10 +1,99 @@
 # Configuration
 
-Status: updated for `1.6.0` (2026-04-21).
+Status: updated for `1.7.0` (2026-04-28).
 
 ## Environment Variables
 
 All configuration is done via environment variables. No config files are required, but milestone `1.6.0` reorganizes the runtime config model into grouped sections while preserving backward compatibility for existing environment variable names.
+
+---
+
+## Setting priority model
+
+Certain settings are overridable at runtime via the database (`app_settings` table, managed through
+the admin panel). The **resolution order depends on `APP_ENV`**:
+
+| `APP_ENV` | Priority order |
+|-----------|---------------|
+| `development` (default) | **env var → DB → coded default** |
+| `production` | **DB → env var → coded default** |
+
+### Rationale
+
+- **Development**: operators iterate quickly with `.env` files. An env var set in the shell or
+  `.env` should take immediate effect without touching the database.
+- **Production**: administrators change settings live through the admin panel (DB). A container
+  restart must not silently overwrite a DB-stored value with a stale env var from the compose file.
+
+### Which settings use DB-override
+
+The following settings can be stored in the `app_settings` table and are resolved with the
+priority model above:
+
+| Setting | DB key | Type |
+|---------|--------|------|
+| `ADMIN_PANEL_ENABLED` | `feedcfg.security.admin_panel_enabled` | bool |
+| `ADMIN_AUTH_ENABLED` | `feedcfg.security.admin_auth_enabled` | bool |
+| `ADMIN_API_TOKEN` | `feedsecret.security.admin_api_token` | secret |
+| `ADMIN_LOGIN_RATE_LIMIT` | `feedcfg.security.admin_login_rate_limit` | string |
+| `ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES` | `feedcfg.security.admin_login_rate_limit_window_minutes` | int |
+
+Settings **not** in this table (e.g. `DATABASE_URL`, `SECRET_KEY`, `REDIS_URL`) are always
+read from the environment only and are never overridable via the database.
+
+---
+
+## Image variants
+
+Two published images cover different deployment topologies:
+
+### `ghcr.io/mkilijanek/ioc-service` — HTTP variant (plain upstream)
+
+Use behind an external TLS terminator (F5, VS, Cloudflare, nginx outside this stack) or in
+trusted internal networks. The app itself speaks plain HTTP.
+
+Required / recommended env overrides:
+
+```bash
+APP_ENV=production           # or development for lab
+EDGE_HTTPS_ENABLED=false     # disable internal HTTPS redirect and Secure cookie
+SESSION_COOKIE_SECURE_ENABLED=false
+HSTS_ENABLED=false
+
+# Admin panel — choose one:
+ADMIN_PANEL_ENABLED=false    # hide /admin entirely (recommended for read-only deployments)
+ADMIN_PANEL_ENABLED=true
+ADMIN_AUTH_ENABLED=false     # panel open without login (dev/trusted-internal only)
+ADMIN_AUTH_ENABLED=true      # panel requires ADMIN_API_TOKEN
+ADMIN_API_TOKEN=<token>      # required when ADMIN_AUTH_ENABLED=true
+```
+
+### `ghcr.io/mkilijanek/ioc-service-tls` — TLS edge (nginx sidecar)
+
+Bundles an nginx TLS terminator. The app container still speaks plain HTTP internally;
+nginx handles TLS towards clients.
+
+Required / recommended env overrides:
+
+```bash
+APP_ENV=production
+EDGE_HTTPS_ENABLED=true      # enable HTTPS redirect and Secure cookie (default)
+SESSION_COOKIE_SECURE_ENABLED=true
+NGINX_TLS_ENABLED=true       # nginx speaks TLS (default)
+
+# HSTS — optional, enable only after verifying HTTPS works end-to-end
+HSTS_ENABLED=true            # app-level HSTS header
+NGINX_HSTS_ENABLED=true      # nginx-level HSTS header
+
+# Admin panel
+ADMIN_PANEL_ENABLED=true     # (default) panel is visible
+ADMIN_AUTH_ENABLED=true      # (default) panel requires login
+ADMIN_API_TOKEN=<token>      # required — set a strong random token
+# or to allow panel without login (dev/staging only):
+ADMIN_AUTH_ENABLED=false
+```
+
+SSL certificate sourcing for the TLS variant: see `docs/deployment.md`.
 
 ## Configuration model in `1.6.0`
 

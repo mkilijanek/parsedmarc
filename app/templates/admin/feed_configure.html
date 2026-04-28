@@ -1,113 +1,127 @@
-<!doctype html>
-<html lang='en'>
-<head>
-<meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/>
-<title>Configure {{ source_id }}</title>
+{% extends "layout.html" %}
+
+{% block title %}Configure {{ source_id }}{% endblock %}
+
+{% block extra_css %}
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0 1.5rem 1.5rem; background: var(--bg); color: var(--fg); }
-  body[data-theme="light"] { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }
-  body[data-theme="dark"] { --bg: #0f172a; --fg: #e2e8f0; --card: #111827; --line: #334155; }
-  body:not([data-theme]) { --bg: #f8fafc; --fg: #0f172a; --card: #ffffff; --line: #dbe1ea; }
-  .topbar { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.8rem 0; margin-bottom:1rem; border-bottom:1px solid var(--line); }
-  .topbar nav a { margin-right:.8rem; }
-  .card { border:1px solid var(--line); border-radius:12px; padding:1rem; background:var(--card); }
-  input, button, select { border:1px solid var(--line); border-radius:8px; padding:.4rem .5rem; background:var(--bg); color:var(--fg); }
-  input[type='text'], input[type='password'], select { width: 100%; }
+  .configure-card { border:1px solid var(--line); border-radius:12px; padding:1rem; background:var(--card); }
   fieldset { border:1px solid var(--line); border-radius:10px; margin:.8rem 0; padding:.6rem; }
+  .mwdb-orgs label { display:block; margin:.25rem 0; }
 </style>
-</head>
-<body>
-<header class="topbar" id="globalTopbar">
-  <nav>
-    <a href="/">Overview</a>
-    <a href="/indicators">Indicators</a>
-    <a href="/admin">Admin</a>
-    <a href="/logs">Logs</a>
-  </nav>
-  <button type="button" id="themeToggleGlobal">Toggle dark mode</button>
-</header>
-<div class='card'>
-<h1>Configure feed: {{ source_id }}</h1>
-<p>{{ msg }}</p>
-<p>Status: {% if state.ready %}OK{% else %}Incomplete: {{ state.missing|join(', ') }}{% endif %}</p>
-<form method='post' action='/admin/feed/{{ source_id }}/configure' id='feedConfigForm'>
-<p><label>Display name <input type='text' name='display_name' value='{{ feed.display_name }}' required/></label></p>
-<p><label>Schedule cron <input type='text' name='schedule_cron' value='{{ feed.schedule_cron }}'/></label></p>
-{% for field in state.fields %}
-<p><label>{{ field.label }}
-  {% if field.type == 'checkbox' %}
-  <input type='checkbox' name='{{ field.input_name or "" }}' value='1' {% if field.checked %}checked{% endif %}/>
-  {% else %}
-  <input type='{{ "password" if field.secret else "text" }}'
-         name='{{ field.input_name or "" }}'
-         value='{{ field.value or "" }}'
-         placeholder='{{ field.placeholder or "" }}'/>
-  {% endif %}
-</label>{% if field.secret %} Current: {{ field.current_masked or '' }}{% endif %}</p>
-{% endfor %}
-{% if state.source_type == 'mwdb' %}
-  {% if mwdb_orgs %}
-  <fieldset><legend>MWDB organizations</legend>
-    {% for org in mwdb_orgs %}
-      {% set org_value = org.id or org.name or '' %}
-      <label style='display:block'>
-        <input type='checkbox' name='mwdb_orgs' value='{{ org_value }}' {% if org_value in mwdb_selected_orgs %}checked{% endif %}/>
-        {{ org.name or org.id or '' }}
+{% endblock %}
+
+{% block content %}
+{% set active_page = 'admin' %}
+
+<div class="configure-card">
+  <h1>Configure feed: {{ source_id }}</h1>
+  <p>{{ msg }}</p>
+  <p>Status: {% if state.ready %}<span class="badge badge-success">OK</span>{% else %}<span class="badge badge-warning">Incomplete: {{ state.missing|join(', ') }}</span>{% endif %}</p>
+
+  <form method="post" action="/admin/feed/{{ source_id }}/configure" id="feedConfigForm">
+    <div class="form-group">
+      <label class="form-label">Display name</label>
+      <input type="text" name="display_name" value="{{ feed.display_name }}" required class="form-input"/>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Schedule cron</label>
+      <input type="text" name="schedule_cron" value="{{ feed.schedule_cron }}" class="form-input"/>
+    </div>
+
+    {% for field in state.fields %}
+    <div class="form-group">
+      <label class="form-label">{{ field.label }}
+        {% if field.type == 'checkbox' %}
+        <input type="checkbox" name="{{ field.input_name or '' }}" value="1" {% if field.checked %}checked{% endif %}/>
+        {% else %}
+        <input type="{{ 'password' if field.secret else 'text' }}"
+               name="{{ field.input_name or '' }}"
+               value="{{ field.value or '' }}"
+               placeholder="{{ field.placeholder or '' }}"
+               class="form-input"/>
+        {% endif %}
       </label>
+      {% if field.secret %}<span class="text-muted">Current: {{ field.current_masked or '' }}</span>{% endif %}
+    </div>
     {% endfor %}
-  </fieldset>
-  <fieldset><legend>My MWDB group (TLP:AMBER for group-visible indicators)</legend>
-    <p style='margin:.2rem 0 .5rem'>Indicators uploaded by this group will be tagged <strong>TLP:AMBER</strong>.</p>
-    <select name='mwdb_my_group'>
-      <option value=''>(none — use TLP:GREEN for all)</option>
-      {% for org in mwdb_orgs %}
-        {% set org_value = org.id or org.name or '' %}
-        <option value='{{ org_value }}' {% if org_value == mwdb_selected_group %}selected{% endif %}>{{ org.name or org.id or '' }}</option>
-      {% endfor %}
-    </select>
-  </fieldset>
-  {% else %}
-  <p>MWDB organizations list is unavailable. Use <strong>Test connection</strong> first.</p>
-  {% endif %}
-{% endif %}
-<button type='submit' id='saveBtn'>Save settings</button>
-<button type='submit' formaction='/admin/feed/{{ source_id }}/test' formmethod='post' id='testBtn'>Test connection</button>
-<a href='/admin'>Back</a>
-</form>
+
+    {% if state.source_type == 'mwdb' %}
+      {% if mwdb_orgs %}
+      <fieldset>
+        <legend>MWDB organizations</legend>
+        <div class="mwdb-orgs">
+        {% for org in mwdb_orgs %}
+          {% set org_value = org.id or org.name or '' %}
+          <label>
+            <input type="checkbox" name="mwdb_orgs" value="{{ org_value }}" {% if org_value in mwdb_selected_orgs %}checked{% endif %}/>
+            {{ org.name or org.id or '' }}
+          </label>
+        {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>My MWDB group (TLP:AMBER for group-visible indicators)</legend>
+        <p class="text-muted" style="margin:.2rem 0 .5rem">Indicators uploaded by this group will be tagged <strong>TLP:AMBER</strong>.</p>
+        <select name="mwdb_my_group" class="form-input">
+          <option value="">(none — use TLP:GREEN for all)</option>
+          {% for org in mwdb_orgs %}
+            {% set org_value = org.id or org.name or '' %}
+            <option value="{{ org_value }}" {% if org_value == mwdb_selected_group %}selected{% endif %}>{{ org.name or org.id or '' }}</option>
+          {% endfor %}
+        </select>
+      </fieldset>
+      {% else %}
+      <p>MWDB organizations list is unavailable. Use <strong>Test connection</strong> first.</p>
+      {% endif %}
+    {% endif %}
+
+    <div style="display:flex; gap:.5rem; margin-top:1rem;">
+      <button type="submit" id="saveBtn" class="btn btn-primary">Save settings</button>
+      <button type="submit" formaction="/admin/feed/{{ source_id }}/test" formmethod="post" id="testBtn" class="btn">Test connection</button>
+      <a href="/admin" class="btn">Back</a>
+    </div>
+  </form>
 </div>
+
+{% endblock %}
+
+{% block extra_js %}
 <script>
-const themeKey = 'ioc-theme';
-const preferredTheme = localStorage.getItem(themeKey);
-if (preferredTheme === 'dark' || preferredTheme === 'light') {
-  document.body.setAttribute('data-theme', preferredTheme);
-} else {
-  const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  document.body.setAttribute('data-theme', systemDark ? 'dark' : 'light');
-}
-const themeToggle = document.getElementById('themeToggleGlobal');
-if (themeToggle) {
-  themeToggle.addEventListener('click', () => {
-    const curr = document.body.getAttribute('data-theme') || 'light';
-    const next = curr === 'dark' ? 'light' : 'dark';
-    document.body.setAttribute('data-theme', next);
-    localStorage.setItem(themeKey, next);
-  });
-}
-const form = document.getElementById('feedConfigForm');
-if (form) {
-  form.addEventListener('submit', function (evt) {
-    const submitter = evt.submitter;
-    const saveBtn = document.getElementById('saveBtn');
-    const testBtn = document.getElementById('testBtn');
-    if (saveBtn) saveBtn.disabled = true;
-    if (testBtn) testBtn.disabled = true;
-    if (submitter && submitter.id === 'testBtn') {
-      submitter.textContent = 'Testing...';
-    } else if (saveBtn) {
-      saveBtn.textContent = 'Saving...';
+(function() {
+  const form = document.getElementById('feedConfigForm');
+  const saveBtn = document.getElementById('saveBtn');
+  const testBtn = document.getElementById('testBtn');
+
+  if (form) {
+    form.addEventListener('submit', function (evt) {
+      const submitter = evt.submitter;
+      if (saveBtn) saveBtn.disabled = true;
+      if (testBtn) testBtn.disabled = true;
+
+      if (submitter && submitter.id === 'testBtn') {
+        submitter.textContent = 'Testing...';
+        showToast('Testing connection...', 'info', 3000);
+      } else if (saveBtn) {
+        saveBtn.textContent = 'Saving...';
+        showToast('Saving feed configuration...', 'info', 2000);
+      }
+    });
+  }
+
+  // Show toast for status message
+  const urlParams = new URLSearchParams(window.location.search);
+  const msg = urlParams.get('msg');
+  if (msg) {
+    if (msg.includes('success') || msg.includes('saved')) {
+      showToast(msg, 'success');
+    } else if (msg.includes('error') || msg.includes('failed')) {
+      showToast(msg, 'error');
+    } else {
+      showToast(msg, 'info');
     }
-  });
-}
+  }
+})();
 </script>
-</body></html>
+{% endblock %}

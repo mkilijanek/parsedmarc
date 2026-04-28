@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+
+{% block title %}Logs{% endblock %}
+
+{% block content %}
+{% set active_page = 'logs' %}
+
+<div class="card">
+  <h1>Logs</h1>
+  <p><a href="/admin" class="btn btn-sm">Back to admin</a></p>
+
+  <form id="filters" class="form-row">
+    <div class="form-group">
+      <label class="form-label">Feed</label>
+      <input name="feed" class="form-input" placeholder="e.g., misp, mwdb"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Job ID</label>
+      <input name="job_id" class="form-input" placeholder="run-uuid"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Level</label>
+      <input name="level" class="form-input" placeholder="INFO|WARN|ERROR"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Component</label>
+      <input name="component" class="form-input" placeholder="scheduler|fetcher|parser"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Since</label>
+      <input name="since" class="form-input" placeholder="2026-02-26T00:00:00Z"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Until</label>
+      <input name="until" class="form-input" placeholder="2026-02-26T23:59:59Z"/>
+    </div>
+    <div class="form-group form-checkbox">
+      <label><input type="checkbox" id="autorefresh" checked/> Auto-refresh</label>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Apply</button>
+      <button type="button" id="copyBtn" class="btn">Copy all visible logs</button>
+      <button type="button" id="downloadBtn" class="btn">Download visible .log</button>
+    </div>
+  </form>
+
+  <p id="copyStatus" role="status" aria-live="polite"></p>
+  <pre id="out" style="white-space: pre-wrap; border:1px solid var(--line); padding:1rem; min-height:300px; background:var(--bg); border-radius:8px;"></pre>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  let visibleRows = [];
+
+  function setCopyStatus(msg, type) {
+    const el = document.getElementById('copyStatus');
+    el.textContent = msg;
+    if (type) {
+      showToast(msg, type);
+    }
+  }
+
+  function formatLine(item) {
+    const ts = item.created_at || '';
+    const lvl = (item.level || '').padEnd(5);
+    const comp = (item.component || '').padEnd(10);
+    const msg = item.message || '';
+    return `${ts} [${lvl}] ${comp} ${msg}`;
+  }
+
+  async function copyVisibleLogs() {
+    const text = visibleRows.map(formatLine).join('\n');
+    if (!text) {
+      setCopyStatus('No logs to copy.', 'warning');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus('Copied to clipboard.', 'success');
+    } catch (e) {
+      setCopyStatus('Copy failed.', 'error');
+    }
+  }
+
+  function downloadVisibleLogs() {
+    const text = visibleRows.map(formatLine).join('\n');
+    if (!text) {
+      setCopyStatus('No logs to download.', 'warning');
+      return;
+    }
+    const blob = new Blob([text + '\n'], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const feed = (document.querySelector('input[name=feed]')?.value || 'all');
+    a.download = `logs-${feed}-${new Date().toISOString().slice(0,19)}.log`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setCopyStatus('Download started.', 'success');
+  }
+
+  async function refreshLogs() {
+    const q = new URLSearchParams(new FormData(document.getElementById('filters'))).toString();
+    try {
+      const r = await fetch('/api/logs?' + q);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      visibleRows = d.items || [];
+      const lines = visibleRows.map(formatLine);
+      document.getElementById('out').textContent = lines.length ? lines.join('\n') : 'No logs found for current filters.';
+    } catch (err) {
+      visibleRows = [];
+      document.getElementById('out').textContent = 'Failed to load logs.';
+      showToast('Failed to refresh logs: ' + err.message, 'error');
+    }
+  }
+
+  document.getElementById('filters').addEventListener('submit', (e) => {
+    e.preventDefault();
+    showToast('Refreshing logs...', 'info', 1500);
+    refreshLogs();
+  });
+  document.getElementById('copyBtn').addEventListener('click', copyVisibleLogs);
+  document.getElementById('downloadBtn').addEventListener('click', downloadVisibleLogs);
+  setInterval(() => {
+    if (document.getElementById('autorefresh').checked) refreshLogs();
+  }, 5000);
+  refreshLogs();
+  showToast('Logs loaded. Auto-refresh enabled.', 'info', 2000);
+})();
+</script>
+{% endblock %}

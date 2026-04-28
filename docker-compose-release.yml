@@ -108,6 +108,14 @@ services:
       EDGE_HTTPS_ENABLED: ${EDGE_HTTPS_ENABLED:-true}
       HSTS_ENABLED: ${HSTS_ENABLED:-true}
       SESSION_COOKIE_SECURE_ENABLED: ${SESSION_COOKIE_SECURE_ENABLED:-true}
+
+      # Admin panel — see docs/configuration.md "Image variants"
+      # HTTP variant: set EDGE_HTTPS_ENABLED=false, SESSION_COOKIE_SECURE_ENABLED=false,
+      #               ADMIN_AUTH_ENABLED=false (or true + ADMIN_API_TOKEN)
+      # TLS variant:  defaults below are appropriate; set ADMIN_API_TOKEN to a strong token
+      ADMIN_PANEL_ENABLED: ${ADMIN_PANEL_ENABLED:-true}
+      ADMIN_AUTH_ENABLED: ${ADMIN_AUTH_ENABLED:-true}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
     ports:
       - "${APP_HOST_BIND:-127.0.0.1}:${APP_HOST_PORT:-7005}:${APP_PORT:-8080}"
     depends_on:

@@ -2269,3 +2269,124 @@
 
 [2026-04-28T14:13:29Z] Observation: the worker health endpoint at http://localhost:8091/healthz is healthy, but the container still carried the inherited image healthcheck against port 8080 after a config-only rollout. Root cause: the deploy script used plain `docker compose up -d`, which did not force recreation for unchanged image tags. Planned fix: switch the rollout of app/worker/nginx to `up -d --force-recreate` so compose-level healthcheck and runtime config changes are always applied even when the image tag stays the same.
 [2026-04-28T14:13:53Z] Action: cancelled queued deploy run 25058044112 because it referenced the pre-c98769e workflow checkout, then re-triggered the TLS deploy from current main so the force-recreate rollout logic is applied.
+
+2026-04-28
+
+[current stage]
+- Configuration priority model and image variant hardening.
+- Goal: introduce environment-aware setting priority (env > DB in DEV, DB > env in PRD),
+  add ADMIN_PANEL_ENABLED toggle, wire missing admin env vars in release compose,
+  and document the two image variants with their expected configuration profiles.
+
+[planned tasks and justifications]
+1. Document the priority model in docs/configuration.md.
+   Justification: documentation-driven delivery — the model must be stated before it is coded.
+2. Add env_then_db() / db_then_env() dispatch in app/settings_store.py, keyed on APP_ENV.
+   Justification: DEV operators iterate against env files; PRD admins change settings live via the
+   DB-backed admin panel without restarting the container. Each environment has opposite needs.
+3. Add ADMIN_PANEL_ENABLED to SecurityConfig and honour it in auth.py (404 when false).
+   Justification: both image variants need a way to fully hide the /admin surface without
+   requiring a code rebuild.
+4. Update existing DB-aware getters (admin_login_rate_limit, admin_auth_enabled, admin_api_token)
+   to use the priority-dispatch helper.
+   Justification: consistent priority semantics across all DB-overridable settings.
+5. Wire ADMIN_AUTH_ENABLED, ADMIN_API_TOKEN, ADMIN_PANEL_ENABLED into docker-compose-release.yml.
+   Justification: these env vars are referenced in code but were never passed into the container.
+6. Document the two image variants (HTTP-only, TLS-edge) and their expected .env profiles
+   in docs/deployment.md or docs/configuration.md.
+   Justification: operators need a single reference that tells them which vars to set per variant.
+7. Update .env.example with new vars and variant guidance.
+8. Add tests covering: priority dispatch per APP_ENV, ADMIN_PANEL_ENABLED=false returns 404,
+   DB-override is used on PRD when env var absent.
+
+[how success will be verified]
+- PYTHONPATH=. pytest -q tests/test_security.py tests/test_settings_store.py (new file) -v
+- bash scripts/dev-check.sh -> full suite green
+- docker compose config (release) renders without errors and contains new env keys
+- docs/configuration.md describes the priority model before implementation is merged
+
+[actions performed]
+- Added docs/configuration.md section: "Setting priority model" and "Image variants" with
+  full env-var reference for HTTP-only and TLS-edge deployment profiles.
+- Added _is_production(), _env_var_is_set(), _db_value(), get_setting_with_priority() to
+  app/settings_store.py; kept runtime_override_or_env() as a backward-compatible shim.
+- Updated get_admin_login_rate_limit() and get_admin_login_rate_limit_window() to use
+  get_setting_with_priority() so they respect APP_ENV.
+- Added get_admin_auth_enabled(), get_admin_panel_enabled(), get_admin_api_token() getters
+  that all use APP_ENV-aware priority dispatch.
+- Added ADMIN_PANEL_ENABLED to SecurityConfig (app/config.py), default True.
+- Added _admin_panel_disabled() check in _require_admin_session() — returns 404 when False.
+- Added _resolve_admin_api_token() in auth.py so login compares against DB-stored token in PRD.
+- Wired ADMIN_PANEL_ENABLED, ADMIN_AUTH_ENABLED, ADMIN_API_TOKEN into docker-compose-release.yml
+  app service env block (were previously absent).
+- Documented variant-specific env overrides in .env.example.
+- Added 14 new tests: TestSettingPriorityModel (5), TestAdminPanelEnabled (5),
+  TestDbAwareAdminSettings (4).
+
+[verification]
+- python -m compileall -q app/settings_store.py app/config.py app/routes/auth.py -> success
+- PYTHONPATH=. pytest -q tests/test_security.py::TestSettingPriorityModel
+  tests/test_security.py::TestAdminPanelEnabled
+  tests/test_security.py::TestDbAwareAdminSettings -> 14 passed
+- PYTHONPATH=. pytest -q tests/test_security.py tests/test_ui_issues.py
+  tests/test_ops_contracts.py tests/test_api.py -> 323 passed
+- PYTHONPATH=. pytest -q -> 568 passed, 2 skipped
+
+[decisions]
+- DB priority wins in PRD so live admin-panel changes survive container restarts without
+  compose env silently overwriting them.
+- Env priority wins in DEV so operators can iterate with .env files without touching the DB.
+- runtime_override_or_env() kept as a shim (DB-first always) for existing callers outside
+  the admin-settings surface — those callers are feed credential overrides that already had
+  DB-first semantics and must not change behaviour.
+- ADMIN_PANEL_ENABLED=false returns 404 (not 403/redirect) so the panel surface is invisible
+  to scanners — no login page reveals its existence.
+
+[next planned implementation steps]
+1. Commit this batch on main.
+2. Verify docker compose config for release compose renders correctly with new env keys.
+3. Rebuild and redeploy images on the host to pick up ADMIN_PANEL_ENABLED and ADMIN_API_TOKEN wiring.
+
+2026-04-28
+
+[current stage]
+- CI repair, security dependency fix, and release packaging.
+
+[planned tasks and justifications]
+1. Fix mypy error: app/main.py:17 `_factory.requests = requests` triggers attr-defined error
+   because mypy cannot verify module-level dynamic attribute assignment.
+   Fix: add `# type: ignore[attr-defined]` on the affected lines in _sync_factory_globals().
+   Justification: CI quality gate fails on this; the assignment is intentional (test compat shim).
+2. Update python-dotenv from 1.0.1 to >=1.2.2 to address Dependabot alert #12
+   (CVE: symlink following in set_key allows arbitrary file overwrite via cross-device rename).
+   Justification: dependency security obligation; easy bump, no API change.
+3. Commit all uncommitted working-tree changes in one batch:
+   - UX milestone work from 2026-04-23 (layout.html, admin templates, legacy templates,
+     logs.html, logs route, ops_admin security settings, test_ui_issues updates)
+   - OSV Scanner workflow (.github/workflows/osv-scanner.yml)
+   - Configuration priority model from this session (settings_store, config, auth, compose,
+     docs, test_security additions)
+   Justification: CI is running against stale committed code; all local test passes (568 passed)
+   confirm the working tree is correct and ready to land.
+4. Close GitHub issue #162 (mobile-first design) — implementation is in the committed templates.
+5. Push main, wait for CI, then tag and publish release.
+
+[how success will be verified]
+- mypy check on boundary files returns 0 errors
+- PYTHONPATH=. pytest -q -> 568 passed, 2 skipped
+- CI run on main: all jobs green
+- GitHub release published with correct notes
+
+[actions performed]
+- Fixed mypy attr-defined error: added # type: ignore[attr-defined] to _sync_factory_globals()
+  dynamic attribute assignments in app/main.py (intentional test-compat shim).
+- Updated python-dotenv from 1.0.1 to 1.2.2 (Dependabot alert #12, CVE: symlink overwrite).
+- Installed types-requests in local venv to confirm mypy clean with stubs (CI already has it).
+
+[verification]
+- PYTHONPATH=. mypy boundary files (with types-requests) -> Success: no issues found in 5 source files
+- PYTHONPATH=. pytest -q -> 568 passed, 2 skipped
+
+[decisions]
+- Used # type: ignore[attr-defined] rather than restructuring the compat shim, because the
+  shim exists specifically for test patching and restructuring it would change test behaviour.
