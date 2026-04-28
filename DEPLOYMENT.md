@@ -65,6 +65,7 @@ curl http://localhost:7005/health
    - `image_tag=sha-<commit>` or a release tag
 
 The deploy workflow executes `scripts/deploy_ghcr_variant.sh`, which pulls GHCR images and rolls the compose stack forward.
+On self-hosted runners, the workflow expects runtime secrets in `/home/kili/Repo/ioc-service/.env` unless `DEPLOY_ENV_FILE` is explicitly overridden in the job environment.
 
 ### Monitoring
 - App-only health: http://your-host:7005/healthz

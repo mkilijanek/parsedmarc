@@ -38,6 +38,7 @@ jobs:
         env:
           APP_IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
           TLS_IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}-tls
+          DEPLOY_ENV_FILE: /home/kili/Repo/ioc-service/.env
         run: |
           chmod +x scripts/deploy_ghcr_variant.sh
           scripts/deploy_ghcr_variant.sh "${{ inputs.variant }}" "${{ inputs.image_tag }}"

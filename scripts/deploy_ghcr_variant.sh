@@ -8,8 +8,21 @@ export APP_IMAGE_REPOSITORY="${APP_IMAGE_REPOSITORY:-ghcr.io/mkilijanek/ioc-serv
 export TLS_IMAGE_REPOSITORY="${TLS_IMAGE_REPOSITORY:-ghcr.io/mkilijanek/ioc-service-tls}"
 export IMAGE_TAG="${image_tag}"
 export TLS_IMAGE_TAG="${TLS_IMAGE_TAG:-${image_tag}}"
+deploy_env_file="${DEPLOY_ENV_FILE:-}"
+if [ -z "${deploy_env_file}" ]; then
+  for candidate in "/home/kili/Repo/ioc-service/.env" ".env"; do
+    if [ -f "${candidate}" ]; then
+      deploy_env_file="${candidate}"
+      break
+    fi
+  done
+fi
+if [ -z "${deploy_env_file}" ] || [ ! -f "${deploy_env_file}" ]; then
+  echo "Missing deploy env file. Set DEPLOY_ENV_FILE or provide /home/kili/Repo/ioc-service/.env." >&2
+  exit 1
+fi
 
-compose=(docker compose -f docker-compose-release.yml)
+compose=(docker compose --env-file "${deploy_env_file}" -f docker-compose-release.yml)
 
 case "${variant}" in
   ioc-service)
@@ -32,7 +45,7 @@ case "${variant}" in
     ;;
 esac
 
-echo "[deploy] variant=${variant} image_tag=${image_tag}"
+echo "[deploy] variant=${variant} image_tag=${image_tag} env_file=${deploy_env_file}"
 docker pull "${APP_IMAGE_REPOSITORY}:${IMAGE_TAG}"
 if [ "${variant}" = "ioc-service-tls" ]; then
   docker pull "${TLS_IMAGE_REPOSITORY}:${TLS_IMAGE_TAG}"
