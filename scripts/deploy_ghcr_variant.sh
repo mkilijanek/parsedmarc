@@ -33,9 +33,9 @@ case "${variant}" in
 esac
 
 echo "[deploy] variant=${variant} image_tag=${image_tag}"
-"${compose[@]}" pull postgres redis app worker migrate
+docker pull "${APP_IMAGE_REPOSITORY}:${IMAGE_TAG}"
 if [ "${variant}" = "ioc-service-tls" ]; then
-  "${compose[@]}" pull nginx
+  docker pull "${TLS_IMAGE_REPOSITORY}:${TLS_IMAGE_TAG}"
 fi
 
 "${compose[@]}" up -d postgres redis
