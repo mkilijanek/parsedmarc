@@ -441,6 +441,8 @@ class TestSessionSecurity:
         assert "insufficient role permissions" in response.get_data(as_text=True)
 
     def test_login_rate_limit_returns_operator_facing_html(self, client):
+        if not client.application.limiter.enabled:
+            pytest.skip("rate limiting is disabled for this environment")
         last_response = None
         for _ in range(11):
             last_response = client.get("/auth/login")
