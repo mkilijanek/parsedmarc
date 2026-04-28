@@ -4,7 +4,9 @@ import hmac
 import secrets
 from urllib.parse import quote
 
-from flask import Response, redirect, request, session, url_for
+from flask import Response, current_app, redirect, request, session, url_for
+
+from ..settings_store import get_admin_login_rate_limit
 
 
 ROLE_PERMISSIONS = {
@@ -52,7 +54,24 @@ def canonical_https_url(cfg, target_path: str | None = None) -> str:
     return f"https://{netloc}{path}"
 
 
+def _get_dynamic_login_rate_limit() -> str:
+    """Callable for Flask-Limiter to get current rate limit from DB or env."""
+    try:
+        from ..db import get_db
+        db = next(get_db())
+        cfg = current_app.config.get("cfg") if hasattr(current_app, "config") else None
+        return get_admin_login_rate_limit(db, cfg)
+    except Exception:
+        # Fallback to config if DB is unavailable
+        cfg = current_app.config.get("cfg") if hasattr(current_app, "config") else None
+        if cfg:
+            return getattr(cfg.security, "ADMIN_LOGIN_RATE_LIMIT", "10 per 15 minute")
+        return "10 per 15 minute"
+
+
 def should_redirect_auth_surface_to_https(cfg) -> bool:
+    if not bool(getattr(cfg, "EDGE_HTTPS_ENABLED", True)):
+        return False
     if auth_surface_request_is_secure():
         return False
     path = request.path or ""
@@ -81,6 +100,19 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
 
     def _admin_auth_configured() -> bool:
         return bool((cfg.ADMIN_API_TOKEN or "").strip())
+
+    def _admin_auth_disabled() -> bool:
+        """Check if admin authentication is explicitly disabled (dev/test only)."""
+        return not getattr(cfg.security, "ADMIN_AUTH_ENABLED", True)
+
+    def _auto_auth_if_disabled() -> None:
+        """Automatically authenticate admin session when auth is disabled."""
+        if _admin_auth_disabled() and not _admin_authenticated():
+            session["admin_authenticated"] = True
+            session["admin_user_id"] = "admin-disabled"
+            configured_role = str(getattr(cfg, "ADMIN_ROLE", "admin") or "admin").strip().lower()
+            session["admin_role"] = configured_role if configured_role in ROLE_PERMISSIONS else "admin"
+            session["admin_csrf_token"] = secrets.token_urlsafe(32)
 
     def _admin_authenticated() -> bool:
         return bool(session.get("admin_authenticated"))
@@ -116,6 +148,8 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
     def _require_admin_session():
         if not request.path.startswith("/admin"):
             return None
+        # Auto-authenticate if admin auth is disabled (dev/test mode)
+        _auto_auth_if_disabled()
         if _admin_authenticated():
             permission = _permission_for_admin_request()
             if not _has_permission(permission):
@@ -167,8 +201,33 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         response.set_data(body)
         return response
 
+    @app.after_request
+    def _inject_auth_disabled_warning(response: Response) -> Response:
+        """Inject prominent warning banner when admin auth is disabled."""
+        if _admin_auth_disabled() and request.path.startswith("/admin"):
+            content_type = (response.headers.get("Content-Type") or "").lower()
+            if "text/html" not in content_type:
+                return response
+            body = response.get_data(as_text=True)
+            if not body:
+                return response
+            warning_banner = (
+                "<div style='background:#dc2626;color:#fff;padding:1rem;text-align:center;font-weight:bold;"
+                "position:sticky;top:0;z-index:9999;'>"
+                "⚠️ SECURITY WARNING: Admin authentication is DISABLED. "
+                "This instance is open to anyone. Set ADMIN_AUTH_ENABLED=true for production."
+                "</div>"
+            )
+            if "<body" in body:
+                # Insert after opening body tag
+                body = body.replace(">", ">" + warning_banner, 1)
+            else:
+                body = warning_banner + body
+            response.set_data(body)
+        return response
+
     @app.get("/auth/login")
-    @limiter.limit(cfg.ADMIN_LOGIN_RATE_LIMIT)
+    @limiter.limit(_get_dynamic_login_rate_limit)
     def auth_login():
         next_url = (request.args.get("next") or "/admin").strip() or "/admin"
         msg = (request.args.get("msg") or "").strip()
@@ -218,7 +277,7 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
 </html>"""
 
     @app.post("/auth/login")
-    @limiter.limit(cfg.ADMIN_LOGIN_RATE_LIMIT)
+    @limiter.limit(_get_dynamic_login_rate_limit)
     def auth_login_post():
         next_url = (request.form.get("next") or "/admin").strip() or "/admin"
         expected = (cfg.ADMIN_API_TOKEN or "").strip()

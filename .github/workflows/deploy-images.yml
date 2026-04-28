@@ -1,0 +1,43 @@
+name: Deploy Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "Deployment variant"
+        required: true
+        type: choice
+        options:
+          - ioc-service
+          - ioc-service-tls
+      image_tag:
+        description: "Published image tag to deploy"
+        required: true
+        default: latest
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy requested variant
+        env:
+          APP_IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          TLS_IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}-tls
+        run: |
+          chmod +x scripts/deploy_ghcr_variant.sh
+          scripts/deploy_ghcr_variant.sh "${{ inputs.variant }}" "${{ inputs.image_tag }}"

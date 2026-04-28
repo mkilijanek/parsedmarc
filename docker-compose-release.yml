@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: ghcr.io/mkilijanek/ioc-service:${IMAGE_TAG:-latest}
+    image: ${APP_IMAGE_REPOSITORY:-ghcr.io/mkilijanek/ioc-service}:${IMAGE_TAG:-latest}
     command: ["sh", "-c", "scripts/db-migrate.sh"]
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -53,7 +53,7 @@ services:
     restart: "no"
 
   app:
-    image: ghcr.io/mkilijanek/ioc-service:${IMAGE_TAG:-latest}
+    image: ${APP_IMAGE_REPOSITORY:-ghcr.io/mkilijanek/ioc-service}:${IMAGE_TAG:-latest}
     #build:
     #   context: .
     environment:
@@ -102,8 +102,14 @@ services:
       # Security
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      APP_HOST_PORT: ${APP_HOST_PORT:-7005}
+      HTTPS_PORT: ${HTTPS_PORT:-7003}
+      CANONICAL_HTTPS_HOST: ${CANONICAL_HTTPS_HOST:-}
+      EDGE_HTTPS_ENABLED: ${EDGE_HTTPS_ENABLED:-true}
+      HSTS_ENABLED: ${HSTS_ENABLED:-true}
+      SESSION_COOKIE_SECURE_ENABLED: ${SESSION_COOKIE_SECURE_ENABLED:-true}
     ports:
-      - "${HOST_PORT:-7003}:8080"
+      - "${APP_HOST_BIND:-127.0.0.1}:${APP_HOST_PORT:-7005}:${APP_PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,7 +125,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/mkilijanek/ioc-service:${IMAGE_TAG:-latest}
+    image: ${APP_IMAGE_REPOSITORY:-ghcr.io/mkilijanek/ioc-service}:${IMAGE_TAG:-latest}
     #build:
     #  context: .
     command: ["python", "-m", "app.worker"]
@@ -162,20 +168,24 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx:1.27-alpine
+    image: ${TLS_IMAGE_REPOSITORY:-ghcr.io/mkilijanek/ioc-service-tls}:${TLS_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     profiles: ["edge"]
+    environment:
+      NGINX_TLS_ENABLED: ${NGINX_TLS_ENABLED:-true}
+      NGINX_HSTS_ENABLED: ${NGINX_HSTS_ENABLED:-true}
+      NGINX_HTTP_PORT: 80
+      NGINX_HTTPS_PORT: 7003
+      NGINX_PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-7003}
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-7003}:7003"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       app:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://127.0.0.1:7003/readyz || exit 1"]
+      test: ["CMD-SHELL", "if [ \"$${NGINX_TLS_ENABLED:-true}\" = \"true\" ]; then wget --no-check-certificate -qO- https://127.0.0.1:$${NGINX_HTTPS_PORT:-7003}/readyz; else wget -qO- http://127.0.0.1:$${NGINX_HTTP_PORT:-80}/readyz; fi || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10

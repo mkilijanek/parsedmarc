@@ -19,7 +19,7 @@ Confluence/
 docs/
 tests/
 monitoring/
-nginx/
+# Keep nginx assets in build context for the TLS edge image.
 
 app.log
 change.log

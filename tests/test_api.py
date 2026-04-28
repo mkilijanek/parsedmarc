@@ -22,6 +22,7 @@ from unittest.mock import patch
 import pytest
 
 from conftest import EXPORT_FORMATS, assert_security_headers
+from app.main import create_app
 from app.models import Indicator
 
 
@@ -298,6 +299,27 @@ class TestApiV1Endpoints:
 
         assert response.status_code == 302
         assert response.headers["Location"] == "https://192.168.10.71:7003/admin"
+
+    def test_auth_login_does_not_redirect_when_edge_https_disabled(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "EDGE_HTTPS_ENABLED": "false",
+                "HSTS_ENABLED": "false",
+                "SESSION_COOKIE_SECURE_ENABLED": "false",
+            },
+            clear=False,
+        ):
+            app = create_app()
+            client = app.test_client()
+            response = client.get(
+                "/auth/login?next=/admin",
+                base_url="http://192.168.10.71:7005",
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 200
+        assert "/auth/login" not in (response.headers.get("Location") or "")
 
 
 # ============================================================================

@@ -1890,3 +1890,360 @@
 - `curl -sI http://192.168.10.71:7005/auth/login?next=%2Fadmin | grep -i '^location:'` -> canonical HTTPS redirect
 - `curl -sI http://192.168.10.71:7005/admin | grep -i '^location:'` -> canonical HTTPS redirect
 - looped `curl -sk https://127.0.0.1:7003/auth/login` 11 times -> `11:429` and the rendered HTML lockout page
+
+2026-04-22
+
+[current stage]
+- Implementing DB-backed override for admin login rate limits (issues #176/#177).
+
+[actions performed]
+- Added `get_admin_login_rate_limit()` and `get_admin_login_rate_limit_window()` functions in [app/settings_store.py](/home/kili/Repo/ioc-service/app/settings_store.py) to support database override of admin login rate limits.
+- Added `_get_dynamic_login_rate_limit()` callable in [app/routes/auth.py](/home/kili/Repo/ioc-service/app/routes/auth.py) to provide dynamic rate limit lookup from DB at request time.
+- Modified login decorators to use dynamic rate limit callable instead of static config value.
+- Extended admin panel in [app/routes/ops_admin.py](/home/kili/Repo/ioc-service/app/routes/ops_admin.py) to read and save security settings (admin login rate limit configuration).
+- Updated [app/templates/admin/panel.html](/home/kili/Repo/ioc-service/app/templates/admin/panel.html) with new Security Configuration section for admin login rate limiting.
+- Added comprehensive tests in [tests/test_security.py](/home/kili/Repo/ioc-service/tests/test_security.py) covering:
+  * DB override retrieval and fallback to env/config
+  * Invalid window value handling
+  * Admin panel form submission and persistence
+
+[important commands]
+- `PYTHONPATH=. pytest -q tests/test_security.py::TestAdminLoginRateLimitDbOverride` -> 4 passed
+- `PYTHONPATH=. pytest -q tests/test_security.py` -> 63 passed
+- `PYTHONPATH=. pytest -q tests/test_api.py` -> 174 passed
+
+[observations]
+- The DB override pattern follows the established abuse.ch component override pattern from milestone 1.5.1.
+- Dynamic rate limit callable allows runtime adjustment without app restart.
+- Security settings are grouped under `feedcfg.security.*` key prefix for consistency.
+
+[decisions]
+- Used callable for Flask-Limiter instead of static value to enable DB lookup per request.
+- Kept backward compatibility: if no DB override exists, falls back to env/config defaults.
+- UI integrated into existing global config form rather than separate endpoint.
+
+[verification]
+- All security tests pass (63 passed).
+- All API tests pass (174 passed).
+- Code compiles without errors.
+
+2026-04-23
+
+[current stage]
+- Implementing controlled option to disable admin authentication (issue #178).
+
+[actions performed]
+- Added `ADMIN_AUTH_ENABLED` configuration option in [app/config.py](/home/kili/Repo/ioc-service/app/config.py) SecurityConfig (default: true).
+- Modified [app/routes/auth.py](/home/kili/Repo/ioc-service/app/routes/auth.py) to support disabled auth mode:
+  * Added `_admin_auth_disabled()` helper to check if auth is disabled
+  * Added `_auto_auth_if_disabled()` to automatically authenticate sessions when auth is off
+  * Modified `_require_admin_session()` to auto-authenticate when disabled
+  * Added `_inject_auth_disabled_warning()` to show prominent red warning banner in admin UI
+- Added startup warning log in [app/factory.py](/home/kili/Repo/ioc-service/app/factory.py) when ADMIN_AUTH_ENABLED is false.
+- Updated [.env.example](/home/kili/Repo/ioc-service/.env.example) with ADMIN_AUTH_ENABLED documentation.
+- Added tests in [tests/test_security.py](/home/kili/Repo/ioc-service/tests/test_security.py) covering:
+  * Default enabled state
+  * Disabled state via environment variable
+  * Admin page accessibility
+
+[important commands]
+- `PYTHONPATH=. pytest -q tests/test_security.py::TestAdminAuthDisabled` -> 3 passed
+- `PYTHONPATH=. pytest -q tests/test_security.py` -> 66 passed
+
+[observations]
+- When ADMIN_AUTH_ENABLED=false, /admin is accessible without login (dev/test only).
+- Warning banner is prominently displayed in red at the top of admin pages.
+- Startup log warns operators that auth is disabled.
+- Default behavior unchanged - auth is enabled by default.
+
+[decisions]
+- Kept ADMIN_AUTH_ENABLED in SecurityConfig grouped with other auth settings.
+- Warning banner uses inline styles for immediate visibility without CSS dependencies.
+- Auto-authentication sets admin role from config for permission consistency.
+
+[verification]
+- All security tests pass (66 passed).
+- Code compiles without errors.
+
+2026-04-23
+
+[current stage]
+- Implemented toast notification system with unified layout template (issues #155, #157).
+
+[actions performed]
+- Migrated all admin templates to extend unified layout.html:
+  * [app/templates/admin/panel.html](/home/kili/Repo/ioc-service/app/templates/admin/panel.html)
+  * [app/templates/admin/feed_configure.html](/home/kili/Repo/ioc-service/app/templates/admin/feed_configure.html)
+  * [app/templates/admin/sync_job_details.html](/home/kili/Repo/ioc-service/app/templates/admin/sync_job_details.html)
+- Migrated legacy templates to layout.html:
+  * [app/templates/legacy/index.html](/home/kili/Repo/ioc-service/app/templates/legacy/index.html)
+  * [app/templates/legacy/indicators.html](/home/kili/Repo/ioc-service/app/templates/legacy/indicators.html)
+- Created new [app/templates/logs.html](/home/kili/Repo/ioc-service/app/templates/logs.html) and migrated /logs route to use it.
+- Added toast notification integration in templates and JavaScript:
+  * Form submission feedback (saving, testing, exporting)
+  * Status messages from server rendered as toasts
+  * Auto-refresh notifications for logs
+- Added CSS utilities for form layouts (form-row, form-actions, form-checkbox).
+- Updated tests in [tests/test_ui_issues.py](/home/kili/Repo/ioc-service/tests/test_ui_issues.py) and [tests/test_security.py](/home/kili/Repo/ioc-service/tests/test_security.py) for new layout selectors.
+
+[important commands]
+- `PYTHONPATH=. pytest -q tests/test_ui_issues.py` -> 32 passed
+- `PYTHONPATH=. pytest -q tests/test_security.py` -> 69 passed
+- `PYTHONPATH=. pytest -q tests/test_api.py` -> 174 passed
+
+[observations]
+- All templates now use unified layout.html with consistent navigation, theming, and toast system.
+- Toast system provides immediate user feedback without page reloads.
+- Dark/light theme switching is consistent across all pages.
+- Keyboard shortcuts (/) for search focus are preserved.
+
+[verification]
+- All UI tests pass (32 passed).
+- All security tests pass (69 passed).
+- All API tests pass (174 passed).
+- Code compiles without errors.
+
+[task updates]
+- Task #1 (toast notifications) completed.
+- Task #3 (unified layout template) completed as part of template migration.
+
+2026-04-23
+
+[current stage]
+- Implementing mobile-first responsive design improvements (issue #162).
+
+[actions performed]
+- Added comprehensive mobile CSS to [app/templates/layout.html](/home/kili/Repo/ioc-service/app/templates/layout.html):
+  * Mobile menu button with hamburger icon
+  * Responsive breakpoints (480px, 768px, 1024px)
+  * Touch-friendly sizes (min 44px for buttons)
+  * Collapsible navigation menu on mobile
+  * Stacked form layouts on small screens
+  * Table horizontal scrolling with -webkit-overflow-scrolling
+  * Toast notifications repositioned to bottom on mobile
+  * Reduced motion support for accessibility
+- Added mobile menu toggle JavaScript with ARIA attributes
+- Added 6 new tests for mobile responsive design in [tests/test_security.py](/home/kili/Repo/ioc-service/tests/test_security.py)
+
+[important commands]
+- `PYTHONPATH=. pytest -q tests/test_security.py::TestMobileResponsiveDesign` -> 6 passed
+- `PYTHONPATH=. pytest -q tests/test_ui_issues.py tests/test_security.py` -> 101+ passed
+
+[observations]
+- Mobile menu is hidden by default on small screens and toggled via hamburger button
+- Touch-friendly sizes ensure compliance with WCAG 2.1 target size requirements
+- Table containers have horizontal scrolling on mobile for data tables
+- Reduced motion preference is respected for accessibility
+
+[verification]
+- All mobile design tests pass (6 passed).
+- All existing tests still pass (101+ total).
+- Code compiles without errors.
+
+[task updates]
+- Task #5 (mobile-first design) completed.
+
+2026-04-23
+
+[current stage]
+- Implementing loading states and skeleton screens (issue #156).
+
+[actions performed]
+- Added skeleton CSS to [app/templates/layout.html](/home/kili/Repo/ioc-service/app/templates/layout.html):
+  * Shimmer animation for skeletons with @keyframes
+  * Skeleton variants: text, title, row, card, circle
+  * Button loading state with spinner overlay
+  * Loading overlay for content areas
+  * data-loading attribute for styling disabled states
+- Added JavaScript utilities:
+  *  - toggle loading state on buttons
+  *  - generate skeleton placeholders
+  *  - clean up skeletons
+  * Auto-loading states on form submission
+- Added 5 tests for loading states in [tests/test_security.py](/home/kili/Repo/ioc-service/tests/test_security.py)
+
+[important commands]
+- `PYTHONPATH=. pytest -q tests/test_security.py::TestLoadingStates` -> 5 passed
+- `PYTHONPATH=. pytest -q tests/test_ui_issues.py tests/test_security.py tests/test_api.py` -> 286 passed
+
+[observations]
+- Skeletons provide visual feedback during data loading
+- Button loading states prevent double-submit
+- Auto-timeout after 30s ensures buttons don't stay stuck
+- Shimmer animation is disabled for prefers-reduced-motion
+
+[verification]
+- All loading states tests pass (5 passed).
+- Full test suite passes (286 passed).
+- Code compiles without errors.
+
+[task updates]
+- Task #6 (loading states) completed.
+- Next: Task #7 (search autocomplete).
+
+2026-04-23
+
+[current stage]
+- Implementing loading states and skeleton screens (issue #156).
+
+[actions performed]
+- Added skeleton CSS to app/templates/layout.html:
+  * Shimmer animation for skeletons with @keyframes
+  * Skeleton variants: text, title, row, card, circle
+  * Button loading state with spinner overlay
+  * Loading overlay for content areas
+  * data-loading attribute for styling disabled states
+- Added JavaScript utilities in layout.html:
+  * setLoading function for toggling button loading states
+  * createSkeleton function for generating placeholders
+  * removeSkeleton function for cleanup
+  * Auto-loading states on form submission
+- Added 5 tests for loading states in tests/test_security.py
+
+[important commands]
+- PYTHONPATH=. pytest -q tests/test_security.py::TestLoadingStates -> 5 passed
+- PYTHONPATH=. pytest -q tests/test_ui_issues.py tests/test_security.py tests/test_api.py -> 286 passed
+
+[observations]
+- Skeletons provide visual feedback during data loading
+- Button loading states prevent double-submit
+- Auto-timeout after 30s ensures buttons don't stay stuck
+- Shimmer animation is disabled for prefers-reduced-motion
+
+[verification]
+- All loading states tests pass (5 passed).
+- Full test suite passes (286 passed).
+- Code compiles without errors.
+
+[task updates]
+- Task #6 (loading states) completed.
+- Next: Task #7 (search autocomplete).
+
+2026-04-23
+
+[current stage]
+- Implementing search autocomplete with recent searches and suggestions (issue #161).
+
+[actions performed]
+- Added autocomplete to app/templates/legacy/indicators.html:
+  * Autocomplete dropdown with recent searches from localStorage
+  * Common search pattern suggestions (type:ip, confidence:>70, etc.)
+  * Keyboard navigation (↑/↓ to select, Enter to apply, ESC to close)
+  * Highlighted matching text in suggestions
+  * Click to select functionality
+  * Category headers for Recent vs Suggestions
+  * ARIA attributes for accessibility (aria-autocomplete, aria-controls, aria-selected)
+- Added autocomplete CSS styles:
+  * Positioned dropdown below search input
+  * Highlighted matches in primary color
+  * Category styling with uppercase headers
+  * Hover and selected states
+  * Scrollable dropdown with max-height
+- Added JavaScript utilities:
+  * localStorage persistence for recent searches (max 5)
+  * Filter suggestions based on current input
+  * Keyboard navigation support
+  * Highlight matching text in results
+  * Auto-save on form submit
+
+[important commands]
+- PYTHONPATH=. pytest -q tests/test_security.py::TestSearchAutocomplete -> 5 passed
+- PYTHONPATH=. pytest -q tests/test_ui_issues.py tests/test_security.py tests/test_api.py -> 291 passed
+
+[observations]
+- Recent searches persist across sessions in localStorage
+- Suggestions appear immediately on focus showing recent searches
+- Common patterns provide helpful hints for new users
+- Keyboard navigation ensures accessibility compliance
+- Click outside closes dropdown
+
+[verification]
+- All autocomplete tests pass (5 passed).
+- Full test suite passes (291 passed).
+- Code compiles without errors.
+
+[task updates]
+- Task #7 (search autocomplete) completed.
+
+2026-04-23
+
+[current stage]
+- Completing Task #8: Table sorting and sticky headers (issue #160).
+
+[actions performed]
+- Added table sorting JavaScript to app/templates/legacy/indicators.html:
+  * Client-side sorting for string and number columns
+  * Click to sort with toggle between ascending/descending
+  * Visual sort indicators (↑/↓) via CSS ::after pseudo-elements
+  * ARIA attributes for accessibility (aria-sort, role="columnheader")
+  * Keyboard support (Enter/Space to sort, tabindex for focus)
+  * Toast notifications on sort action
+- Added sticky header CSS:
+  * thead position: sticky with top: 0
+  * z-index layering for proper stacking
+  * Visual distinction for header row
+- Added 6 tests in tests/test_security.py:
+  * test_table_sortable_headers_exist
+  * test_table_aria_sort_attributes_exist
+  * test_table_sticky_header_css_exists
+  * test_table_sorting_javascript_exists
+  * test_table_sorting_keyboard_support
+  * test_table_sort_indicators_css
+
+[important commands]
+- PYTHONPATH=. pytest tests/test_security.py::TestTableSorting -v -> 6 passed
+- PYTHONPATH=. pytest tests/test_security.py tests/test_ui_issues.py tests/test_api.py -> 297 passed
+
+[observations]
+- Table sorting is client-side only (sorts current page)
+- Sticky headers improve UX when scrolling through long tables
+- ARIA sort attributes update dynamically via JavaScript
+- Sorting preserves row structure and cell content
+
+[verification]
+- All table sorting tests pass (6 passed).
+- Full test suite passes (297 passed).
+- Code compiles without errors.
+
+[task updates]
+- Task #8 (table sorting and sticky headers) completed.
+
+[closure]
+- Closed GitHub issue #156 (loading states and skeleton screens).
+- Closed GitHub issue #161 (search autocomplete with recent searches).
+- Closed GitHub issue #158 (table sorting and sticky headers).
+
+
+2026-04-24
+
+[context]
+- Adding OSV Scanner from Google to GitHub Actions security scanning pipeline.
+- OSV Scanner provides comprehensive vulnerability detection for open source dependencies.
+
+[actions performed]
+- Created `.github/workflows/osv-scanner.yml` workflow file.
+- Workflow triggers on: push (main, kili, kili-dev), PR (main, kili, kordek), and weekly schedule (Mondays 09:00 UTC).
+- Configured SARIF output format for integration with GitHub Security tab.
+- Added `--fail-on-vuln` flag to block builds on detected vulnerabilities.
+
+[important commands]
+- Workflow uses: `google/osv-scanner-action@v1`
+- SARIF upload uses: `github/codeql-action/upload-sarif@v3`
+
+[observations]
+- OSV Scanner supports requirements.txt natively (no lock file needed).
+- Project already uses pip-audit in security-scan job; OSV Scanner complements it with broader vulnerability database coverage.
+- Permissions required: `security-events: write` for SARIF upload.
+
+[decisions]
+- Run OSV Scanner as separate job (not merged into existing security-scan) for clearer failure attribution and independent scheduling.
+- Enable weekly scheduled scans to catch new vulnerabilities in dependencies even without code changes.
+- Use `--recursive` flag to scan entire repository including nested dependency manifests.
+
+[next planned implementation steps]
+1. Monitor first OSV Scanner run after merge to verify integration works correctly.
+2. Adjust severity thresholds if needed based on initial scan results.
+
+[2026-04-28T13:06:57Z] Task: deliver two GH Actions image variants and deploy path: ghcr.io/mkilijanek/ioc-service (app/no edge TLS) and ghcr.io/mkilijanek/ioc-service-tls (nginx edge). Rationale: support F5/VS topologies with plain upstream or edge TLS. Planned implementation: app toggles for HSTS/secure-cookie/HTTPS redirect; dedicated nginx TLS image with env-driven config; release workflow builds both images; self-hosted deploy workflow selects variant and compose profile; docs/tests updated.
+
+[2026-04-28T13:15:00Z] Implemented: added app-level EDGE_HTTPS_ENABLED/HSTS_ENABLED/SESSION_COOKIE_SECURE_ENABLED toggles; introduced nginx TLS image + runtime conf generator; updated release/deploy workflows for dual-image publishing and self-hosted rollout; fixed .dockerignore to keep nginx assets in build context after local docker build failure; validated with targeted pytest (33 passed total in focused suites), compileall, YAML parse, shell syntax, and successful TLS edge image build.

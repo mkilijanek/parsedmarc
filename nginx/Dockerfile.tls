@@ -1,0 +1,6 @@
+FROM nginx:1.27-alpine
+
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+COPY nginx/docker-entrypoint.d/40-generate-default-conf.sh /docker-entrypoint.d/40-generate-default-conf.sh
+
+RUN chmod +x /docker-entrypoint.d/40-generate-default-conf.sh && mkdir -p /etc/nginx/ssl

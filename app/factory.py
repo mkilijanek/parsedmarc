@@ -130,6 +130,8 @@ def create_app() -> Flask:
             logger.warning("security_permissive_allowed_hosts", extra={"value": cfg.ALLOWED_HOSTS, "recommendation": "Set ALLOWED_HOSTS to specific hosts in production"})
         if cfg.CORS_ORIGINS == "*":
             logger.warning("security_permissive_cors_origins", extra={"value": cfg.CORS_ORIGINS, "recommendation": "Set CORS_ORIGINS to specific origins in production"})
+        if not getattr(cfg.security, "ADMIN_AUTH_ENABLED", True):
+            logger.warning("security_admin_auth_disabled", extra={"message": "ADMIN_AUTH_ENABLED is false. Admin panel is open to anyone. Use only in development/test environments."})
     if is_production and not cfg.SECURITY_ALLOW_PERMISSIVE_DEFAULTS:
         if cfg.ALLOWED_HOSTS == "*":
             raise RuntimeError("SECURITY ERROR: ALLOWED_HOSTS cannot be '*' in production. Set explicit hosts or SECURITY_ALLOW_PERMISSIVE_DEFAULTS=true.")
@@ -140,7 +142,7 @@ def create_app() -> Flask:
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
 
     # SECURITY: Secure session cookie configuration
-    app.config["SESSION_COOKIE_SECURE"] = True  # Only send over HTTPS
+    app.config["SESSION_COOKIE_SECURE"] = bool(cfg.SESSION_COOKIE_SECURE_ENABLED)
     app.config["SESSION_COOKIE_HTTPONLY"] = True  # Prevent JavaScript access
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # CSRF protection
     app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # 1 hour session
@@ -207,8 +209,8 @@ def create_app() -> Flask:
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'"
         )
-        # HSTS: Force HTTPS for 1 year (should be set by reverse proxy, but adding here too)
-        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        if cfg.HSTS_ENABLED:
+            resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         # Permissions Policy: Disable unnecessary browser features
         resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

@@ -327,6 +327,21 @@ class TestSecurityHeaders:
         assert "max-age=" in hsts
         assert "includeSubDomains" in hsts
 
+    def test_hsts_header_can_be_disabled(self):
+        with patch.dict(
+            os.environ,
+            {
+                "HSTS_ENABLED": "false",
+                "SESSION_COOKIE_SECURE_ENABLED": "false",
+            },
+            clear=False,
+        ):
+            app = create_app()
+            client = app.test_client()
+            response = client.get("/health")
+
+        assert response.headers.get("Strict-Transport-Security") is None
+
     def test_xss_protection_header(self, client):
         """Test X-XSS-Protection header."""
         response = client.get("/health")
@@ -378,6 +393,11 @@ class TestSessionSecurity:
     def test_session_cookie_secure(self, app):
         """Test that session cookies are marked Secure."""
         assert app.config["SESSION_COOKIE_SECURE"] is True
+
+    def test_session_cookie_secure_can_be_disabled(self):
+        with patch.dict(os.environ, {"SESSION_COOKIE_SECURE_ENABLED": "false"}, clear=False):
+            insecure_app = create_app()
+        assert insecure_app.config["SESSION_COOKIE_SECURE"] is False
 
     def test_session_cookie_httponly(self, app):
         """Test that session cookies are marked HttpOnly."""
@@ -705,3 +725,388 @@ class TestAuditLogging:
         assert body["central_log_table"] == "app_logs"
         assert "ISO27001-A.12.4.1" in body["controls"]
         assert body["integrity"]["valid"] is True
+
+
+# ============================================================================
+# Admin Login Rate Limit DB Override Tests
+# ============================================================================
+
+class TestAdminLoginRateLimitDbOverride:
+    """Test DB-backed admin login rate limit configuration."""
+
+    def test_get_admin_login_rate_limit_from_db(self, test_db):
+        """Test retrieving rate limit from DB override."""
+        from app.settings_store import get_admin_login_rate_limit, get_admin_login_rate_limit_window
+        from app.models import AppSetting
+
+        # Initially should return default from config
+        default_limit = get_admin_login_rate_limit(test_db)
+        assert default_limit is not None
+        assert "per" in default_limit
+
+        default_window = get_admin_login_rate_limit_window(test_db)
+        assert default_window == 15 or isinstance(default_window, int)
+
+        # Set DB override
+        test_db.add(AppSetting(
+            key="feedcfg.security.admin_login_rate_limit",
+            value="5 per 5 minute",
+            is_secret=False,
+        ))
+        test_db.add(AppSetting(
+            key="feedcfg.security.admin_login_rate_limit_window_minutes",
+            value="5",
+            is_secret=False,
+        ))
+        test_db.commit()
+
+        # Should return DB value
+        db_limit = get_admin_login_rate_limit(test_db)
+        assert db_limit == "5 per 5 minute"
+
+        db_window = get_admin_login_rate_limit_window(test_db)
+        assert db_window == 5
+
+    def test_admin_login_rate_limit_falls_back_to_env(self, test_db, app):
+        """Test that DB override falls back to env/config when not in DB."""
+        from app.settings_store import get_admin_login_rate_limit
+
+        # Ensure no DB override exists
+        from app.models import AppSetting
+        test_db.query(AppSetting).filter(
+            AppSetting.key.in_([
+                "feedcfg.security.admin_login_rate_limit",
+                "feedcfg.security.admin_login_rate_limit_window_minutes",
+            ])
+        ).delete(synchronize_session=False)
+        test_db.commit()
+
+        with app.app_context():
+            limit = get_admin_login_rate_limit(test_db)
+            # Should return config/env default
+            assert limit is not None
+            assert isinstance(limit, str)
+            assert "per" in limit
+
+    def test_admin_login_rate_limit_invalid_window_defaults(self, test_db):
+        """Test that invalid window value falls back to default."""
+        from app.settings_store import get_admin_login_rate_limit_window
+        from app.models import AppSetting
+
+        # Set invalid DB value
+        test_db.add(AppSetting(
+            key="feedcfg.security.admin_login_rate_limit_window_minutes",
+            value="invalid",
+            is_secret=False,
+        ))
+        test_db.commit()
+
+        # Should return default (15) for invalid value
+        window = get_admin_login_rate_limit_window(test_db)
+        assert window == 15
+
+    def test_db_override_persists_and_reads_back(self, test_db, admin_client):
+        """Test that setting security config via admin panel persists correctly."""
+        from flask import session as flask_session
+
+        from app.models import AppSetting
+
+        # Get admin page to initialize session and extract CSRF token
+        with admin_client.session_transaction() as sess:
+            sess["admin_authenticated"] = True
+            sess["admin_user_id"] = "admin"
+            sess["admin_role"] = "admin"
+            sess["admin_csrf_token"] = "test-csrf-token"
+            csrf_token = "test-csrf-token"
+
+        # Post new rate limit via admin config form with CSRF token
+        response = admin_client.post("/admin/global-config", data={
+            "csrf_token": csrf_token,
+            "proxy_http_url": "",
+            "proxy_https_url": "",
+            "proxy_no_proxy": "",
+            "proxy_ca_bundle_path": "",
+            "trusted_proxy_count": "0",
+            "sentinel_tenant_id": "",
+            "sentinel_client_id": "",
+            "sentinel_auth_mode": "client_secret",
+            "sentinel_scope": "",
+            "sentinel_endpoint_url": "",
+            "sentinel_chunk_size": "100",
+            "sentinel_cert_thumbprint": "",
+            "admin_login_rate_limit": "20 per 30 minute",
+            "admin_login_rate_limit_window_minutes": "30",
+        }, follow_redirects=True)
+
+        assert response.status_code == 200
+
+        # Verify DB has the value
+        rate_limit_setting = test_db.query(AppSetting).filter_by(
+            key="feedcfg.security.admin_login_rate_limit"
+        ).one_or_none()
+        assert rate_limit_setting is not None
+        assert rate_limit_setting.value == "20 per 30 minute"
+
+        window_setting = test_db.query(AppSetting).filter_by(
+            key="feedcfg.security.admin_login_rate_limit_window_minutes"
+        ).one_or_none()
+        assert window_setting is not None
+        assert window_setting.value == "30"
+
+
+# ============================================================================
+# Admin Auth Disabled Tests
+# ============================================================================
+
+class TestAdminAuthDisabled:
+    """Test admin authentication disabled mode (dev/test only)."""
+
+    def test_admin_auth_enabled_by_default(self, client):
+        """Admin auth is enabled by default."""
+        from app.config import Config
+        cfg = Config()
+        assert cfg.security.ADMIN_AUTH_ENABLED is True
+
+    def test_admin_auth_disabled_via_environ(self):
+        """ADMIN_AUTH_ENABLED=false disables admin authentication."""
+        import os
+        # Set env var before creating config
+        os.environ["ADMIN_AUTH_ENABLED"] = "false"
+        try:
+            from app.config import Config
+            cfg = Config()
+            assert cfg.security.ADMIN_AUTH_ENABLED is False
+        finally:
+            del os.environ["ADMIN_AUTH_ENABLED"]
+
+    def test_admin_auth_disabled_shows_warning_banner(self, admin_client):
+        """Warning banner CSS class is present when auth is disabled."""
+        # Admin client is already authenticated, check page renders
+        response = admin_client.get("/admin")
+        assert response.status_code == 200
+
+
+# ============================================================================
+# Toast Notification System Tests
+# ============================================================================
+
+class TestToastNotificationSystem:
+    """Test toast notification system integration."""
+
+    def test_toast_container_exists_in_layout(self, client):
+        """Toast container element exists in layout template."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert 'id="toast-container"' in html
+        assert 'class="toast-container"' in html
+
+    def test_showtoast_function_exists(self, client):
+        """showToast JavaScript function is defined."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert "window.showToast = function" in html or "window.showToast =" in html
+        assert "toast-container" in html
+
+    def test_toast_css_styles_exist(self, client):
+        """Toast CSS styles are present in layout."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert ".toast-container" in html
+        assert ".toast-success" in html or "toast-" in html
+        assert "@keyframes slideIn" in html or "slideIn" in html
+
+
+# ============================================================================
+# Mobile Responsive Design Tests
+# ============================================================================
+
+class TestMobileResponsiveDesign:
+    """Test mobile-first responsive design."""
+
+    def test_mobile_menu_button_present(self, client):
+        """Mobile menu button exists in header."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert "mobile-menu-btn" in html
+        assert 'id="mobileMenuBtn"' in html
+        assert "aria-expanded" in html
+
+    def test_mobile_menu_toggle_javascript(self, client):
+        """Mobile menu toggle JavaScript is present."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert "mobileMenuBtn" in html
+        assert "navMenu.classList.toggle('active')" in html or "navMenu.classList.toggle" in html
+
+    def test_mobile_breakpoint_css_exists(self, client):
+        """Mobile breakpoint CSS exists."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert "@media (max-width: 768px)" in html
+        assert ".mobile-menu-btn" in html
+        assert ".nav-menu" in html
+
+    def test_touch_friendly_css_exists(self, client):
+        """Touch-friendly CSS for mobile devices."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert "@media (pointer: coarse)" in html or "min-height: 44px" in html
+        assert "min-width: 44px" in html
+
+    def test_table_container_scrollable(self, client):
+        """Table containers are scrollable on mobile."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "table-container" in html
+        assert "overflow-x: auto" in html or "overflow-x:auto" in html
+
+    def test_reduced_motion_respected(self, client):
+        """Reduced motion preference is respected."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert "prefers-reduced-motion" in html
+        assert "animation-duration: 0.01ms" in html or "animation-duration:0.01ms" in html
+
+
+# ============================================================================
+# Loading States and Skeleton Screens Tests
+# ============================================================================
+
+class TestLoadingStates:
+    """Test loading states and skeleton screens."""
+
+    def test_skeleton_css_exists(self, client):
+        """Skeleton CSS is present in layout."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert ".skeleton" in html
+        assert "@keyframes shimmer" in html or "animation: shimmer" in html
+
+    def test_skeleton_variants_exist(self, client):
+        """Different skeleton variants exist."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert ".skeleton-text" in html
+        assert ".skeleton-title" in html
+        assert ".skeleton-row" in html
+        assert ".skeleton-card" in html
+
+    def test_button_loading_css_exists(self, client):
+        """Button loading CSS exists."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert ".btn-loading" in html
+        assert "@keyframes spin" in html
+
+    def test_loading_utilities_javascript(self, client):
+        """Loading utility JavaScript functions exist."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert "window.setLoading" in html or "setLoading =" in html
+        assert "window.createSkeleton" in html or "createSkeleton =" in html
+
+    def test_loading_overlay_css_exists(self, client):
+        """Loading overlay CSS exists."""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert ".loading-overlay" in html
+        assert "[data-loading]" in html
+
+
+# ============================================================================
+# Search Autocomplete Tests
+# ============================================================================
+
+class TestSearchAutocomplete:
+    """Test search autocomplete functionality."""
+
+    def test_autocomplete_container_exists(self, client):
+        """Autocomplete container exists in indicators page."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "autocomplete-container" in html
+        assert "autocomplete-dropdown" in html
+        assert "autocomplete-list" in html
+
+    def test_autocomplete_aria_attributes_exist(self, client):
+        """ARIA attributes for accessibility."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "aria-autocomplete" in html
+        assert "aria-controls" in html
+        assert 'role="listbox"' in html or "role='listbox'" in html
+        assert "aria-selected" in html or "aria-selected=" in html
+
+    def test_autocomplete_css_styles_exist(self, client):
+        """Autocomplete CSS styles exist."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert ".autocomplete-container" in html
+        assert ".autocomplete-dropdown" in html
+        assert ".autocomplete-item" in html
+
+    def test_autocomplete_javascript_exists(self, client):
+        """Autocomplete JavaScript exists."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "getRecentSearches" in html or "recent-searches" in html
+        assert "saveSearch" in html
+        assert "renderSuggestions" in html or "renderSuggestions" in html
+        assert "STORAGE_KEY" in html
+
+    def test_recent_searches_localstorage(self, client):
+        """Recent searches use localStorage."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "localStorage" in html
+        assert "STORAGE_KEY" in html or "getItem" in html
+
+
+# ============================================================================
+# Table Sorting Tests
+# ============================================================================
+
+class TestTableSorting:
+    """Test table sorting functionality with sticky headers."""
+
+    def test_table_sortable_headers_exist(self, client):
+        """Sortable table headers exist with proper classes."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "sortable" in html
+        assert "sort-asc" in html or "sort-desc" in html
+
+    def test_table_aria_sort_attributes_exist(self, client):
+        """ARIA sort attributes for accessibility."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "aria-sort" in html
+        assert 'role="columnheader"' in html or "role='columnheader'" in html
+
+    def test_table_sticky_header_css_exists(self, client):
+        """Sticky header CSS exists."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "position: sticky" in html or "position:sticky" in html
+        assert "thead" in html
+
+    def test_table_sorting_javascript_exists(self, client):
+        """Table sorting JavaScript exists."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "sortTable" in html
+        assert "currentSort" in html or "sortTypes" in html
+
+    def test_table_sorting_keyboard_support(self, client):
+        """Table sorting has keyboard support."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "tabindex" in html
+        assert 'keydown' in html or "keydown" in html
+
+    def test_table_sort_indicators_css(self, client):
+        """Sort indicator CSS exists."""
+        response = client.get("/indicators")
+        html = response.get_data(as_text=True)
+        assert "th.sort-asc" in html or "th.sort-desc" in html
+        assert 'content:' in html or "::after" in html

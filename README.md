@@ -32,6 +32,10 @@ Production-ready threat feed aggregation and export service:
 - Replaced scheduler runtime `os.environ` mutation with scoped runtime overrides and process-local proxy settings.
 - Consolidated app/worker proxy bootstrap into one runtime settings path and moved outbound HTTP behavior to runtime-aware sessions.
 - Added fake adapter and pipeline contract coverage in `tests/test_adapters.py`.
+- Added two delivery variants for containerized deployment:
+  - `ghcr.io/mkilijanek/ioc-service` for direct HTTP/F5 upstream deployments without edge TLS
+  - `ghcr.io/mkilijanek/ioc-service-tls` for bundled nginx edge TLS termination
+- Added manual GitHub Actions deployment workflow for selecting and rolling out either image variant.
 
 ## Release Highlights (1.4.2)
 
@@ -106,6 +110,23 @@ curl -k https://localhost:7003/healthz
 curl -k https://localhost:7003/readyz
 ```
 
+HTTP/F5 upstream mode without edge TLS:
+```bash
+EDGE_HTTPS_ENABLED=false
+HSTS_ENABLED=false
+SESSION_COOKIE_SECURE_ENABLED=false
+docker compose up -d app worker
+curl http://localhost:7005/healthz
+```
+
+Published image variants:
+- `ghcr.io/mkilijanek/ioc-service:<tag>` – application/runtime image, no bundled TLS edge
+- `ghcr.io/mkilijanek/ioc-service-tls:<tag>` – nginx edge image for TLS termination
+
+Manual GitHub Actions rollout:
+- run `Release Package` with `workflow_dispatch` to publish a `sha-<commit>` tag for both images
+- then run `Deploy Images` and choose either `ioc-service` or `ioc-service-tls`
+
 ## Endpoints
 
 - `GET /healthz` – liveness probe (no external calls)
@@ -167,6 +188,7 @@ Kibana-like:
 - App-level hard safety cap: `REQUESTS_PER_SECOND_MAX` (default `1_000_000` req/s).
 - Defense-in-depth validation of query strings (`max 500` chars, rejects obvious injection markers).
 - CrowdSec indicators are **always** enforced as `TLP:AMBER`.
+- Disable `HSTS_ENABLED` and `SESSION_COOKIE_SECURE_ENABLED` only for trusted lab/F5 upstream scenarios where the public HTTPS boundary lives outside the container stack.
 
 ## Development
 

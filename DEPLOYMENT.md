@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Updated for release line `1.1.x` (2026-03-01).
+Updated for release line `1.6.1` (2026-04-28).
 
 ## Quick Start
 
@@ -8,18 +8,15 @@ Updated for release line `1.1.x` (2026-03-01).
 # 1. Generate secrets
 ./scripts/generate-secrets.sh
 
-# 2. Setup SSL
-./scripts/setup-ssl.sh
-
-# 3. Configure .env
+# 2. Configure .env
 vim .env  # Add MISP and CrowdSec credentials
 
-# 4. Start services
+# 3. Start services
 docker compose up -d postgres redis
 docker compose up -d app worker
 
-# 5. Verify
-curl -k https://localhost:7003/health
+# 4. Verify
+curl http://localhost:7005/health
 ```
 
 ## Production Deployment
@@ -27,20 +24,53 @@ curl -k https://localhost:7003/health
 ### Prerequisites
 - Docker 24.0+
 - 4GB RAM minimum
-- Valid SSL certificate
-- External IP/domain name
+- Valid SSL certificate for the TLS variant
+- External IP/domain name when exposing the TLS variant
+
+### Deployment Variants
+
+#### `ioc-service` (no edge TLS)
+- App/workers only.
+- Intended for F5/VS deployments where TLS is terminated upstream or traffic is intentionally plain HTTP on a trusted network.
+- Required env:
+  - `EDGE_HTTPS_ENABLED=false`
+  - `HSTS_ENABLED=false`
+  - `SESSION_COOKIE_SECURE_ENABLED=false`
+
+#### `ioc-service-tls` (bundled edge TLS)
+- App/workers plus nginx edge image.
+- Intended when this stack terminates HTTPS itself.
+- Requires mounted certs under `./ssl`.
 
 ### Steps
 1. Clone repository
 2. Configure environment variables
-3. Setup SSL with Let's Encrypt
-4. Start services
-5. Configure firewall (allow 7003/tcp)
-6. Setup monitoring
+3. Choose deployment variant
+4. Setup SSL with Let's Encrypt when using the TLS variant
+5. Start services
+6. Configure firewall (`7005/tcp` for app-only, `7003/tcp` for TLS edge)
+7. Setup monitoring
+
+### GitHub Actions publish and deploy
+
+1. Publish both images from the selected commit:
+   - run workflow `Release Package`
+   - use `workflow_dispatch`
+   - resulting manual tags are published as `sha-<commit>`
+
+2. Deploy one variant on a self-hosted runner host:
+   - run workflow `Deploy Images`
+   - `variant=ioc-service` for plain HTTP/app-only
+   - `variant=ioc-service-tls` for nginx edge TLS
+   - `image_tag=sha-<commit>` or a release tag
+
+The deploy workflow executes `scripts/deploy_ghcr_variant.sh`, which pulls GHCR images and rolls the compose stack forward.
 
 ### Monitoring
-- Health: https://your-domain:7003/healthz
-- Readiness: https://your-domain:7003/readyz
+- App-only health: http://your-host:7005/healthz
+- App-only readiness: http://your-host:7005/readyz
+- TLS edge health: https://your-domain:7003/healthz
+- TLS edge readiness: https://your-domain:7003/readyz
 - Logs: docker compose logs -f
 - Stats: https://your-domain:7003/api/stats
 - Metrics: https://your-domain:7003/metrics (deploy behind VPN/internal network)

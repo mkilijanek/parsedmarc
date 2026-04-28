@@ -14,6 +14,7 @@ on:
       - kordek
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,17 +23,26 @@ permissions:
 
 jobs:
   noop:
-    if: github.event_name != 'release'
+    if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - run: echo "Release packaging workflow is active; package build runs only on release events."
 
   package-and-build:
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve publish tag
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            echo "PRIMARY_TAG=${{ github.event.release.tag_name }}" >> "${GITHUB_ENV}"
+          else
+            echo "PRIMARY_TAG=sha-${GITHUB_SHA}" >> "${GITHUB_ENV}"
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,30 +55,54 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker metadata
-        id: meta
+        id: meta_app
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=ref,event=tag
-            type=raw,value=${{ github.event.release.tag_name }}
-            type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
+            type=raw,value=${{ env.PRIMARY_TAG }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && github.event.release.prerelease == false }}
+            type=sha,prefix=sha-
 
-      - name: Build and push image to GHCR (with SBOM + provenance)
-        id: buildpush
+      - name: Docker metadata (TLS image)
+        id: meta_tls
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-tls
+          tags: |
+            type=ref,event=tag
+            type=raw,value=${{ env.PRIMARY_TAG }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && github.event.release.prerelease == false }}
+            type=sha,prefix=sha-
+
+      - name: Build and push app image to GHCR (with SBOM + provenance)
+        id: buildpush_app
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta_app.outputs.tags }}
+          labels: ${{ steps.meta_app.outputs.labels }}
+          sbom: true
+          provenance: true
+
+      - name: Build and push TLS edge image to GHCR (with SBOM + provenance)
+        id: buildpush_tls
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: nginx/Dockerfile.tls
+          push: true
+          tags: ${{ steps.meta_tls.outputs.tags }}
+          labels: ${{ steps.meta_tls.outputs.labels }}
           sbom: true
           provenance: true
 
       - name: Prepare release bundle
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ env.PRIMARY_TAG }}
         run: |
           set -euo pipefail
           BUNDLE_ROOT="release-bundle"
@@ -77,8 +111,10 @@ jobs:
 
           # Compose and image build context essentials.
           cp docker-compose.yml "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
+          cp docker-compose-release.yml "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
           cp docker-compose.nginx.snippet.yml "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
           cp Dockerfile "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
+          cp nginx/Dockerfile.tls "${BUNDLE_ROOT}/${BUNDLE_NAME}/Dockerfile.tls"
           cp .env.example "${BUNDLE_ROOT}/${BUNDLE_NAME}/"
 
           # Shell scripts for benchmarking and container administration.
@@ -90,6 +126,7 @@ jobs:
           cp scripts/generate-secrets.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
           cp scripts/dev-env.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
           cp scripts/load-secrets.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
+          cp scripts/deploy_ghcr_variant.sh "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
 
           # Benchmark helpers used by .sh wrappers.
           cp scripts/benchmark_m12.py "${BUNDLE_ROOT}/${BUNDLE_NAME}/scripts/"
@@ -98,8 +135,10 @@ jobs:
           {
             echo "Included files:"
             echo "- docker-compose.yml"
+            echo "- docker-compose-release.yml"
             echo "- docker-compose.nginx.snippet.yml"
             echo "- Dockerfile"
+            echo "- Dockerfile.tls"
             echo "- .env.example"
             echo "- scripts/*.sh for benchmark/admin tasks"
             echo "- scripts/benchmark_m12.py"
@@ -111,22 +150,30 @@ jobs:
 
       - name: Prepare image info asset
         env:
-          TAG: ${{ github.event.release.tag_name }}
-          DIGEST: ${{ steps.buildpush.outputs.digest }}
-          IMAGE: ghcr.io/${{ github.repository }}
+          TAG: ${{ env.PRIMARY_TAG }}
+          DIGEST_APP: ${{ steps.buildpush_app.outputs.digest }}
+          DIGEST_TLS: ${{ steps.buildpush_tls.outputs.digest }}
+          IMAGE_APP: ghcr.io/${{ github.repository }}
+          IMAGE_TLS: ghcr.io/${{ github.repository }}-tls
         run: |
           set -euo pipefail
           INFO_FILE="ioc-service-${TAG}-image-info.txt"
           {
-            echo "Image published to GHCR"
-            echo "Repository: ${IMAGE}"
+            echo "Images published to GHCR"
+            echo "Application repository: ${IMAGE_APP}"
+            echo "TLS edge repository: ${IMAGE_TLS}"
             echo "Tag: ${TAG}"
-            echo "Digest: ${DIGEST}"
+            echo "Application digest: ${DIGEST_APP}"
+            echo "TLS edge digest: ${DIGEST_TLS}"
             echo
-            echo "Pull by tag:"
-            echo "  docker pull ${IMAGE}:${TAG}"
-            echo "Pull by digest:"
-            echo "  docker pull ${IMAGE}@${DIGEST}"
+            echo "Pull application image by tag:"
+            echo "  docker pull ${IMAGE_APP}:${TAG}"
+            echo "Pull TLS edge image by tag:"
+            echo "  docker pull ${IMAGE_TLS}:${TAG}"
+            echo "Pull application image by digest:"
+            echo "  docker pull ${IMAGE_APP}@${DIGEST_APP}"
+            echo "Pull TLS edge image by digest:"
+            echo "  docker pull ${IMAGE_TLS}@${DIGEST_TLS}"
             echo
             echo "SBOM/provenance attestations are published alongside the image in GHCR."
           } > "${INFO_FILE}"
@@ -145,6 +192,7 @@ jobs:
           path: ${{ env.DOCKER_ASSET_PATH }}
 
       - name: Attach bundle to GitHub Release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
