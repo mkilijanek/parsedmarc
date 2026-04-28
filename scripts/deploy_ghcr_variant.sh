@@ -55,10 +55,10 @@ fi
 "${compose[@]}" run --rm migrate
 
 if [ "${variant}" = "ioc-service-tls" ]; then
-  "${compose[@]}" --profile edge up -d app worker nginx
+  "${compose[@]}" --profile edge up -d --force-recreate app worker nginx
 else
   "${compose[@]}" rm -sf nginx >/dev/null 2>&1 || true
-  "${compose[@]}" up -d app worker
+  "${compose[@]}" up -d --force-recreate app worker
 fi
 
 "${compose[@]}" ps
