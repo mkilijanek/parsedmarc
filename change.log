@@ -2342,10 +2342,29 @@
 - ADMIN_PANEL_ENABLED=false returns 404 (not 403/redirect) so the panel surface is invisible
   to scanners — no login page reveals its existence.
 
-[next planned implementation steps]
-1. Commit this batch on main.
-2. Verify docker compose config for release compose renders correctly with new env keys.
-3. Rebuild and redeploy images on the host to pick up ADMIN_PANEL_ENABLED and ADMIN_API_TOKEN wiring.
+[actions performed — release 1.7.0]
+- Committed OSV scanner fix (upload-sarif: false) alongside this change.log update.
+- Pushed main (718c499); kili fast-forwarded to main and pushed.
+- Moved unimplemented issues #160 (WebSocket/SSE), #159 (keyboard shortcuts),
+  #152 (onboarding tour) from milestone 1.7.0 → new milestone 1.8.0.
+- Closed GitHub milestone 1.7.0 (0 open issues, 8 closed).
+- Created annotated git tag 1.7.0 at HEAD (718c499) and pushed to origin.
+- Published GitHub release 1.7.0 with full release notes.
+
+[verification]
+- Milestone 1.7.0: closed, 0 open issues.
+- Tag 1.7.0 pushed to origin.
+- Release 1.7.0 published: https://github.com/mkilijanek/ioc-service/releases/tag/1.7.0
+
+[decisions]
+- Deferred #160, #159, #152 to 1.8.0 rather than closing them: all three are valid future-UX
+  enhancements but were never part of the committed delivery scope for 1.7.0.
+- kili branch fast-forwarded to main; no dev branch exists at remote (only kili and main).
+
+[next stage: 1.8.0]
+- Plan the 1.8.0 scope: real-time data, keyboard shortcuts, onboarding tour.
+- Rebuild and redeploy Docker images on the host to pick up ADMIN_PANEL_ENABLED and
+  ADMIN_API_TOKEN wiring from docker-compose-release.yml.
 
 2026-04-28
 
