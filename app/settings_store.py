@@ -103,3 +103,50 @@ def runtime_override_or_env(
 
 def parse_bool_setting(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_admin_login_rate_limit(
+    db: Session,
+    cfg: Config | None = None,
+) -> str:
+    """Get admin login rate limit with DB override support.
+
+    Reads from app_settings first, falls back to config/env.
+    Expected DB key: feedcfg.security.admin_login_rate_limit
+    Expected value format: "10 per 15 minute" (Flask-Limiter format)
+    """
+    from .config import Config as ConfigClass
+    active_cfg = cfg or ConfigClass()
+    env_default = getattr(active_cfg.security, "ADMIN_LOGIN_RATE_LIMIT", "10 per 15 minute")
+    return runtime_override_or_env(
+        db,
+        setting_key="feedcfg.security.admin_login_rate_limit",
+        env_value=env_default,
+        secret=False,
+        cfg=active_cfg,
+    )
+
+
+def get_admin_login_rate_limit_window(
+    db: Session,
+    cfg: Config | None = None,
+) -> int:
+    """Get admin login rate limit window in minutes with DB override.
+
+    Reads from app_settings first, falls back to config/env.
+    Expected DB key: feedcfg.security.admin_login_rate_limit_window_minutes
+    """
+    from .config import Config as ConfigClass
+    active_cfg = cfg or ConfigClass()
+    env_default = str(getattr(active_cfg.security, "ADMIN_LOGIN_RATE_LIMIT_WINDOW_MINUTES", 15))
+    db_value = runtime_override_or_env(
+        db,
+        setting_key="feedcfg.security.admin_login_rate_limit_window_minutes",
+        env_value=env_default,
+        secret=False,
+        cfg=active_cfg,
+    )
+    try:
+        return int(db_value) if db_value else 15
+    except (ValueError, TypeError):
+        return 15
