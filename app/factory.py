@@ -1674,6 +1674,29 @@ def create_app() -> Flask:
         finally:
             db.close()
 
+    def _run_log_retention_if_due(now: datetime) -> None:
+        retention_days = int(getattr(cfg, "LOG_RETENTION_DAYS", 90))
+        if retention_days <= 0:
+            return
+        interval_s = 86400  # run at most once per day
+        last = scheduler_state.get("last_log_retention_at")
+        if isinstance(last, datetime) and (now - last).total_seconds() < interval_s:
+            return
+        cutoff = now.replace(tzinfo=None) - timedelta(days=retention_days)
+        db = _db()
+        try:
+            deleted = db.execute(
+                AppLog.__table__.delete().where(AppLog.created_at < cutoff)
+            ).rowcount
+            db.commit()
+        except Exception:
+            db.rollback()
+            deleted = 0
+        finally:
+            db.close()
+        scheduler_state["last_log_retention_at"] = now
+        _app_log("INFO", "maintenance", "log_retention_cleanup", metadata={"deleted": deleted, "retention_days": retention_days})
+
     def _run_audit_integrity_check_if_due(now: datetime) -> None:
         interval_s = max(60, int(cfg.AUDIT_INTEGRITY_VERIFY_INTERVAL_S))
         last = scheduler_state.get("last_audit_integrity_check_at")
@@ -1714,6 +1737,7 @@ def create_app() -> Flask:
                         now = datetime.now(timezone.utc)
                         _enqueue_due_scheduled_jobs(now)
                         _run_audit_integrity_check_if_due(now)
+                        _run_log_retention_if_due(now)
                         _run_sync_queue_once(max_jobs=10)
                     finally:
                         unlock_db = _db()

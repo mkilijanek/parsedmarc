@@ -2485,3 +2485,81 @@
 - docker-compose-release.yml defaults changed to HTTP-only so that a plain
   `docker compose -f docker-compose-release.yml up` gives the simple variant without
   accidentally enabling TLS without a proper cert. TLS requires explicit opt-in.
+
+2026-04-29
+
+[current stage]
+- Milestone compliance-1.0: address and close all 7 compliance issues.
+
+[planned tasks and justifications]
+1. #163 ISO 27001 A.12.4 — add /api/logs/export with SHA-256 export checksum
+   so the integrity of log exports can be independently verified. Add LOG_RETENTION_DAYS
+   config and scheduled cleanup job so retention is enforced automatically.
+   Justification: structured fields and correlation IDs are already delivered; the only
+   missing pieces are export integrity and a configurable retention policy.
+2. #166 NIST DE.CM — add ?format=cef to /api/logs (CEF = ArcSight Common Event Format)
+   and create docs/siem-integration.md with integration patterns for Splunk/ELK/Sentinel.
+   Justification: the JSON API already acts as a pull-based SIEM interface; CEF output
+   and documentation make it consumable by enterprise SIEM collectors without custom parsers.
+3. #167 NIST RS.RP — create docs/incident-response.md with classification scheme,
+   detection patterns, containment playbooks, and post-incident review checklist.
+   Justification: response planning is primarily a documentation control; the technical
+   detection surface (rate limit, audit log, AppLog) already exists.
+4. #168 ISO 27001 A.14.2 — create docs/ssdlc.md documenting all SSDLC controls
+   already in the repository: OSV scanner, pip-audit, bandit, ruff/mypy, pytest/coverage,
+   docs-driven delivery policy, branch protection, change control via change.log.
+   Justification: the controls exist; the gap is a single authoritative reference document.
+5. #170 ISO 27001 A.12.3 — create scripts/backup.sh (pg_dump + gzip + retention, optional
+   rclone/S3 upload) and docs/disaster-recovery.md with RTO/RPO targets and restore
+   procedure. Justification: R006 in risk-register.md flags unencrypted/undocumented
+   backup as a medium risk; these two artifacts resolve that risk treatment.
+6. #171 ISO 27001 A.18 — create docs/compliance.md as a compliance controls matrix
+   referencing existing implementation evidence (audit hash chain, /admin/audit/report,
+   data-protection.md, vulnerability-management.md, risk-register.md).
+   Justification: the technical controls are delivered; a single reference document is
+   needed to close the compliance monitoring posture gap.
+7. #173 ISO 27001 A.7/A.8 — create docs/asset-management.md with data asset inventory,
+   classification levels (public/internal/confidential/restricted), acceptable use, and
+   lifecycle. Justification: data-protection.md has the classification scheme but not an
+   asset inventory or lifecycle framework.
+
+[how success will be verified]
+- PYTHONPATH=. pytest -q -> 568+ passed (no regressions, new compliance tests pass)
+- /api/logs/export returns 200 with X-Export-Checksum header
+- /api/logs?format=cef returns text/plain CEF lines
+- All 7 compliance-1.0 issues closed with delivery comments
+
+[actions performed — compliance-1.0]
+- Added LOG_RETENTION_DAYS config (default 90) to RuntimeConfig in app/config.py.
+- Added _run_log_retention_if_due() to scheduler loop in app/factory.py: daily cleanup
+  of AppLog rows older than LOG_RETENTION_DAYS days.
+- Refactored app/routes/logs.py: extracted _build_filter_stmt() helper (DRY), added
+  ?format=cef to /api/logs (CEF ArcSight format for SIEM), added /api/logs/export
+  endpoint with SHA-256 payload checksum (X-Export-Checksum header + body field).
+- Created scripts/backup.sh: pg_dump+gzip+retention, optional GPG encryption,
+  optional rclone/S3 upload, Redis BGSAVE trigger.
+- Created docs/incident-response.md: classification scheme, detection sources,
+  5-step response procedure, evidence preservation checklist (#167).
+- Created docs/ssdlc.md: SSDLC controls matrix, CI security gates, dependency
+  management, change control, secure coding standards, threat model summary (#168).
+- Created docs/disaster-recovery.md: RTO/RPO targets, backup strategy, 5 DR scenarios
+  with step-by-step procedures, quarterly backup verification checklist (#170).
+- Created docs/compliance.md: ISO 27001 and NIST CSF controls matrix, audit trail
+  verification procedures, log retention policy, known gaps (#171).
+- Created docs/asset-management.md: data asset inventory with classification,
+  software asset inventory, credential/key inventory, acceptable use, lifecycle (#173).
+- Created docs/siem-integration.md: CEF format reference, query parameters, Splunk/
+  ELK/Sentinel integration examples, detection rules reference (#166).
+
+[verification]
+- PYTHONPATH=. pytest -q -> 568 passed, 2 skipped (no regressions)
+- python -c "from app.routes.logs import ...; from app.factory import create_app" -> OK
+
+[decisions]
+- AuditLog rows are excluded from LOG_RETENTION_DAYS cleanup: the hash chain must not
+  be broken by automatic deletion; audit records should be retained per compliance
+  requirement (ISO 27001 recommends minimum 1 year).
+- /api/logs/export checksum covers the item array before the checksum field is added,
+  so the X-Export-Checksum header and the body field carry the same value and either
+  can be used for verification by a recipient.
+- CEF severity is mapped: INFO=0, WARNING=5, ERROR=8, CRITICAL=10 (ArcSight standard).

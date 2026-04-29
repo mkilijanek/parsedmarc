@@ -59,6 +59,7 @@ class RuntimeConfig:
     FEED_RETRY_BASE_DELAY_S: int = field(default_factory=lambda: _env_int("FEED_RETRY_BASE_DELAY_S", 1))
     EXPORT_JOB_DIR: str = field(default_factory=lambda: _env_str("EXPORT_JOB_DIR", "/tmp/ioc-export-jobs"))
     EXPORT_ASYNC_THRESHOLD: int = field(default_factory=lambda: _env_int("EXPORT_ASYNC_THRESHOLD", 5000))
+    LOG_RETENTION_DAYS: int = field(default_factory=lambda: _env_int("LOG_RETENTION_DAYS", 90))
 
 
 @dataclass(frozen=True)
