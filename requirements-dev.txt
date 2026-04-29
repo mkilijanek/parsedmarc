@@ -1,4 +1,6 @@
 -r requirements.txt
+pip>=25.3         # not directly required, pinned to avoid transitive vulnerability (PYSEC-2020-173, PYSEC-2021-437, PYSEC-2023-228)
+filelock>=3.20.3  # not directly required, pinned to avoid transitive vulnerability (GHSA-qmgc-5h2g-mvrw, GHSA-w853-jp5j-5j7f)
 pytest==9.0.3
 pytest-cov==6.0.0
 pytest-mock==3.14.0
