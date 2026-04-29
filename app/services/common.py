@@ -144,6 +144,79 @@ class CircuitBreaker:
 _circuit_breaker = CircuitBreaker()
 
 
+class DBCircuitBreaker:
+    """Thread-safe circuit breaker for database operations.
+
+    Opens after fail_threshold consecutive DB failures, then blocks calls for
+    cooldown_s seconds so the application degrades gracefully instead of
+    hammering a down database.  A half-open probe attempt is allowed after the
+    cooldown to confirm recovery.
+    """
+
+    def __init__(
+        self,
+        fail_threshold: int = 5,
+        cooldown_s: int = 30,
+    ) -> None:
+        self.fail_threshold = fail_threshold
+        self.cooldown_s = cooldown_s
+        self._lock = threading.Lock()
+        self._fails: int = 0
+        self._open_until: float = 0.0
+        self._half_open: bool = False
+
+    @property
+    def is_open(self) -> bool:
+        with self._lock:
+            return time.time() < self._open_until and not self._half_open
+
+    @property
+    def state(self) -> str:
+        with self._lock:
+            now = time.time()
+            if now >= self._open_until:
+                return "closed"
+            if self._half_open:
+                return "half_open"
+            return "open"
+
+    def allow_request(self) -> bool:
+        """Return True if a DB call should be attempted, False if circuit is open."""
+        with self._lock:
+            now = time.time()
+            if now >= self._open_until:
+                # Closed or cooldown elapsed → allow
+                return True
+            if not self._half_open:
+                # Try one half-open probe
+                self._half_open = True
+                return True
+            return False
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._fails = 0
+            self._open_until = 0.0
+            self._half_open = False
+
+    def record_failure(self) -> None:
+        with self._lock:
+            self._half_open = False
+            self._fails += 1
+            if self._fails >= self.fail_threshold:
+                self._open_until = time.time() + self.cooldown_s
+                self._fails = 0
+                logger.warning(
+                    "db_circuit_breaker_opened fail_threshold=%d cooldown_s=%d",
+                    self.fail_threshold,
+                    self.cooldown_s,
+                )
+
+
+# Shared DB circuit breaker — surfaced in /health as checks.db_circuit_state
+_db_circuit_breaker = DBCircuitBreaker()
+
+
 class DepStatusCache:
     """Thread-safe in-memory cache of external dependency health states.
 

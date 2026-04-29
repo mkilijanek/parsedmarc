@@ -35,6 +35,8 @@ def register_ops_api_routes(
     FeedRun = deps["FeedRun"]
     AppLog = deps["AppLog"]
     SyncJob = deps["SyncJob"]
+    DeadLetterJob = deps.get("DeadLetterJob")
+    _db_circuit_breaker = deps.get("_db_circuit_breaker")
 
     def _admin_rate_limit_key() -> str:
         admin_user_id = str(session.get("admin_user_id") or "").strip()
@@ -538,3 +540,65 @@ def register_ops_api_routes(
             )
         finally:
             db.close()
+
+    @app.get("/admin/api/dead-letter-jobs")
+    @limiter.limit("30 per minute", key_func=_admin_rate_limit_key)
+    def admin_api_dead_letter_jobs():
+        if DeadLetterJob is None:
+            return jsonify({"error": "not_supported"}), 501
+        db = _db()
+        try:
+            feed = (request.args.get("feed") or "").strip() or None
+            limit = min(int(request.args.get("limit") or 100), 500)
+            stmt = select(DeadLetterJob).order_by(DeadLetterJob.created_at.desc()).limit(limit)
+            if feed:
+                stmt = stmt.where(DeadLetterJob.feed_source_id == feed)
+            rows = db.scalars(stmt).all()
+            return jsonify({
+                "count": len(rows),
+                "items": [
+                    {
+                        "id": r.id,
+                        "original_job_id": r.original_job_id,
+                        "feed_source_id": r.feed_source_id,
+                        "failure_class": r.failure_class,
+                        "error": r.error,
+                        "retry_count": r.retry_count,
+                        "requeue_count": r.requeue_count,
+                        "last_requeued_at": str(r.last_requeued_at) if r.last_requeued_at else None,
+                        "created_at": str(r.created_at),
+                    }
+                    for r in rows
+                ],
+            })
+        finally:
+            db.close()
+
+    @app.post("/admin/api/dead-letter-jobs/<int:dlq_id>/requeue")
+    @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
+    def admin_api_dlq_requeue(dlq_id: int):
+        if DeadLetterJob is None:
+            return jsonify({"error": "not_supported"}), 501
+        db = _db()
+        try:
+            dlq = db.scalar(select(DeadLetterJob).where(DeadLetterJob.id == dlq_id))
+            if not dlq:
+                return jsonify({"error": "not_found"}), 404
+            _enqueue_sync_job(dlq.feed_source_id, trigger_type="manual_dlq_requeue", db=db)
+            dlq.requeue_count = (dlq.requeue_count or 0) + 1
+            dlq.last_requeued_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+            _audit("dlq_requeue", entity_type="dead_letter_job", entity_id=dlq_id, db=db)
+            return jsonify({"status": "requeued", "feed_source_id": dlq.feed_source_id})
+        finally:
+            db.close()
+
+    @app.get("/admin/api/db-circuit")
+    @limiter.limit("30 per minute", key_func=_admin_rate_limit_key)
+    def admin_api_db_circuit():
+        if _db_circuit_breaker is None:
+            return jsonify({"state": "unknown"})
+        return jsonify({
+            "state": _db_circuit_breaker.state,
+            "is_open": _db_circuit_breaker.is_open,
+        })

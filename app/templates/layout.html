@@ -188,6 +188,21 @@
     [data-loading] > *:not(.loading-overlay) { opacity: 0.6; pointer-events: none; }
 
     {% block extra_css %}{% endblock %}
+
+    /* Onboarding tour */
+    .tour-overlay { position:fixed;inset:0;z-index:10000;pointer-events:none; }
+    .tour-step {
+      position:fixed;z-index:10001;background:var(--bg-card,#fff);border:2px solid var(--primary,#0ea5e9);
+      border-radius:.75rem;padding:1.25rem 1.5rem;max-width:320px;box-shadow:0 8px 32px rgba(0,0,0,.25);
+      pointer-events:all;
+    }
+    .tour-step h4 { margin:0 0 .5rem;font-size:1rem; }
+    .tour-step p  { margin:0 0 1rem;font-size:.875rem;opacity:.85; }
+    .tour-step .tour-btns { display:flex;gap:.5rem;justify-content:flex-end; }
+    .tour-step .tour-btns button { padding:.35rem .9rem;border:none;border-radius:.4rem;cursor:pointer;font-size:.85rem; }
+    .tour-step .tour-btns .tour-next { background:var(--primary,#0ea5e9);color:#fff; }
+    .tour-step .tour-btns .tour-skip { background:transparent;opacity:.6; }
+    .tour-highlight { outline:3px solid var(--primary,#0ea5e9)!important;outline-offset:3px;border-radius:.25rem; }
   </style>
 </head>
 <body>
@@ -331,6 +346,131 @@
     });
 
     {% block extra_js %}{% endblock %}
+
+    // Onboarding tour — shown once on first visit, skipped thereafter
+    (function() {
+      if (localStorage.getItem('ioc_tour_done')) return;
+      var steps = [
+        { title: 'Welcome to IOC Threat Feed Aggregator', text: 'This short tour highlights the key features. Click Next to continue or Skip to dismiss.', anchor: null },
+        { title: 'Indicators', text: 'Browse, search and filter all IOCs collected from your threat intelligence feeds.', anchor: 'a[href="/indicators"]' },
+        { title: 'Search', text: 'Use the search bar with Kibana-style syntax: <code>type:ip AND confidence:>70</code>', anchor: 'input[name="q"], input[name="search"]' },
+        { title: 'Export', text: 'Export IOCs in 17 formats — TXT, CSV, JSON, Splunk HEC, FortiGate, and more.', anchor: 'a[href*="/indicators/txt"], a[href*="export"]' },
+        { title: 'Admin Panel', text: 'Configure feeds, monitor sync jobs, and manage operational settings.', anchor: 'a[href="/admin"]' },
+      ];
+      var current = 0;
+      var stepEl = null;
+
+      function showStep(i) {
+        if (stepEl) stepEl.remove();
+        if (i >= steps.length) { finish(); return; }
+        var s = steps[i];
+        stepEl = document.createElement('div');
+        stepEl.className = 'tour-step';
+        stepEl.innerHTML = '<h4>' + s.title + '</h4><p>' + s.text + '</p>' +
+          '<div class="tour-btns">' +
+          '<button class="tour-skip">Skip tour</button>' +
+          '<button class="tour-next">' + (i < steps.length-1 ? 'Next &rarr;' : 'Done') + '</button>' +
+          '</div>';
+        document.body.appendChild(stepEl);
+
+        // Position near anchor if present
+        var anchor = s.anchor ? document.querySelector(s.anchor) : null;
+        if (anchor) {
+          anchor.classList.add('tour-highlight');
+          var r = anchor.getBoundingClientRect();
+          stepEl.style.top  = Math.min(r.bottom + 12, window.innerHeight - 200) + 'px';
+          stepEl.style.left = Math.min(r.left, window.innerWidth - 340) + 'px';
+        } else {
+          stepEl.style.top = '50%'; stepEl.style.left = '50%';
+          stepEl.style.transform = 'translate(-50%,-50%)';
+        }
+
+        stepEl.querySelector('.tour-next').onclick = function() {
+          if (anchor) anchor.classList.remove('tour-highlight');
+          showStep(i + 1);
+        };
+        stepEl.querySelector('.tour-skip').onclick = finish;
+        current = i;
+      }
+
+      function finish() {
+        if (stepEl) stepEl.remove();
+        document.querySelectorAll('.tour-highlight').forEach(function(el) { el.classList.remove('tour-highlight'); });
+        localStorage.setItem('ioc_tour_done', '1');
+      }
+
+      document.addEventListener('DOMContentLoaded', function() { showStep(0); });
+    })();
+
+    // Keyboard shortcuts
+    (function() {
+      var seq = '';
+      var seqTimer = null;
+      var helpVisible = false;
+
+      function showHelp() {
+        var d = document.getElementById('kb-help-dialog');
+        if (!d) return;
+        d.style.display = 'flex';
+        helpVisible = true;
+        d.focus();
+      }
+      function hideHelp() {
+        var d = document.getElementById('kb-help-dialog');
+        if (!d) return;
+        d.style.display = 'none';
+        helpVisible = false;
+      }
+
+      document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) {
+          if (e.key === 'Escape') { e.target.blur(); }
+          return;
+        }
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+        if (e.key === 'Escape') { hideHelp(); seq = ''; return; }
+        if (e.key === '?') { showHelp(); return; }
+        if (e.key === '/') {
+          var s = document.querySelector('input[name="q"], input[name="search"], #search-input');
+          if (s) { e.preventDefault(); s.focus(); }
+          return;
+        }
+        if (e.key === 'r') { location.reload(); return; }
+
+        seq += e.key;
+        if (seqTimer) clearTimeout(seqTimer);
+        seqTimer = setTimeout(function() { seq = ''; }, 1200);
+
+        if (seq === 'gi') { location.href = '/indicators'; seq = ''; }
+        else if (seq === 'ga') { location.href = '/admin'; seq = ''; }
+        else if (seq === 'gl') { location.href = '/logs'; seq = ''; }
+        else if (seq === 'gd') { location.href = '/'; seq = ''; }
+      });
+
+      document.addEventListener('DOMContentLoaded', function() {
+        var overlay = document.createElement('div');
+        overlay.id = 'kb-help-dialog';
+        overlay.tabIndex = -1;
+        overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);align-items:center;justify-content:center;';
+        overlay.innerHTML = '<div style="background:var(--bg-card,#fff);border-radius:.75rem;padding:1.5rem 2rem;min-width:320px;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,.3)">' +
+          '<h3 style="margin:0 0 1rem">Keyboard Shortcuts</h3>' +
+          '<table style="width:100%;border-collapse:collapse">' +
+          '<tr><td><kbd>/</kbd></td><td>Focus search</td></tr>' +
+          '<tr><td><kbd>g</kbd> <kbd>i</kbd></td><td>Go to Indicators</td></tr>' +
+          '<tr><td><kbd>g</kbd> <kbd>a</kbd></td><td>Go to Admin panel</td></tr>' +
+          '<tr><td><kbd>g</kbd> <kbd>l</kbd></td><td>Go to Logs</td></tr>' +
+          '<tr><td><kbd>g</kbd> <kbd>d</kbd></td><td>Go to Dashboard</td></tr>' +
+          '<tr><td><kbd>r</kbd></td><td>Refresh page</td></tr>' +
+          '<tr><td><kbd>?</kbd></td><td>Show this help</td></tr>' +
+          '<tr><td><kbd>Esc</kbd></td><td>Close / Blur</td></tr>' +
+          '</table>' +
+          '<button onclick="document.getElementById(\'kb-help-dialog\').style.display=\'none\'" style="margin-top:1rem;padding:.4rem 1rem;cursor:pointer">Close</button>' +
+          '</div>';
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) hideHelp(); });
+      });
+    })();
   </script>
 </body>
 </html>

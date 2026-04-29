@@ -529,6 +529,24 @@ python scripts/benchmark_m12.py --base-url http://127.0.0.1:8080 --duration 30 -
 
 ---
 
+## Deferred: Async SQLAlchemy
+
+Milestone 1.8.0 considered migrating the ORM layer to `AsyncSession` (SQLAlchemy async)
+to reduce thread-pool pressure under high concurrency.  This was deferred because:
+
+- The migration requires replacing every `db.scalar()`, `db.execute()`, and
+  `db.scalars()` call with `await` equivalents across 3 000+ lines of application code.
+- Flask 3.x supports async view functions but background threads (the scheduler loop,
+  `ThreadPoolExecutor` for export jobs) are incompatible with asyncio coroutines —
+  a full rewrite of the scheduler would be required.
+- The current architecture achieves the required SLOs (p99 < 500 ms) through connection
+  pooling, read replicas, and Redis caching without async I/O.
+
+**Revisit when:** p99 latency consistently exceeds 800 ms at steady-state load, or
+when the project migrates from Flask to an ASGI framework.
+
+---
+
 ## See Also
 
 - [API Documentation](api.md) - API endpoints and formats

@@ -54,6 +54,7 @@ from .models import (
     AppLog,
     AppSetting,
     AuditLog,
+    DeadLetterJob,
     ExportJob,
     Feed,
     FeedRun,
@@ -67,6 +68,7 @@ from .query_parser import Term, Token, parse_kibana_query
 from .routes import (
     register_api_v1_routes,
     register_auth_routes,
+    register_events_routes,
     register_health_blueprint,
     register_logs_routes,
     register_ops_routes,
@@ -75,6 +77,8 @@ from .routes import (
 from .routes.auth import auth_surface_request_is_secure, canonical_https_url
 from .security import enforce_allowed_hosts, get_client_ip, validate_search_query
 from .services.common import (
+    _db_circuit_breaker,
+    _dep_status,
     build_feed_session,
     configure_requests_tls_verify_from_env,
     redact_proxy_credentials,
@@ -259,9 +263,21 @@ def create_app() -> Flask:
         # In tests we keep a single mocked session to avoid split in-memory DB state.
         if app.config.get("TESTING"):
             return SessionLocal()
-        if read_only and cfg.DATABASE_READ_URL:
-            return get_session(read_only=True)
-        return get_session(read_only=False)
+        if not _db_circuit_breaker.allow_request():
+            raise RuntimeError(
+                "db_circuit_open: database circuit breaker is open; "
+                f"state={_db_circuit_breaker.state}"
+            )
+        try:
+            if read_only and cfg.DATABASE_READ_URL:
+                sess = get_session(read_only=True)
+            else:
+                sess = get_session(read_only=False)
+            _db_circuit_breaker.record_success()
+            return sess
+        except Exception:
+            _db_circuit_breaker.record_failure()
+            raise
 
     def _audit(
         action: str,
@@ -1543,6 +1559,29 @@ def create_app() -> Flask:
                         "max_retries": max_retries,
                         "failure_class": failure_class,
                     }
+                    # Move permanently-failed job to dead letter queue
+                    dlq_entry = DeadLetterJob(
+                        original_job_id=job.job_id,
+                        feed_source_id=job.feed_source_id,
+                        failure_class=failure_class,
+                        error=str(e)[:4000],
+                        retry_count=retry_count,
+                        payload=row.result_json,
+                    )
+                    db.add(dlq_entry)
+                    _app_log(
+                        "WARNING",
+                        "scheduler",
+                        "sync_job_dead_lettered",
+                        feed_source_id=job.feed_source_id,
+                        run_id=run_id,
+                        metadata={
+                            "original_job_id": job.job_id,
+                            "retry_count": retry_count,
+                            "failure_class": failure_class,
+                        },
+                        db=db,
+                    )
             if job.feed_source_id == "misp":
                 err_text = str(e).lower()
                 timeout_hit = ("timeout" in err_text and elapsed_s >= max(1, int(cfg.MISP_SYNC_TIMEOUT_S)))
@@ -1697,6 +1736,39 @@ def create_app() -> Flask:
         scheduler_state["last_log_retention_at"] = now
         _app_log("INFO", "maintenance", "log_retention_cleanup", metadata={"deleted": deleted, "retention_days": retention_days})
 
+    def _run_cache_warming_if_due(now: datetime) -> None:
+        """Pre-populate Redis for the most common read queries on cold start or after TTL expiry."""
+        interval_s = max(60, int(cfg.CACHE_TTL) * 2)  # warm at most twice per cache lifetime
+        last = scheduler_state.get("last_cache_warming_at")
+        if isinstance(last, datetime) and (now - last).total_seconds() < interval_s:
+            return
+        try:
+            r = get_redis()
+            if r is None:
+                return
+            db = _db(read_only=True)
+            try:
+                # Count active indicators per type — used by dashboard widgets
+                from sqlalchemy import case
+                rows = db.execute(
+                    select(Indicator.type, func.count().label("cnt"))
+                    .where(Indicator.is_active == True)  # noqa: E712
+                    .group_by(Indicator.type)
+                    .order_by(func.count().desc())
+                    .limit(20)
+                ).all()
+                warm_payload = {r.type: r.cnt for r in rows}
+                cache_key = _cache_key("warm:indicator_type_counts")
+                r.setex(cache_key, max(60, int(cfg.CACHE_TTL)), json.dumps(warm_payload))
+                # Total active count
+                total = db.scalar(select(func.count()).select_from(Indicator).where(Indicator.is_active == True))  # noqa: E712
+                r.setex(_cache_key("warm:total_active"), max(60, int(cfg.CACHE_TTL)), str(total or 0))
+            finally:
+                db.close()
+            scheduler_state["last_cache_warming_at"] = now
+        except Exception as warm_err:
+            _app_log("WARNING", "scheduler", "cache_warming_error", metadata={"error": str(warm_err)})
+
     def _run_audit_integrity_check_if_due(now: datetime) -> None:
         interval_s = max(60, int(cfg.AUDIT_INTEGRITY_VERIFY_INTERVAL_S))
         last = scheduler_state.get("last_audit_integrity_check_at")
@@ -1736,6 +1808,7 @@ def create_app() -> Flask:
                     try:
                         now = datetime.now(timezone.utc)
                         _enqueue_due_scheduled_jobs(now)
+                        _run_cache_warming_if_due(now)
                         _run_audit_integrity_check_if_due(now)
                         _run_log_retention_if_due(now)
                         _run_sync_queue_once(max_jobs=10)
@@ -1824,6 +1897,19 @@ def create_app() -> Flask:
         },
     )
 
+    register_events_routes(
+        app,
+        limiter=limiter,
+        cfg=cfg,
+        deps={
+            "_db": _db,
+            "_dep_status": _dep_status,
+            "Indicator": Indicator,
+            "SyncJob": SyncJob,
+            "FeedRun": FeedRun,
+        },
+    )
+
     register_api_v1_routes(
         app,
         limiter=limiter,
@@ -1896,6 +1982,8 @@ def create_app() -> Flask:
             "FeedRun": FeedRun,
             "AppLog": AppLog,
             "SyncJob": SyncJob,
+            "DeadLetterJob": DeadLetterJob,
+            "_db_circuit_breaker": _db_circuit_breaker,
             "ADMIN_FEED_METRICS_WIDGET_HTML": ADMIN_FEED_METRICS_WIDGET_HTML,
             "ADMIN_FEED_METRICS_WIDGET_SCRIPT": ADMIN_FEED_METRICS_WIDGET_SCRIPT,
         },

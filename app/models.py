@@ -276,3 +276,28 @@ class SyncJob(Base):
         Index("idx_sync_jobs_status_next_attempt", "status", "next_attempt_at"),
         Index("idx_sync_jobs_trigger_status", "trigger_type", "status"),
     )
+
+
+class DeadLetterJob(Base):
+    """Permanently-failed sync jobs moved here after all retries are exhausted.
+
+    The original sync_job row keeps status='failed'.  This table records the
+    DLQ arrival for auditing and provides a surface for manual re-queueing.
+    """
+
+    __tablename__ = "dead_letter_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    original_job_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    feed_source_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    failure_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    payload: Mapped[dict] = mapped_column(JSONCompat(), default=dict, nullable=False)
+    requeue_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_requeued_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_dlq_feed_created", "feed_source_id", "created_at"),
+    )

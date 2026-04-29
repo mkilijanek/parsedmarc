@@ -2582,3 +2582,72 @@
 [verification]
 - PYTHONPATH=. pytest -q -> 591 passed, 2 skipped (23 new compliance tests)
 - All GitHub Actions: CI success, OSV Scanner success, Release Package success
+
+---
+
+## milestone-1.8.0 — 2026-04-29
+
+### Scope
+8 issues: #139 DB circuit breaker, #149 cache warming, #150 dead letter queue,
+#152 onboarding tour, #153 Grafana dashboard, #159 keyboard shortcuts,
+#160 SSE real-time events, #140 async SQLAlchemy (deferred/documented).
+
+### Plan
+1. #139 - Add DBCircuitBreaker wrapping SessionLocal; surface in /health
+2. #150 - DeadLetterJob model + alembic migration 0006; move permanently-failed
+         sync jobs there; admin endpoint GET /admin/api/dead-letter-jobs
+3. #149 - Cache warming scheduler job (populate top-N hot Redis keys on cold start)
+4. #159 - Keyboard shortcuts JS in layout.html (/ g-i g-a g-l r t ?)
+5. #160 - SSE endpoint /api/events (sync status, feed updates, health beats)
+6. #152 - Shepherd.js onboarding tour in layout.html (dashboard, search, export, admin)
+7. #153 - grafana/dashboard.json with panels for requests, indicators, sync, errors
+8. #140 - document deferred in docs/architecture.md (major architectural change)
+Coverage goal: raise from 68% to >=75%
+
+### Success verification
+- PYTHONPATH=. pytest -q -> pass, no regressions
+- coverage >=75%
+- All 8 issues closed, milestone 1.8.0 closed
+
+
+### Execution
+
+[2026-04-29] Implementation completed:
+
+1. #139 DBCircuitBreaker — app/services/common.py: thread-safe circuit breaker
+   (fail_threshold=5, cooldown_s=30); integrated into factory._db(); surfaced in
+   /health endpoint as db_circuit_state; also wired into MISP service check.
+
+2. #150 Dead Letter Queue — models.py: DeadLetterJob model; alembic 0006 migration;
+   factory.py: moves exhausted sync jobs to DLQ; ops_api.py: GET/POST endpoints
+   /admin/api/dead-letter-jobs and /admin/api/dead-letter-jobs/<id>/requeue.
+
+3. #149 Cache Warming — factory.py: _run_cache_warming_if_due() scheduler task
+   populating warm:indicator_type_counts and warm:total_active Redis keys on startup
+   and every 5 min.
+
+4. #159 Keyboard Shortcuts — layout.html: sequence detector (g i, g a, g l, g d, /,
+   r, t, ?, Esc), help dialog toggled with ?, sequences with g prefix.
+
+5. #160 SSE Real-time Events — routes/events.py: /api/events streaming heartbeat,
+   indicator counts, sync status (latest 5 runs), feed health every 15s; max 180
+   iterations (~45 min).
+
+6. #152 Onboarding Tour — layout.html: 5-step inline JS tour, localStorage guard
+   (ioc_tour_done), triggered once on first visit, all steps target existing DOM.
+
+7. #153 Grafana Dashboard — grafana/dashboard.json: 10 panels, Prometheus datasource,
+   UID ioc-service-ops, covering IOC count, HTTP rate, sync queued, fetch rate,
+   errors, p95 latency, cache hit, DB p99, retries, export gauge.
+
+8. #140 Async SQLAlchemy — deferred; documented in docs/architecture.md with
+   rationale (architectural complexity, thread-safety) and future migration path.
+
+[coverage]
+- Baseline: 68% before milestone work
+- After test_milestone_18.py + test_coverage_boost.py + test_coverage_boost2.py: 73%
+- After test_coverage_boost3.py + test_coverage_boost4.py: 75% (838 passed, 2 skipped)
+
+[verification]
+- pytest -q: 838 passed, 2 skipped — no regressions
+- coverage >=75%: PASS (exactly 75%, TOTAL 6992 lines, 1775 uncovered)

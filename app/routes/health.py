@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from ..cache import get_redis
 from ..metrics import cache_access_total
-from ..services.common import _dep_status
+from ..services.common import _db_circuit_breaker, _dep_status
 
 
 def _get_redis_runtime():
@@ -83,7 +83,11 @@ def register_health_blueprint(
 
         infra_ok = checks["database"] and checks["redis"]
         status = "healthy" if infra_ok else "degraded"
-        payload = {"status": status, "checks": checks}
+        payload = {
+            "status": status,
+            "checks": checks,
+            "db_circuit_state": _db_circuit_breaker.state,
+        }
         body = json.dumps(payload, separators=(",", ":"))
         if r is not None:
             try:
