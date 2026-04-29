@@ -1749,7 +1749,6 @@ def create_app() -> Flask:
             db = _db(read_only=True)
             try:
                 # Count active indicators per type — used by dashboard widgets
-                from sqlalchemy import case
                 rows = db.execute(
                     select(Indicator.type, func.count().label("cnt"))
                     .where(Indicator.is_active == True)  # noqa: E712
