@@ -36,7 +36,11 @@ def register_logs_routes(
             if job_id:
                 stmt = stmt.where(AppLog.run_id == job_id)
             if level:
-                stmt = stmt.where(AppLog.level == level)
+                levels = [l.strip() for l in level.replace(",", "|").split("|") if l.strip()]
+                if len(levels) == 1:
+                    stmt = stmt.where(AppLog.level == levels[0])
+                else:
+                    stmt = stmt.where(AppLog.level.in_(levels))
             if component:
                 stmt = stmt.where(AppLog.component == component)
             if since:

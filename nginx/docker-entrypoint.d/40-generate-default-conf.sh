@@ -21,6 +21,41 @@ write_common_headers() {
 EOF
 }
 
+# Use a variable for the backend address so nginx re-resolves via the Docker DNS
+# resolver (127.0.0.11) declared in nginx.conf instead of caching the IP at startup.
+# This prevents stale-IP 502 errors after app container recreation.
+write_proxy_locations() {
+  local proto="$1"
+  cat <<EOF
+  location /health {
+    limit_req zone=api_limit burst=50 nodelay;
+    set \$app_backend http://app:8080;
+    proxy_pass \$app_backend;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-Proto ${proto};
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+  }
+
+  location ~ ^/(crowdsec|misp|indicators) {
+    limit_req zone=feed_limit burst=20 nodelay;
+    set \$app_backend http://app:8080;
+    proxy_pass \$app_backend;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-Proto ${proto};
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+  }
+
+  location / {
+    limit_req zone=api_limit burst=50 nodelay;
+    set \$app_backend http://app:8080;
+    proxy_pass \$app_backend;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-Proto ${proto};
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+  }
+EOF
+}
+
 if [ "$tls_enabled" = "true" ]; then
   if [ ! -s "$cert_path" ] || [ ! -s "$key_path" ]; then
     cert_path="$fallback_cert_path"
@@ -34,11 +69,6 @@ if [ "$tls_enabled" = "true" ]; then
     fi
   fi
   cat > /etc/nginx/conf.d/default.conf <<EOF
-upstream app_upstream {
-  server app:8080;
-  keepalive 32;
-}
-
 server {
   listen ${http_port};
   server_name _;
@@ -64,74 +94,25 @@ EOF
     printf '  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;\n' >> /etc/nginx/conf.d/default.conf
   fi
   write_common_headers >> /etc/nginx/conf.d/default.conf
-  cat >> /etc/nginx/conf.d/default.conf <<'EOF'
+  cat >> /etc/nginx/conf.d/default.conf <<EOF
 
   client_max_body_size 5m;
 
-  location /health {
-    limit_req zone=api_limit burst=50 nodelay;
-    proxy_pass http://app_upstream;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  }
-
-  location ~ ^/(crowdsec|misp|indicators) {
-    limit_req zone=feed_limit burst=20 nodelay;
-    proxy_pass http://app_upstream;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  }
-
-  location / {
-    limit_req zone=api_limit burst=50 nodelay;
-    proxy_pass http://app_upstream;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  }
+$(write_proxy_locations https)
 }
 EOF
 else
   cat > /etc/nginx/conf.d/default.conf <<EOF
-upstream app_upstream {
-  server app:8080;
-  keepalive 32;
-}
-
 server {
   listen ${http_port};
   server_name _;
 EOF
   write_common_headers >> /etc/nginx/conf.d/default.conf
-  cat >> /etc/nginx/conf.d/default.conf <<'EOF'
+  cat >> /etc/nginx/conf.d/default.conf <<EOF
 
   client_max_body_size 5m;
 
-  location /health {
-    limit_req zone=api_limit burst=50 nodelay;
-    proxy_pass http://app_upstream;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto http;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  }
-
-  location ~ ^/(crowdsec|misp|indicators) {
-    limit_req zone=feed_limit burst=20 nodelay;
-    proxy_pass http://app_upstream;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto http;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  }
-
-  location / {
-    limit_req zone=api_limit burst=50 nodelay;
-    proxy_pass http://app_upstream;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto http;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  }
+$(write_proxy_locations http)
 }
 EOF
 fi

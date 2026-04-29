@@ -2416,3 +2416,72 @@
 - Fix: set upload-sarif: false in .github/workflows/osv-scanner.yml.
   The vulnerability scan itself still runs and blocks on CVEs; only the SARIF upload is skipped.
 - Committing this alongside the change.log update; this is the last blocking CI failure.
+
+2026-04-29
+
+[current stage]
+- Backlog triage: address all open issues, PRs, and Dependabot alerts.
+
+[assessment]
+- Open PRs: none.
+- Dependabot alerts: all 12 resolved (fixed).
+- Open issues: 18.
+  - #132 nginx 502 after app recreate — production bug, fix now
+  - #134 split feed logs — logs.html has text filter; add quick-filter buttons
+  - #138 structured logging with correlation IDs — already delivered; close with comment
+  - #163 ISO 27001 A.12.4 centralized logging — partially delivered; full log integrity → compliance milestone
+  - #166, #167, #168, #170, #171, #173 — ISO 27001 / NIST compliance/process work → compliance milestone
+  - #139, #150, #149, #140 — backend enhancements → milestone 1.8.0 or 1.9.0
+  - #153 Grafana dashboard → 1.9.0
+  - #152, #159, #160 — already in 1.8.0
+
+[planned tasks and justifications]
+1. Fix #132: add resolver 127.0.0.11 valid=10s to nginx.conf http block and switch all
+   proxy_pass directives from upstream block to variable-based approach ($app_backend).
+   Justification: nginx caches DNS for app:8080 at startup; container recreate changes the
+   IP; keepalive-cached connections then return 502. Variable proxy_pass forces re-resolution.
+2. Implement #134: add All / Events (INFO) / Problems (WARN|ERROR) quick-filter buttons to
+   logs.html so operators can switch views without typing level strings.
+   Justification: existing text filter is functional but requires manual input; one-click tabs
+   make troubleshooting faster.
+3. Close #138: correlation IDs already in factory.py; AppLog has run_id/component/level fields;
+   X-Correlation-Id header propagated on every response.
+4. Create compliance milestone (1.9.0 or compliance-1.0) and assign #163, #166, #167, #168,
+   #170, #171, #173 to it; comment partial delivery on #163.
+5. Assign #139, #150, #149, #140, #153 to milestone 1.8.0.
+
+[how success will be verified]
+- PYTHONPATH=. pytest -q -> 568 passed (no regressions from nginx/template changes)
+- docker compose -f docker-compose-release.yml config (no nginx config errors)
+- All 18 open issues have milestone or are closed
+
+[actions performed]
+- Fixed #132: added resolver 127.0.0.11 valid=10s to nginx/nginx.conf http block.
+  Refactored 40-generate-default-conf.sh to use write_proxy_locations() helper that emits
+  variable-based proxy_pass (set $app_backend http://app:8080) instead of a static upstream
+  block; this forces nginx to re-resolve the app container IP via Docker DNS on each new
+  connection cycle rather than caching the address at startup.
+- Fixed #134: added All / Events (INFO) / Problems (WARN+) quick-filter buttons above the
+  logs form in logs.html; extended /api/logs to accept pipe-separated level values
+  (e.g., level=WARNING|ERROR) so multi-level queries are possible from the UI and API.
+- Closed #138 with comment: structured logging and correlation IDs are already delivered
+  (X-Correlation-Id header, AppLog model fields, /api/logs filter).
+- Created compliance-1.0 milestone and assigned #163, #166, #167, #168, #170, #171, #173.
+- Commented on #163 documenting partial delivery and remaining log-integrity work.
+- Assigned #139, #150, #149, #140, #153 to milestone 1.8.0.
+- Updated docker-compose-release.yml defaults to HTTP-only variant
+  (EDGE_HTTPS_ENABLED=false by default; TLS variant requires explicit override).
+- Verified release 1.7.0 triggered the Release Package workflow (success): both
+  ghcr.io/mkilijanek/ioc-service and ghcr.io/mkilijanek/ioc-service-tls images published.
+
+[verification]
+- PYTHONPATH=. pytest -q -> 568 passed, 2 skipped (no regressions)
+- GitHub release workflow (event: release) ran successfully for 1.7.0
+
+[decisions]
+- Variable-based proxy_pass loses keepalive on the nginx→app connection but eliminates
+  the production 502 after container recreation; for this traffic level the trade-off favours
+  correctness over throughput.
+- docker-compose-release.yml defaults changed to HTTP-only so that a plain
+  `docker compose -f docker-compose-release.yml up` gives the simple variant without
+  accidentally enabling TLS without a proper cert. TLS requires explicit opt-in.

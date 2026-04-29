@@ -9,6 +9,12 @@
   <h1>Logs</h1>
   <p><a href="/admin" class="btn btn-sm">Back to admin</a></p>
 
+  <div class="btn-group" style="margin-bottom:.75rem;" role="group" aria-label="Log level quick filters">
+    <button type="button" class="btn btn-sm level-filter active" data-level="">All</button>
+    <button type="button" class="btn btn-sm level-filter" data-level="INFO">Events (INFO)</button>
+    <button type="button" class="btn btn-sm level-filter" data-level="WARNING|ERROR">Problems (WARN+)</button>
+  </div>
+
   <form id="filters" class="form-row">
     <div class="form-group">
       <label class="form-label">Feed</label>
@@ -20,7 +26,7 @@
     </div>
     <div class="form-group">
       <label class="form-label">Level</label>
-      <input name="level" class="form-input" placeholder="INFO|WARN|ERROR"/>
+      <input name="level" id="levelInput" class="form-input" placeholder="INFO|WARNING|ERROR"/>
     </div>
     <div class="form-group">
       <label class="form-label">Component</label>
@@ -127,6 +133,18 @@
   });
   document.getElementById('copyBtn').addEventListener('click', copyVisibleLogs);
   document.getElementById('downloadBtn').addEventListener('click', downloadVisibleLogs);
+
+  // Quick-filter buttons: set the level input and reload
+  document.querySelectorAll('.level-filter').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.level-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const lvl = btn.dataset.level || '';
+      document.getElementById('levelInput').value = lvl;
+      refreshLogs();
+    });
+  });
+
   setInterval(() => {
     if (document.getElementById('autorefresh').checked) refreshLogs();
   }, 5000);
