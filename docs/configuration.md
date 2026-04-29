@@ -241,6 +241,20 @@ Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(3
 LOG_LEVEL=INFO
 ```
 
+### LOG_RETENTION_DAYS
+
+**Type:** Integer  
+**Default:** `90`  
+**Purpose:** Automatically purge `app_logs` table rows older than this many days. The daily cleanup job runs in the scheduler. Set to `0` to disable automatic cleanup.
+
+> **Note**: `audit_log` rows are **not** purged automatically — the HMAC hash chain must remain intact. Retain audit records per your compliance requirement (ISO 27001 recommends minimum 1 year).
+
+```bash
+LOG_RETENTION_DAYS=90      # default
+LOG_RETENTION_DAYS=365     # retain 1 year (compliance deployments)
+LOG_RETENTION_DAYS=0       # disable automatic cleanup
+```
+
 ### REQUESTS_PER_SECOND_MAX
 
 **Type:** Integer  

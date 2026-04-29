@@ -2563,3 +2563,22 @@
   so the X-Export-Checksum header and the body field carry the same value and either
   can be used for verification by a recipient.
 - CEF severity is mapped: INFO=0, WARNING=5, ERROR=8, CRITICAL=10 (ArcSight standard).
+
+[actions performed — documentation and test coverage]
+- Created tests/test_compliance.py: 23 tests covering /api/logs/export (checksum
+  integrity, level filter, limit), /api/logs?format=cef (content type, severity mapping,
+  pipe-level filter), LOG_RETENTION_DAYS config, cleanup_export_files(),
+  cleanup_old_indicators().
+- Fixed datetime.utcnow() deprecation in app/routes/logs.py and test_compliance.py.
+- Updated docs/api.md Logs API section: documented /api/logs/export (checksum header,
+  body field, filter params), ?format=cef (CEF format reference).
+- Updated docs/configuration.md: added LOG_RETENTION_DAYS entry with compliance note
+  (audit_log excluded from auto-purge).
+- Updated .env.example: added LOG_RETENTION_DAYS with inline comment.
+- Updated docs/README.md: added Quick Links and table entries for all 6 new compliance
+  docs (incident-response, ssdlc, disaster-recovery, compliance, asset-management,
+  siem-integration).
+
+[verification]
+- PYTHONPATH=. pytest -q -> 591 passed, 2 skipped (23 new compliance tests)
+- All GitHub Actions: CI success, OSV Scanner success, Release Package success

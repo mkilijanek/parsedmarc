@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from flask import jsonify, make_response, render_template, request
@@ -128,7 +128,7 @@ def register_logs_routes(
                 for r in rows
             ]
             payload = {
-                "exported_at": datetime.utcnow().isoformat() + "Z",
+                "exported_at": datetime.now(timezone.utc).isoformat(),
                 "count": len(items),
                 "items": items,
             }

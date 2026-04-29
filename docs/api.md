@@ -180,9 +180,31 @@ Legacy logs endpoint. Prefer `GET /api/v1/logs`.
 Supports filtering by:
 - `feed`
 - `job_id` (or `run_id`)
-- `level`
+- `level` — single value (`ERROR`) or pipe-separated (`WARNING|ERROR`)
 - `component`
 - `since`, `until`, `limit`
+- `format` — `json` (default) or `cef` (ArcSight CEF for SIEM ingestion)
+
+**CEF format** (`?format=cef`):  
+Returns `text/plain` ArcSight Common Event Format lines. Severity mapping: INFO=0, WARNING=5, ERROR=8, CRITICAL=10.
+See `docs/siem-integration.md` for integration examples.
+
+#### `GET /api/logs/export`
+
+Integrity-checksummed bulk log export for compliance archival and SIEM evidence packages.
+
+Accepts the same filter parameters as `/api/logs` (except `format`). `limit` max is 5 000 (vs 500 for `/api/logs`).
+
+Response:
+- `200 OK` — JSON body with `count`, `exported_at`, `items`, and `export_checksum`
+- `X-Export-Checksum: sha256:<hex>` header — SHA-256 of the payload (before checksum field was added); use this to verify the export was not tampered with in transit
+
+```bash
+curl -s "https://<host>/api/logs/export?since=2026-01-01&level=WARNING|ERROR" \
+  -H "Cookie: session=<s>" -D - | grep X-Export-Checksum
+```
+
+See `docs/compliance.md` for integrity verification procedure.
 
 ### Current Runs / Queue
 

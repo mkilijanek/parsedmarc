@@ -17,6 +17,12 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - 🔐 **[Access Control](access-control.md)** - Admin auth, roles, CSRF, and operational boundaries
 - ⚡ **[Performance](performance.md)** - SLOs, benchmarking, degradation and runbook
 - 🛠️ **[Runbook](runbook.md)** - Incident response and release gate procedures
+- 🚨 **[Incident Response](incident-response.md)** - Classification, playbooks, evidence checklist (NIST RS.RP)
+- 🔄 **[Disaster Recovery](disaster-recovery.md)** - RTO/RPO, backup procedures, restore runbook
+- 📋 **[Compliance](compliance.md)** - ISO 27001 / NIST CSF controls matrix, audit trail procedures
+- 🏗️ **[SSDLC](ssdlc.md)** - Secure development lifecycle controls and CI security gates
+- 📦 **[Asset Management](asset-management.md)** - Data and software asset inventory, classification
+- 📡 **[SIEM Integration](siem-integration.md)** - CEF format, Splunk/ELK/Sentinel integration guide
 - 🧭 **[M16 Finalization](m16-finalization.md)** - Go/no-go and closure checklist
 - 📆 **[Maintenance Plan](maintenance-plan.md)** - 90-day operating cadence and KPI policy
 - 🧩 **[UML Diagrams](uml/README.md)** - deployment, data model, sync flow, state machine
@@ -76,6 +82,12 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 | **[data-protection.md](data-protection.md)** | Data classification and protection baseline | Security, Operators |
 | **[risk-register.md](risk-register.md)** | Current project risk register | Security, PM |
 | **[vulnerability-management.md](vulnerability-management.md)** | Vulnerability and patch management process | Security, Maintainers |
+| **[compliance.md](compliance.md)** | ISO 27001 / NIST CSF controls matrix and audit trail | Security, Auditors |
+| **[incident-response.md](incident-response.md)** | Incident playbooks and evidence checklist | Security, Ops |
+| **[ssdlc.md](ssdlc.md)** | SSDLC controls, CI security gates, threat model | Security, Developers |
+| **[disaster-recovery.md](disaster-recovery.md)** | DR plan with RTO/RPO and restore procedures | Ops, SRE |
+| **[asset-management.md](asset-management.md)** | Asset inventory, classification, lifecycle | Security, Ops |
+| **[siem-integration.md](siem-integration.md)** | CEF, Splunk, ELK, Sentinel integration guide | Security, Ops |
 | **[cli.md](cli.md)** | Manual ingestion tool | Operators, Analysts |
 
 ### User Documentation
