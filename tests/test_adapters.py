@@ -65,6 +65,24 @@ def test_build_feed_session_uses_runtime_proxy_settings():
         assert session.runtime_verify == "/tmp/ca.pem"
 
 
+def test_runtime_session_request_verify_override_takes_precedence():
+    update_proxy_settings_from_mapping(
+        {
+            "proxy.ca_bundle_path": "/tmp/ca.pem",
+            "proxy.skip_tls_verify": "0",
+        }
+    )
+    with build_feed_session(source="misp") as session:
+        merged = session.merge_environment_settings(
+            "https://misp.example.invalid",
+            proxies={},
+            stream=False,
+            verify=False,
+            cert=None,
+        )
+        assert merged["verify"] is False
+
+
 def test_feed_registry_contains_core_sources():
     registry = build_feed_registry()
     assert set(registry.keys()) == {"crowdsec", "misp", "malwarebazaar", "mwdb", "abusech"}
