@@ -2651,3 +2651,157 @@ Coverage goal: raise from 68% to >=75%
 [verification]
 - pytest -q: 838 passed, 2 skipped — no regressions
 - coverage >=75%: PASS (exactly 75%, TOTAL 6992 lines, 1775 uncovered)
+
+---
+
+## documentation-consistency-audit — 2026-04-30
+
+[scope]
+- Review changed Markdown files after `1.8.0` and `compliance-1.0`.
+- Review local text artifacts used as secondary review input:
+  - `deepseek-changelog.txt`
+  - `deepseekv4-issues.txt`
+  - `kimi2.6-issues.txt`
+- Review recent commits affecting the current release line and documentation baseline.
+
+[planned tasks]
+- Normalize milestone and roadmap status after releases through `1.8.0`.
+- Remove deployment/bootstrap instruction drift around ports and secrets generation.
+- Correct admin/auth wording where docs implied anonymous access to session-protected endpoints.
+- Record lessons from the review artifacts instead of treating them as source of truth.
+
+[important commands]
+- `git log --oneline --decorate -12`
+- `git diff -- README.md ROADMAP.md MILESTONES.md QUICKSTART.md DEPLOYMENT.md docs/README.md docs/api.md docs/runbook.md`
+- `rg -n "7003|7005|admin/api/db-circuit|admin/audit/verify|documentation-driven" README.md ROADMAP.md MILESTONES.md QUICKSTART.md DEPLOYMENT.md docs AGENTS.md CLAUDE.md`
+- `sed -n '1,220p' scripts/generate-secrets.sh`
+
+[observations]
+- `MILESTONES.md` had stale and partially duplicated sections after `1.6.x`; release history through `1.8.0` and `compliance-1.0` was not represented cleanly.
+- `ROADMAP.md` still described `1.4.2+` as active, which was no longer true.
+- `QUICKSTART.md` and `DEPLOYMENT.md` used an incorrect bootstrap sequence: generating secrets before creating `.env`, which would cause operators to lose generated values if they followed the file literally.
+- Some docs presented `/admin/api/db-circuit` like a public curl endpoint even though it requires an authenticated admin session.
+- `/admin/audit/*` remains a known access-control gap; docs must describe it as such rather than silently presenting it as fully protected.
+- `AGENTS.md` and `CLAUDE.md` already contained the required documentation-driven, `venv`, and `sudo` guidance; no correction needed there.
+
+[actions performed]
+- Updated `README.md` to align default app-only quickstart and validation with port `7005`, while keeping the TLS variant on `7003`.
+- Updated `ROADMAP.md` to mark delivery current through `1.8.0` and `compliance-1.0`.
+- Repaired `MILESTONES.md` structure and release history for `1.7.0`, `1.8.0`, and `compliance-1.0`.
+- Fixed `QUICKSTART.md` bootstrap order: `cp .env.example .env` first, then `scripts/generate-secrets.sh >> .env`.
+- Updated `QUICKSTART.md` local Flask dev command to run on `--port 8080`, matching the documented development base URL.
+- Updated `DEPLOYMENT.md` quick start to use the same correct `.env` creation + append-secrets flow.
+- Clarified in `DEPLOYMENT.md` that `/admin/api/db-circuit` requires an authenticated admin session.
+- Updated `docs/README.md` examples to show both app-only (`7005`) and TLS (`7003`) usage where helpful.
+- Updated `docs/api.md` access model to distinguish:
+  - unauthenticated `/api/v1/*`
+  - public `/api/events`
+  - session-protected `/admin/*`
+  - known-gap `/admin/audit/*`
+- Updated `docs/runbook.md` to use `/health` for unauthenticated DBCircuitBreaker triage and to annotate which admin endpoints require session/CSRF.
+
+[decisions]
+- Review artifacts in `.txt` files are treated as advisory input, not canonical project history.
+- The repository docs must never imply stronger protection than the implementation actually provides.
+- For operator docs, unauthenticated triage examples should prefer public health/status endpoints over session-protected admin APIs.
+
+[lessons learned]
+- Bootstrap instructions that mutate `.env` must be checked against the actual helper script behavior; this review caught a real operator footgun caused by reversing `cp .env.example` and `generate-secrets.sh >> .env`.
+- Release/milestone docs drift quickly after several same-week deliveries; `ROADMAP.md` and `MILESTONES.md` need explicit closure updates at the time of each release, not later.
+- Review notes from external analysis files are useful for finding drift, but they should not be copied blindly into repo docs without validating against the current code and release state.
+
+---
+
+## code-review-followup-issues — 2026-04-30
+
+[scope]
+- Register actionable GitHub issues from the code review covering `1.6.0` through the newest changes.
+
+[actions performed]
+- Created `#181` `Block ADMIN_AUTH_ENABLED=false in production by default`
+- Created `#182` `Fix DBCircuitBreaker cooldown and half-open semantics`
+- Created `#183` `Prevent /api/events from exhausting sync Gunicorn workers`
+- Created `#184` `Make DB circuit breaker observe real query and commit failures`
+- Created `#185` `Make dead-letter job requeue idempotent or stateful`
+- Created `#186` `Harden backup script to avoid exposing DB credentials in process args`
+
+[decisions]
+- Issues were created without milestone assignment because there are currently no open GitHub milestones in the repository.
+- Each issue maps 1:1 to a concrete review finding to keep remediation tracking unambiguous.
+
+[follow-up]
+- Created GitHub milestone `1.8.1` (milestone #14) for the post-review corrective patch scope.
+- Assigned issues `#181`, `#182`, `#183`, `#184`, `#185`, and `#186` to milestone `1.8.1`.
+- Mirrored milestone `1.8.1` into local planning files: `ROADMAP.md` and `MILESTONES.md`.
+
+---
+
+## milestone-1.8.1 — 2026-04-30
+
+[current stage]
+- need -> planned change -> implementation -> docs -> tests -> fixes -> final docs
+- Active milestone: `1.8.1` (`#181`-`#186`)
+
+[need]
+- Post-release review found security and runtime behaviors that are weaker than the milestone claims made by `1.7.0`, `1.8.0`, and `compliance-1.0`.
+- The highest-risk gaps are production auth bypass via `ADMIN_AUTH_ENABLED=false`, incorrect DBCircuitBreaker semantics, SSE starvation risk under sync Gunicorn, non-idempotent DLQ requeue, and backup credential exposure in process arguments.
+
+[planned tasks]
+1. Add production guardrails for admin auth disablement.
+   Why: closes the most severe security regression first.
+2. Fix DBCircuitBreaker cooldown / half-open semantics and make it observe real DB execution failures.
+   Why: current breaker does not behave like a true outage backoff mechanism.
+3. Harden `/api/events` runtime behavior.
+   Why: prevent default deployments from being trivially starved by long-lived SSE requests.
+4. Make DLQ requeue stateful and idempotent.
+   Why: prevent duplicate work fan-out from one dead-letter item.
+5. Rework `scripts/backup.sh` to avoid credential exposure in argv.
+   Why: align the compliance baseline with safer operational practice.
+6. Update docs and tests to match the final shipped behavior.
+   Why: the repository must not describe stronger or different guarantees than the code actually provides.
+
+[actions performed]
+- Added `ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION` to `app/config.py` and forced `get_admin_auth_enabled()` to keep auth enabled in production unless the explicit unsafe override is set.
+- Added a production startup guard in `app/factory.py` that fails fast when `ADMIN_AUTH_ENABLED=false` is configured in production without the unsafe override.
+- Tightened `app/routes/auth.py` fallback behavior so auth is not silently treated as disabled in production after DB lookup failures.
+- Fixed `DBCircuitBreaker` semantics in `app/services/common.py`: open means blocked through cooldown, then exactly one half-open probe is allowed until success/failure decides the next state.
+- Removed premature breaker success recording from `_db()` in `app/factory.py`.
+- Added SQLAlchemy engine observer hooks in `app/db.py` so successful statements reset the DB breaker and real execution failures trip it.
+- Hardened `/api/events` in `app/routes/events.py` with:
+  - `SSE_ENABLED`
+  - bounded heartbeat/duration
+  - bounded concurrent connection slots
+  - `503` rejection on sync workers unless explicitly allowed
+- Switched the container default Gunicorn runtime in `Dockerfile` from `sync` to `gthread` with configurable threads.
+- Extended `DeadLetterJob` with `status` and `requeue_sync_job_id`, added Alembic migration `0007_dead_letter_job_requeue_state.py`, and made `/admin/api/dead-letter-jobs/<id>/requeue` idempotent/stateful.
+- Reworked `scripts/backup.sh` to parse `DATABASE_URL`, create a temporary `PGPASSFILE`, and call `pg_dump` with discrete host/user/database arguments instead of passing a credential-bearing DSN in argv.
+- Updated `.env.example`, `README.md`, `docs/configuration.md`, `docs/api.md`, `docs/access-control.md`, `docs/data-protection.md`, `docs/runbook.md`, and `docs/disaster-recovery.md` to match the shipped runtime behavior.
+- Updated `tests/test_security.py` and `tests/test_milestone_18.py` for the corrected auth / breaker / SSE / DLQ / backup behavior.
+
+[important commands]
+- `source .venv/bin/activate && python -m compileall app tests`
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q tests/test_milestone_18.py tests/test_security.py -q`
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q tests/test_api.py::TestApiV1Endpoints -q`
+
+[observations]
+- The previous DBCircuitBreaker tests were encoding the bug: they expected an immediate half-open probe while the circuit was still inside cooldown.
+- SQLAlchemy `default=` values on ORM columns are not guaranteed to be populated on plain Python object creation; tests must not rely on them before insert/flush.
+- The DLQ requeue path was also exposing a latent type mismatch: it passed a `feed_source_id` string into `_enqueue_sync_job()`, which actually expects a `Feed` row.
+
+[lessons learned]
+- Runtime hardening work must update tests that captured accidental legacy behavior; otherwise the suite locks in the bug instead of the contract.
+- For security toggles, environment-only unsafe overrides are easier to reason about than allowing live DB settings to fully disable protection in production.
+
+[tests]
+- `source .venv/bin/activate && python -m compileall app tests` -> passed
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q tests/test_milestone_18.py tests/test_security.py -q` -> passed after adjusting ORM-default expectations
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q tests/test_api.py::TestApiV1Endpoints -q` -> passed
+- `source .venv/bin/activate && PYTHONPATH=. pytest -q` -> `844 passed, 2 skipped`
+
+[fixes after validation]
+- Reset the shared `_db_circuit_breaker` state during app creation before runtime-setting bootstrap. Full-suite failures showed the breaker state was leaking across test app instances and blocking `_bootstrap_runtime_settings()` on later tests.
+- Left repository-wide Ruff cleanup out of `1.8.1` scope. The current Ruff output is dominated by historical backlog in untouched files, not regressions introduced by this milestone.
+
+[final docs]
+- Marked `1.8.1` complete in `MILESTONES.md` and `ROADMAP.md`.
+- Updated resilience, SSE, DLQ, and backup wording in architecture / deployment / security docs to match the shipped `1.8.1` behavior.

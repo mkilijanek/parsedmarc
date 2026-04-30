@@ -1,6 +1,6 @@
 # API Documentation
 
-Status: updated for `1.6.0` (2026-04-21).
+Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
 
 ## Overview
 
@@ -15,17 +15,28 @@ Versioning policy:
 
 ## Base URL
 
-- **HTTP:** `http://localhost:8080` (development)
-- **HTTPS:** `https://localhost:7003` (production, via nginx)
+- **Development (Flask local):** `http://localhost:8080`
+- **App-only variant:** `http://localhost:7005`
+- **TLS edge variant:** `https://localhost:7003`
 
 ---
 
 ## Authentication
 
-The current implementation does not require authentication for API access. **For production deployments**, consider:
+Current access model:
+- `/api/v1/*` remains unauthenticated in the current release line.
+- `/api/events` is a public operational SSE surface.
+- `/admin/*` operational endpoints require an authenticated admin session, and state-changing routes also require CSRF validation.
+- `/admin/audit/*` is documented separately because it is a known protection gap tracked in the project backlog.
+
+Operational note:
+- Browser access to admin endpoints should go through the login flow.
+- `curl` examples for admin-session endpoints require authenticated session cookies; they are not anonymous API calls.
+
+For production deployments of public API surfaces, consider:
 - Deploying behind VPN/internal network
-- Adding API key authentication
-- Implementing IP whitelisting at nginx level
+- Adding API key or JWT authentication for `/api/v1/*`
+- Implementing IP whitelisting at the edge
 
 ## OpenAPI
 
@@ -99,6 +110,67 @@ Supported filters:
 - `since`
 - `until`
 - `limit`
+
+---
+
+### Operational & Admin Endpoints (`1.8.0`)
+
+#### `GET /api/events`
+
+Server-Sent Events live operational stream. No authentication required.
+
+Event types:
+- `heartbeat` — periodic ping (every 15 s) with Unix timestamp
+- `indicators` — active IOC count (emitted on change)
+- `sync` — latest 5 FeedRun statuses (emitted on change)
+- `feed_health` — external dependency health statuses
+
+Operational guardrails in `1.8.1`:
+- bounded by `SSE_MAX_DURATION_S` (default 300 s)
+- bounded by `SSE_MAX_CONNECTIONS` (default 25 concurrent streams per app instance)
+- rejected with `503` on sync Gunicorn workers unless `SSE_ALLOW_SYNC_WORKERS=true`
+
+Rate limited: 10 per minute.
+
+#### `GET /admin/api/dead-letter-jobs`
+
+DLQ inventory endpoint (admin session required).
+
+Query parameters:
+- `feed` — filter by feed source ID
+- `limit` — max rows (default 100, max 500)
+
+Response: `{"count": N, "items": [...]}` with `original_job_id`, `feed_source_id`, `failure_class`, `error`, `status`, `retry_count`, `requeue_count`, `requeue_sync_job_id`, `created_at`.
+
+#### `POST /admin/api/dead-letter-jobs/<id>/requeue`
+
+Manual DLQ requeue (admin session + CSRF required).
+
+Response:
+- first successful requeue: `{"status": "requeued", "feed_source_id": "...", "sync_job_id": "..."}` `200`
+- repeated requeue of the same DLQ row: `{"status": "already_requeued", ...}` `200`
+- `404` if the DLQ entry or backing feed does not exist
+- `501` if not supported
+
+#### `GET /admin/api/db-circuit`
+
+Returns DBCircuitBreaker state (admin session required).
+
+Response: `{"state": "closed|open|half_open", "is_open": true|false}` .
+
+#### `GET /admin/audit/verify`
+
+Audit log integrity verification (`compliance-1.0`).
+
+Current state:
+- this endpoint is covered by the `/admin` session middleware
+- keep reverse-proxy or network controls as defense in depth
+
+Response: `{"valid": true|false, "verified_count": N, ...}` . `valid: false` means at least one audit row was tampered with.
+
+#### `GET /admin/audit/report`
+
+Full compliance report with ISO control references and audit chain state (`compliance-1.0`).
 
 ### Legacy API status
 

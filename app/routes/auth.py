@@ -7,6 +7,7 @@ from urllib.parse import quote
 from flask import Response, current_app, redirect, request, session, url_for
 
 from ..settings_store import (
+    admin_auth_disable_allowed_in_production,
     get_admin_api_token,
     get_admin_auth_enabled,
     get_admin_login_rate_limit,
@@ -121,6 +122,11 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         try:
             return not get_admin_auth_enabled(_get_db(), cfg)
         except Exception:
+            if getattr(cfg.runtime, "APP_ENV", "development") == "production":
+                return bool(
+                    not getattr(cfg.security, "ADMIN_AUTH_ENABLED", True)
+                    and admin_auth_disable_allowed_in_production(cfg)
+                )
             return not getattr(cfg.security, "ADMIN_AUTH_ENABLED", True)
 
     def _admin_panel_disabled() -> bool:
@@ -241,7 +247,7 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
                 "<div style='background:#dc2626;color:#fff;padding:1rem;text-align:center;font-weight:bold;"
                 "position:sticky;top:0;z-index:9999;'>"
                 "⚠️ SECURITY WARNING: Admin authentication is DISABLED. "
-                "This instance is open to anyone. Set ADMIN_AUTH_ENABLED=true for production."
+                "This instance is open to anyone. Use only for test/lab scenarios."
                 "</div>"
             )
             if "<body" in body:

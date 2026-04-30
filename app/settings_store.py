@@ -179,6 +179,11 @@ def parse_bool_setting(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def admin_auth_disable_allowed_in_production(cfg: Config | None = None) -> bool:
+    active_cfg = cfg or Config()
+    return bool(getattr(active_cfg.security, "ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION", False))
+
+
 def get_admin_login_rate_limit(
     db: Session,
     cfg: Config | None = None,
@@ -236,7 +241,10 @@ def get_admin_auth_enabled(
         default=default,
         cfg=active_cfg,
     )
-    return parse_bool_setting(value)
+    enabled = parse_bool_setting(value)
+    if _is_production(active_cfg) and not enabled and not admin_auth_disable_allowed_in_production(active_cfg):
+        return True
+    return enabled
 
 
 def get_admin_panel_enabled(

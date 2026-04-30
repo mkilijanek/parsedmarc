@@ -168,28 +168,28 @@ class DBCircuitBreaker:
     @property
     def is_open(self) -> bool:
         with self._lock:
-            return time.time() < self._open_until and not self._half_open
+            return time.time() < self._open_until
 
     @property
     def state(self) -> str:
         with self._lock:
             now = time.time()
-            if now >= self._open_until:
-                return "closed"
             if self._half_open:
                 return "half_open"
+            if now >= self._open_until:
+                return "closed"
             return "open"
 
     def allow_request(self) -> bool:
         """Return True if a DB call should be attempted, False if circuit is open."""
         with self._lock:
             now = time.time()
+            if self._half_open:
+                return False
             if now >= self._open_until:
-                # Closed or cooldown elapsed → allow
-                return True
-            if not self._half_open:
-                # Try one half-open probe
-                self._half_open = True
+                if self._open_until > 0.0 and not self._half_open:
+                    self._half_open = True
+                # Closed or cooldown elapsed -> allow a normal call or a single probe.
                 return True
             return False
 

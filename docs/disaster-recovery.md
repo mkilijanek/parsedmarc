@@ -19,13 +19,16 @@ Framework: ISO 27001 A.12.3 (Backup), A.17 (Information Security Continuity), NI
 
 | Asset | Method | Frequency | Retention | Encryption |
 |---|---|---|---|---|
-| PostgreSQL | `pg_dump` → gzip | Daily (cron) | 30 days local | GPG optional (see `scripts/backup.sh`) |
+| PostgreSQL | `pg_dump` → gzip via `PGPASSFILE` | Daily (cron) | 30 days local | GPG optional (see `scripts/backup.sh`) |
 | PostgreSQL | Weekly full | Weekly | 90 days | GPG optional |
 | Redis | `BGSAVE` (RDB) | Daily | 7 days (host volume) | Host-volume encryption |
 | Configuration | git history | On every commit | Indefinite | N/A |
 | Export files | N/A — ephemeral | N/A | 30 days max | Host-volume encryption |
 
 **Backup script**: `scripts/backup.sh`
+
+Note:
+- `1.8.1` hardens PostgreSQL backup execution so credentials are passed through a temporary `PGPASSFILE` rather than embedded in `pg_dump` arguments.
 
 ```bash
 # Daily PostgreSQL backup

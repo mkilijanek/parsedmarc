@@ -1,450 +1,153 @@
-# THREAT FEED AGGREGATOR - SZYBKI START
+# IOC Service — Quick Start
 
-Aktualizacja: `1.6.0` (2026-04-21)
+Updated: `1.8.0` + `compliance-1.0` (2026-04-30)
 
-## 📦 Zawartość Archiwum
+## Prerequisites
 
-Otrzymałeś kompletny, production-ready system agregacji threat intelligence składający się z:
+- Docker 24.0+
+- Python 3.11+
+- 4 GB RAM minimum
+- Git
 
-### Struktura Projektu
-```
-threat-feed-aggregator/
-├── app/                        # Aplikacja Python/Flask
-│   ├── __init__.py
-│   ├── main.py                # Główna aplikacja Flask
-│   ├── db.py                  # Zarządzanie bazą danych
-│   ├── models.py              # Modele SQLAlchemy
-│   ├── worker.py              # Background worker
-│   └── services/
-│       ├── crowdsec.py        # Integracja CrowdSec (TLP:AMBER)
-│       └── misp.py            # Integracja MISP (TLP z tagów)
-├── database/
-│   └── init.sql               # Schemat PostgreSQL
-├── nginx/
-│   └── nginx.conf             # Konfiguracja reverse proxy
-├── scripts/
-│   ├── generate-secrets.sh    # Generator sekretów
-│   └── setup-ssl.sh           # Setup SSL/TLS
-├── .github/workflows/
-│   └── docker-build.yml       # CI/CD pipeline
-├── docker-compose.yml         # Orkiestracja kontenerów
-├── Dockerfile                 # Obraz aplikacji
-├── requirements.txt           # Zależności Python
-├── .env.example               # Szablon konfiguracji
-├── Makefile                   # Pomocnicze komendy
-├── README.md                  # Pełna dokumentacja
-├── DEPLOYMENT.md              # Przewodnik wdrożenia
-├── SECURITY.md                # Polityka bezpieczeństwa
-└── LICENSE                    # Licencja MIT
-```
-
-## 🚀 Instalacja Krok po Kroku
-
-### 1. Rozpakowanie
-```bash
-tar -xzf threat-feed-aggregator.tar.gz
-cd threat-feed-aggregator
-```
-
-### 2. Generowanie Sekretów
-```bash
-chmod +x scripts/*.sh
-./scripts/generate-secrets.sh
-```
-
-To wygeneruje:
-- Hasło PostgreSQL (32 chars)
-- Hasło Redis (32 chars)
-- Flask secret key (128 chars)
-
-### 3. Konfiguracja SSL
-
-**Opcja A: Self-signed (test/dev)**
-```bash
-./scripts/setup-ssl.sh
-```
-
-**Opcja B: Let's Encrypt (produkcja)**
-```bash
-sudo certbot certonly --standalone -d twoja-domena.pl
-sudo cp /etc/letsencrypt/live/twoja-domena.pl/fullchain.pem ssl/cert.pem
-sudo cp /etc/letsencrypt/live/twoja-domena.pl/privkey.pem ssl/key.pem
-sudo chown $USER:$USER ssl/*.pem
-```
-
-### 4. Konfiguracja Integracji
-
-Edytuj `.env` i dodaj credentials:
+## Quick Setup (Docker)
 
 ```bash
-vim .env
+# 1. Clone and enter
+git clone <repo-url> ioc-service
+cd ioc-service
 
-# CrowdSec (opcjonalne)
-CROWDSEC_API_KEY=twój_klucz_api
-CROWDSEC_LISTS=lista1,lista2
+# 2. Create environment file
+cp .env.example .env
 
-# MISP (opcjonalne)
-MISP_URL=https://twoja-misp.pl
-MISP_API_KEY=twój_klucz_api
-MISP_VERIFY_SSL=false
-```
+# 3. Generate and append secrets
+bash scripts/generate-secrets.sh >> .env
 
-### 5. Uruchomienie
-```bash
-# Compose + migracje
+# 4. Configure environment
+# Edit .env with your editor — at minimum review SECRET_KEY, ADMIN_API_TOKEN, DATABASE_URL, REDIS_URL
+
+# 5. Start services
 docker compose up -d postgres redis
 docker compose up -d app worker
 
-# Sprawdź status
-docker compose ps
+# 6. Verify
+curl http://localhost:7005/healthz
+curl http://localhost:7005/health | jq
 ```
 
-### 6. Weryfikacja
+## Key Endpoints
+
+### Health & Monitoring
+- `GET /healthz` — Liveness (no external calls)
+- `GET /readyz` — Readiness (DB + Redis)
+- `GET /health` — Full health including DBCircuitBreaker state
+- `GET /metrics` — Prometheus metrics
+- `GET /api/events` — SSE stream (heartbeat, indicator count, sync status, feed health)
+
+### Versioned API (`/api/v1/`)
+- `GET /api/v1/indicators` — Query IOCs
+- `GET /api/v1/feeds` — Feed inventory
+- `GET /api/v1/feeds/metrics` — Feed telemetry
+- `GET /api/v1/runs/current` — Scheduler/job state
+- `GET /api/v1/logs` — Structured logs
+- `POST /api/v1/sync` — Trigger sync
+
+### Admin (`/admin/*` — requires login)
+- Web UI at `/admin`
+- DLQ inventory and requeue at `/admin/api/dead-letter-jobs`
+- DBCircuitBreaker state at `/admin/api/db-circuit`
+
+### Audit verification (`/admin/audit/*` — current known access-control gap)
+- Integrity verification at `/admin/audit/verify`
+- Treat as internal-only until the access-control backlog item is closed
+
+### Export Formats
 ```bash
-# Health check
-curl http://localhost:7003/health
-
-# Sync API (kolejka jobs)
-curl -X POST http://localhost:7003/api/sync \
-  -H "Content-Type: application/json" \
-  -d '{"source":"abusech"}'
-
-# Web UI
-firefox http://localhost:7003/
+curl http://localhost:7005/indicators/txt          # Plain text
+curl http://localhost:7005/indicators/csv          # CSV
+curl http://localhost:7005/indicators/json         # JSON
+curl http://localhost:7005/indicators/fortigate    # FortiGate
+curl http://localhost:7005/indicators/splunk       # Splunk
+curl http://localhost:7005/indicators/elasticsearch # Elasticsearch NDJSON
 ```
 
-## 🔧 Komendy Pomocnicze
+### OpenAPI
+- `/api/v1/openapi.yaml` — OpenAPI spec for the versioned API
+- `/api/swagger` — Swagger UI
 
-### Local dev (venv)
-```bash
-bash scripts/dev-bootstrap.sh
-bash scripts/dev-test.sh
-```
+## Local Development
 
-Alternatywnie ręcznie:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
-```
 
-### Makefile
-```bash
-make help          # Pokaż dostępne komendy
-make setup         # Pełny setup (secrets + SSL)
-make start         # Uruchom wszystko
-make stop          # Zatrzymaj wszystko
-make restart       # Restart
-make logs          # Zobacz logi
-make health        # Sprawdź health
-make clean         # Usuń wszystko (UWAGA!)
-```
+# Set required env vars
+export SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+export DATABASE_URL=postgresql+psycopg2://user:pass@localhost:5432/threatfeed
+export REDIS_URL=redis://localhost:6379/0
+export ADMIN_API_TOKEN=dev-token
 
-### Docker Compose
-```bash
-# Logi
-docker-compose logs -f app
-docker-compose logs -f worker
-docker-compose logs -f db
-
-# Restart pojedynczego serwisu
-docker-compose restart app
-
-# Rebuild
-docker-compose build
-docker-compose up -d
-
-# Shell w kontenerze
-docker-compose exec app bash
-docker-compose exec db psql -U threatfeed
-```
-
-## 🎯 Kluczowe Endpointy
-
-### API
-- `GET /healthz` - Liveness check
-- `GET /readyz` - Readiness check
-- `GET /api/v1/openapi.yaml` - kontrakt OpenAPI dla wspieranej wersji API
-- `GET /api/v1/docs` - podgląd dokumentacji wersjonowanego API
-- `GET /api/swagger` - Swagger UI serwowany lokalnie z assetów obrazu
-- `GET /api/v1/indicators` - wersjonowane zapytania IOC
-- `POST /api/v1/sync` - wersjonowane kolejkowanie synców
-- `GET /api/stats` - Statystyki systemu
-- `GET /indicators` - Wszystkie wskaźniki (web UI)
-- `GET /indicators/<format>` - Export w formatach:
-  - txt, csv, json, xml
-  - fortigate, fortigate_ips
-  - checkpoint, paloalto
-  - sentinel, defender
-  - arcsight, splunk, elasticsearch
-  - cribl, f5, imperva, fidelis
-
-### Formaty Export
-```bash
-# Plain text
-curl -k https://localhost:7003/indicators/txt
-
-# FortiGate
-curl -k https://localhost:7003/indicators/fortigate
-
-# Microsoft Sentinel (STIX 2.1)
-curl -k https://localhost:7003/indicators/sentinel
-
-# ArcSight CEF
-curl -k https://localhost:7003/indicators/arcsight
-
-# Elasticsearch Bulk NDJSON
-curl -k https://localhost:7003/indicators/elasticsearch
-```
-
-## 🛡️ Bezpieczeństwo
-
-### Krytyczne Punkty
-1. **TLP Handling**
-   - CrowdSec: ZAWSZE TLP:AMBER (commercial source)
-   - MISP: TLP z tagów (domyślnie GREEN)
-
-2. **MISP Filtering**
-   - TYLKO wskaźniki z `to_ids=True`
-   - `enforce_warninglist=True` (unikaj false positives)
-
-3. **Secrets**
-   - NIGDY nie commituj `.env`
-   - Rotacja sekretów co 90 dni
-   - Backup `.env` w bezpiecznym miejscu
-
-4. **SSL/TLS**
-   - Minimum TLS 1.2
-   - Strong ciphers only
-   - HSTS enabled (31536000s)
-
-## 📊 Monitoring
-
-### Health Checks
-```bash
-# Szybki check
-curl -k https://localhost:7003/healthz | jq
-curl -k https://localhost:7003/readyz | jq
-
-# Docker health
-docker-compose ps
-
-# Logi błędów
-docker-compose logs app | grep ERROR
-```
-
-### Metryki
-```bash
-# Statystyki wskaźników
-curl -k https://localhost:7003/api/stats | jq
-
-# Status feedów
-docker-compose exec db psql -U threatfeed -d threatfeed -c "SELECT * FROM feed_stats;"
-
-# Aktywne wskaźniki
-docker-compose exec db psql -U threatfeed -d threatfeed -c "SELECT COUNT(*) FROM indicators WHERE is_active = TRUE;"
-```
-
-## 🔍 Troubleshooting
-
-### Problem: Kontenery nie startują
-```bash
-# Sprawdź logi
-docker-compose logs
-
-# Sprawdź porty
-sudo netstat -tulpn | grep -E '7003|5432|6379'
-
-# Restart
-docker-compose down
-docker-compose up -d
-```
-
-### Problem: Brak połączenia z bazą
-```bash
-# Sprawdź PostgreSQL
-docker-compose exec db psql -U threatfeed -c "SELECT 1"
-
-# Sprawdź hasło w .env
-grep POSTGRES_PASSWORD .env
-
-# Restart bazy
-docker-compose restart db
-```
-
-### Problem: SSL certificate errors
-```bash
-# Regeneruj certyfikat
-./scripts/setup-ssl.sh
-
-# Sprawdź certyfikat
-openssl x509 -in ssl/cert.pem -text -noout
-
-# Sprawdź nginx
-docker-compose logs nginx
-```
-
-### Problem: Worker nie aktualizuje
-```bash
-# Sprawdź logi workera
-docker-compose logs -f worker
-
-# Sprawdź credentials w .env
-grep -E 'CROWDSEC|MISP' .env
-
-# Manualny test
-docker-compose exec app python -c "from app.services.crowdsec import update_all_crowdsec_lists; update_all_crowdsec_lists()"
-```
-
-## 🗄️ Backup & Restore
-
-### Backup Bazy Danych
-```bash
-# Dump bazy
-docker-compose exec db pg_dump -U threatfeed threatfeed > backup_$(date +%Y%m%d).sql
-
-# Backup z kompresją
-docker-compose exec db pg_dump -U threatfeed threatfeed | gzip > backup_$(date +%Y%m%d).sql.gz
-```
-
-### Restore
-```bash
-# Restore z pliku
-cat backup.sql | docker-compose exec -T db psql -U threatfeed threatfeed
-
-# Restore z gzip
-zcat backup.sql.gz | docker-compose exec -T db psql -U threatfeed threatfeed
-```
-
-### Backup .env
-```bash
-# Zaszyfrowany backup
-gpg -c .env  # Tworzy .env.gpg
-
-# Restore
-gpg -d .env.gpg > .env
-```
-
-## 🔄 Aktualizacje
-
-### Aktualizacja Systemu
-```bash
-# Pull najnowszej wersji
-git pull
-
-# Rebuild obrazów
-docker-compose build
-
-# Restart z nową wersją
-docker-compose down
-docker-compose up -d
-
-# Weryfikacja
-curl -k https://localhost:7003/health
-```
-
-### Aktualizacja Zależności Python
-```bash
-# W kontenerze
-docker-compose exec app pip list --outdated
-
-# Lokalnie
-pip list --outdated -r requirements.txt
-```
-
-## 📈 Skalowanie
-
-### Zwiększenie Wydajności
-```bash
-# Więcej workerów Gunicorn (w .env)
-WORKERS=8  # 2-4 × liczba rdzeni CPU
-
-# Więcej pamięci PostgreSQL (docker-compose.yml)
-POSTGRES_SHARED_BUFFERS=512MB
-POSTGRES_EFFECTIVE_CACHE_SIZE=2GB
-
-# Zwiększ pamięć Redis (docker-compose.yml)
---maxmemory 1gb
-```
-
-### Horizontal Scaling
-Dla większych deploymentów:
-1. Load balancer (HAProxy/Nginx)
-2. Wiele instancji app
-3. PostgreSQL replication
-4. Redis cluster
-
-## 🎓 Dalsze Kroki
-
-### 1. Implementacja Brakujących Formatów
-Plik `app/formatters.py` wymaga implementacji 17 formatów export.
-Zobacz specyfikację w README.md sekcja "Supported Formats".
-
-### 2. Web UI z Kibana Search
-Plik `app/main.py` - endpoint `/indicators` wymaga:
-- Kibana-style query parser
-- Filtry (type, TLP, confidence, source)
-- Paginacja
-- ARIA accessibility
-
-### 3. Dodatkowe Formatery
-Implementuj pozostałe formaty w `app/formatters.py`:
-- FortiGate IPS, Check Point, Palo Alto
-- Microsoft Defender, Sentinel
-- F5, Imperva, Fidelis
-- Cribl, Splunk, Elasticsearch, ArcSight
-
-### 4. Testy
-```bash
-# Dodaj testy w tests/
+# Run tests
 pytest tests/ -v
+
+# Run app
+python -m flask --app app.factory run --debug --port 8080
 ```
 
-## 📞 Support
+## Production Checklist
 
-### Dokumentacja
-- README.md - Kompletna dokumentacja
-- DEPLOYMENT.md - Przewodnik wdrożenia
-- SECURITY.md - Polityka bezpieczeństwa
+- [ ] `SECRET_KEY` explicitly provisioned (>= 32 characters)
+- [ ] `ADMIN_API_TOKEN` set and not default
+- [ ] SSL certificate from trusted CA (or use TLS variant)
+- [ ] `ALLOWED_HOSTS` configured
+- [ ] `TRUSTED_PROXY_COUNT` set if behind reverse proxy
+- [ ] `.env` secured (`chmod 600`)
+- [ ] Backup procedure tested (`bash scripts/backup.sh`)
+- [ ] Grafana dashboard imported (`grafana/dashboard.json`)
+- [ ] Monitoring and alerting configured
+- [ ] Audit integrity verification scheduled
 
-### Logs
+## Troubleshooting
+
+### Containers won't start
 ```bash
-# Wszystkie logi
-docker-compose logs
-
-# Specific service
-docker-compose logs -f app
+docker compose logs --tail=100
+docker compose ps
+sudo netstat -tulpn | grep -E '7005|5432|6379'
 ```
 
-### Problemy
-Jeśli napotkasz problemy:
-1. Sprawdź logi (`docker-compose logs`)
-2. Zweryfikuj konfigurację (`.env`)
-3. Sprawdź connectivity do external services
-4. Przejrzyj dokumentację w README.md
+### Database connection failed
+```bash
+docker compose exec postgres pg_isready -U threatfeed
+grep DATABASE_URL .env
+```
 
-## ✅ Checklist Produkcyjny
+### DBCircuitBreaker is open
+```bash
+curl http://localhost:7005/health | jq '.db_circuit_state'
+# Check PostgreSQL, wait for cooldown, circuit auto-recovers
+```
 
-Przed wdrożeniem na produkcję:
+### Audit chain verification
+```bash
+# Current implementation exposes this route without admin auth.
+# Treat it as internal-only and protect it at the edge.
+curl http://localhost:7005/admin/audit/verify | jq .
+```
 
-- [ ] Wygenerowano silne sekr ety (32+ chars)
-- [ ] SSL certyfikat od trusted CA (nie self-signed)
-- [ ] Skonfigurowano MISP i/lub CrowdSec credentials
-- [ ] Firewall skonfigurowany (tylko 7003/tcp exposed)
-- [ ] `.env` zabezpieczony (chmod 600)
-- [ ] Backup `.env` w bezpiecznym miejscu
-- [ ] Monitorowanie skonfigurowane
-- [ ] Health checks działają
-- [ ] Logi są zbierane i analizowane
-- [ ] Plan backup i restore przetestowany
-- [ ] Dokumentacja dostępna dla zespołu
-- [ ] Secrets rotation schedule ustawiony
+## Documentation Index
 
-## 🎉 Gotowe!
-
-System jest teraz gotowy do użycia. Dostęp:
-- Web UI: https://localhost:7003/
-- Health: https://localhost:7003/health
-- API Stats: https://localhost:7003/api/stats
-
-Powodzenia! 🛡️
+| Document | Purpose |
+|---|---|
+| [README.md](README.md) | Project overview and endpoint catalog |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Production deployment guide |
+| [SECURITY.md](SECURITY.md) | Security policy and supported versions |
+| [docs/architecture.md](docs/architecture.md) | System design and data flow |
+| [docs/configuration.md](docs/configuration.md) | Environment variables reference |
+| [docs/api.md](docs/api.md) | Full API documentation |
+| [docs/runbook.md](docs/runbook.md) | Operational procedures |
+| [docs/compliance.md](docs/compliance.md) | ISO 27001 / NIST CSF controls matrix |
+| [docs/incident-response.md](docs/incident-response.md) | Incident playbooks |
+| [docs/disaster-recovery.md](docs/disaster-recovery.md) | DR plan and restore procedures |
+| [ROADMAP.md](ROADMAP.md) | Feature roadmap |
+| [MILESTONES.md](MILESTONES.md) | Milestone tracking |

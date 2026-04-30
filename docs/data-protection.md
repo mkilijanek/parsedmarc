@@ -1,6 +1,6 @@
 # Data Protection Baseline
 
-Status: updated for `1.6.0` (2026-04-21).
+Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
 
 ## Classification
 
@@ -38,10 +38,16 @@ Status: updated for `1.6.0` (2026-04-21).
 - `requirements.txt` is limited to runtime dependencies, while `requirements-dev.txt` holds development and audit tooling; this makes the runtime package boundary explicit.
 - `pyproject.toml` now carries project and tool metadata so packaging and quality controls are documented in one place.
 
+## Resilience Controls (`1.8.0`)
+
+- **DBCircuitBreaker**: database unavailability trips the circuit open after `DB_CIRCUIT_FAIL_THRESHOLD` (default 5) consecutive failures, protecting the application from connection-storm cascades. In `1.8.1` the cooldown is enforced before a single half-open probe is allowed, and real statement failures are observed through SQLAlchemy engine hooks.
+- **Dead Letter Queue**: sync jobs that exhaust retries are persisted as `DeadLetterJob` rows with full error context, source feed, and timestamp. Operators can inspect the DLQ inventory and manually requeue jobs via the admin API once the root cause is resolved; repeated requeue attempts on the same DLQ row are now idempotent.
+
 ## Release Gate
 
 Before a release:
 - confirm dependency audit is clean,
 - confirm audit integrity verification returns valid,
 - confirm no secrets are present in logs or committed files,
-- confirm production storage encryption is enabled by deployment policy.
+- confirm production storage encryption is enabled by deployment policy,
+- confirm DBCircuitBreaker thresholds are tuned for the target environment.

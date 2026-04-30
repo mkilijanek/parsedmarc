@@ -16,11 +16,12 @@ from __future__ import annotations
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models import DeadLetterJob, SyncJob
+from app.models import DeadLetterJob, Feed, SyncJob
 
 
 class TestDBCircuitBreaker:
@@ -57,9 +58,6 @@ class TestDBCircuitBreaker:
         from app.services.common import DBCircuitBreaker
         cb = DBCircuitBreaker(fail_threshold=1, cooldown_s=60)
         cb.record_failure()
-        # First allow_request after open allows half-open probe
-        cb.allow_request()  # half-open
-        # Second call should block (still open, half-open probe pending)
         assert not cb.allow_request()
 
     def test_circuit_recovers_after_cooldown(self):
@@ -68,15 +66,18 @@ class TestDBCircuitBreaker:
         cb.record_failure()
         assert cb.state == "open"
         time.sleep(1.1)
-        assert cb.state == "closed"
         assert cb.allow_request() is True
+        assert cb.state == "half_open"
+        cb.record_success()
+        assert cb.state == "closed"
 
     def test_success_after_half_open_resets_circuit(self):
         from app.services.common import DBCircuitBreaker
         cb = DBCircuitBreaker(fail_threshold=1, cooldown_s=1)
         cb.record_failure()
         time.sleep(1.1)
-        cb.allow_request()  # allows half-open
+        assert cb.allow_request() is True
+        assert cb.state == "half_open"
         cb.record_success()
         assert cb.state == "closed"
         assert not cb.is_open
@@ -86,9 +87,10 @@ class TestDBCircuitBreaker:
         cb = DBCircuitBreaker(fail_threshold=1, cooldown_s=1)
         cb.record_failure()
         time.sleep(1.1)
-        cb.allow_request()  # half-open
+        assert cb.allow_request() is True
+        assert cb.state == "half_open"
         cb.record_failure()  # probe failed
-        assert not cb._half_open
+        assert cb.state == "open"
 
 
 class TestDeadLetterJobModel:
@@ -108,6 +110,7 @@ class TestDeadLetterJobModel:
         assert dlq.failure_class == "permanent"
         assert dlq.error == "Connection refused"
         assert dlq.retry_count == 3
+        assert (dlq.status or "pending") == "pending"
         # requeue_count default is applied on INSERT, so check None or 0
         assert (dlq.requeue_count or 0) == 0
 
@@ -116,7 +119,9 @@ class TestDeadLetterJobModel:
             original_job_id="job-xyz",
             feed_source_id="crowdsec",
         )
+        assert (dlq.status or "pending") == "pending"
         assert (dlq.requeue_count or 0) == 0
+        assert dlq.requeue_sync_job_id is None
         assert dlq.last_requeued_at is None
 
 
@@ -134,6 +139,9 @@ class TestDLQEndpoints:
         assert "count" in body
         assert "items" in body
         assert isinstance(body["items"], list)
+        if body["items"]:
+            assert "status" in body["items"][0]
+            assert "requeue_sync_job_id" in body["items"][0]
 
     def test_list_returns_dlq_entries(self, admin_client, test_db):
         dlq = DeadLetterJob(
@@ -175,6 +183,15 @@ class TestDLQEndpoints:
         assert resp.status_code == 404
 
     def test_requeue_existing_job(self, admin_client, admin_csrf_token, test_db):
+        test_db.add(
+            Feed(
+                source_id="misp",
+                source_type="misp",
+                display_name="MISP",
+                enabled=True,
+                deleted=False,
+            )
+        )
         dlq = DeadLetterJob(
             original_job_id="test-requeue-job",
             feed_source_id="misp",
@@ -192,8 +209,17 @@ class TestDLQEndpoints:
             f"/admin/api/dead-letter-jobs/{dlq_id}/requeue",
             data={"csrf_token": admin_csrf_token},
         )
-        # May return 200 (requeued) or 500 if sync job creation fails in test mode
-        assert resp.status_code in (200, 500)
+        assert resp.status_code == 200
+        body = json.loads(resp.data)
+        assert body["status"] == "requeued"
+        second = admin_client.post(
+            f"/admin/api/dead-letter-jobs/{dlq_id}/requeue",
+            data={"csrf_token": admin_csrf_token},
+        )
+        assert second.status_code == 200
+        second_body = json.loads(second.data)
+        assert second_body["status"] == "already_requeued"
+        assert second_body["sync_job_id"] == body["sync_job_id"]
 
 
 class TestDBCircuitEndpoint:
@@ -226,6 +252,15 @@ class TestSSEEventsEndpoint:
         # The response may be streamed; check we got the right content type
         assert "text/event-stream" in resp.content_type or resp.status_code == 200
 
+    def test_events_reject_sync_workers_outside_testing(self, app):
+        with app.test_client() as c:
+            app.config["TESTING"] = False
+            app.config["GUNICORN_WORKER_CLASS"] = "sync"
+            resp = c.get("/api/events", headers={"Accept": "text/event-stream"})
+            assert resp.status_code == 503
+            assert "sse_requires_non_sync_workers" in resp.get_data(as_text=True)
+            app.config["TESTING"] = True
+
 
 class TestHealthWithCircuitState:
     """Tests for /health endpoint db_circuit_state field (#139)."""
@@ -236,6 +271,15 @@ class TestHealthWithCircuitState:
         body = json.loads(resp.data)
         assert "db_circuit_state" in body
         assert body["db_circuit_state"] in ("closed", "open", "half_open")
+
+
+class TestBackupScriptHardening:
+    """Tests for backup script credential handling (#186)."""
+
+    def test_backup_script_uses_pgpassfile_instead_of_dsn_argv(self):
+        script = Path("scripts/backup.sh").read_text(encoding="utf-8")
+        assert "PGPASSFILE" in script
+        assert 'pg_dump "${PG_CONN}"' not in script
 
 
 class TestSettingsStoreCoverage:

@@ -44,11 +44,40 @@ log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 if [[ -n "${DATABASE_URL}" ]]; then
   log "Starting PostgreSQL backup..."
   PG_FILE="${BACKUP_DIR}/ioc-pg-${TS}.sql.gz"
+  eval "$(
+    python3 - <<'PY'
+from urllib.parse import parse_qs, unquote, urlparse
+import os
 
-  # Strip psycopg2 driver prefix if present (pg_dump uses libpq format)
-  PG_CONN="${DATABASE_URL/postgresql+psycopg2:\/\//postgresql://}"
+url = os.environ["DATABASE_URL"].replace("postgresql+psycopg2://", "postgresql://", 1)
+parsed = urlparse(url)
+query = parse_qs(parsed.query)
+sslmode = query.get("sslmode", [""])[0]
 
-  pg_dump "${PG_CONN}" | gzip -9 > "${PG_FILE}"
+def emit(name: str, value: str) -> None:
+    safe = value.replace("\\", "\\\\").replace('"', '\\"')
+    print(f'{name}="{safe}"')
+
+emit("PGHOST", parsed.hostname or "localhost")
+emit("PGPORT", str(parsed.port or 5432))
+emit("PGUSER", unquote(parsed.username or ""))
+emit("PGPASSWORD_VALUE", unquote(parsed.password or ""))
+emit("PGDATABASE", (parsed.path or "/").lstrip("/"))
+emit("PGSSLMODE_VALUE", sslmode)
+PY
+  )"
+  PGPASSFILE="$(mktemp)"
+  cleanup_pgpass() {
+    rm -f "${PGPASSFILE}"
+  }
+  trap cleanup_pgpass EXIT
+  umask 077
+  printf '%s:%s:%s:%s:%s\n' "${PGHOST}" "${PGPORT}" "${PGDATABASE}" "${PGUSER}" "${PGPASSWORD_VALUE}" > "${PGPASSFILE}"
+  export PGPASSFILE
+  if [[ -n "${PGSSLMODE_VALUE}" ]]; then
+    export PGSSLMODE="${PGSSLMODE_VALUE}"
+  fi
+  pg_dump -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" "${PGDATABASE}" | gzip -9 > "${PG_FILE}"
   PG_SIZE=$(du -sh "${PG_FILE}" | cut -f1)
   log "PostgreSQL backup written: ${PG_FILE} (${PG_SIZE})"
 

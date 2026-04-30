@@ -40,7 +40,8 @@ Known gaps filled in the local roadmap:
 - Historical GitHub releases created on 2026-04-07 to match already existing version tags:
   - `1.4.0`
   - `1.4.1`
-- `1.4.2+` remain active implementation milestones.
+- Delivery history is current through `1.8.1` and `compliance-1.0`.
+- `1.8.1` closed the post-release hardening gap for auth guardrails, DB circuit handling, SSE runtime behavior, DLQ requeue semantics, and backup credential hygiene.
 
 ---
 
@@ -469,6 +470,112 @@ Przekształcić projekt z technicznego panelu w czytelniejszy produkt i ogranicz
 - roadmap rozróżnia scope core vs power-user
 - użytkownik wie, czy podstawową ścieżką jest UI, API czy CLI dla jego scenariusza
 
+**Status**
+- Done on 2026-04-28.
+
+---
+
+## Milestone 1.8.0 — Resilience, Real-Time Ops & Onboarding
+
+**Goal**
+Dodać warstwę resilience (circuit breaker, DLQ), real-time monitoring (SSE), cache warming, oraz onboarding UX.
+
+**Scope**
+- DBCircuitBreaker chroniący przed outage bazy danych
+- Dead Letter Queue dla permanentnie nieudanych sync jobów
+- Cache warming — pre-populacja Redis dla dashboard widgets
+- SSE /api/events — live stream heartbeat + indicator count + sync status + feed health
+- Grafana dashboard — 10 paneli operacyjnych
+- Onboarding tour — 5-krokowe wprowadzenie dla nowych użytkowników
+- Keyboard shortcuts — g i/a/l/d, /, r, ?, Esc
+
+**Issues (planned)**
+- NEW-ISSUE: Add DBCircuitBreaker wrapping _db() calls (#139)
+- NEW-ISSUE: Add DeadLetterJob model and DLQ endpoints (#150)
+- NEW-ISSUE: Add SSE /api/events live operational stream (#160)
+- NEW-ISSUE: Add scheduler cache warming for Redis
+- NEW-ISSUE: Add Grafana operational dashboard (grafana/dashboard.json)
+- NEW-ISSUE: Add onboarding tour and keyboard shortcuts to layout.html
+
+**Definition of Done**
+- DBCircuitBreaker otwiera się po 5 błędach DB, cooldown 30 s, half-open probing
+- DLQ przyjmuje joby z exhausted retries, wspiera manual requeue
+- SSE streamuje heartbeat, indicator count, sync status, feed health co 15 s
+- Cache warming pre-populuje Redis keys dla dashboard widgets
+- Grafana dashboard gotowy do importu
+- Onboarding tour pokazuje się raz (localStorage guard)
+
+**Status**
+- Done on 2026-04-29.
+
+---
+
+## Milestone compliance-1.0 — ISO 27001 / NIST CSF Baseline
+
+**Goal**
+Dostarczyć baseline compliance (dokumentacja, controls, procedury) pod ISO 27001 i NIST CSF.
+
+**Scope**
+- ISO 27001 controls matrix (A.9–A.18)
+- NIST CSF functions mapping (PR, DE, RS, RC)
+- HMAC-SHA256 audit log hash chain z integrity verification
+- SSDLC controls i CI security gates
+- Incident response plan z severity classification i playbooks
+- Disaster recovery plan z RTO/RPO i backup procedures
+- SIEM integration guide (CEF, Splunk, ELK, Sentinel)
+- Asset management i classification inventory
+
+**Issues (planned)**
+- NEW-ISSUE: Publish compliance controls matrix (docs/compliance.md)
+- NEW-ISSUE: Deliver SSDLC documentation (docs/ssdlc.md)
+- NEW-ISSUE: Deliver incident response plan (docs/incident-response.md)
+- NEW-ISSUE: Deliver disaster recovery plan (docs/disaster-recovery.md)
+- NEW-ISSUE: Deliver SIEM integration guide (docs/siem-integration.md)
+- NEW-ISSUE: Deliver asset management and classification (docs/asset-management.md)
+- NEW-ISSUE: Add audit integrity verification and compliance tests
+
+**Definition of Done**
+- ISO 27001 A.12.4, A.14.2, A.16, A.17 controls mapped with evidence
+- NIST CSF PR.AC, PR.DS, DE.CM, RS.RP, RC.RP functions mapped
+- Audit hash chain weryfikowalny przez /admin/audit/verify
+- CI security gates documented: pip-audit, bandit, mypy, ruff, pytest, OSV Scanner
+- DR plan z 5 scenariuszami i backup.sh script
+- SIEM integracja z przykladami dla Splunk, ELK, Sentinel
+- Asset inventory z data/software/credential classification
+
+**Status**
+- Done on 2026-04-29.
+
+---
+
+## Milestone 1.8.1 — Post-1.8 Hardening & Runtime Corrections
+
+**Goal**
+Correct the highest-risk security and runtime behaviors identified after `1.8.0` and `compliance-1.0`.
+
+**Scope**
+- production guardrails for admin auth toggles
+- DBCircuitBreaker cooldown/probe correctness
+- breaker visibility for real query/commit failures
+- SSE runtime safety in the default Gunicorn deployment model
+- DLQ requeue idempotency/state handling
+- backup credential hygiene
+
+**Issues**
+- #181 Block `ADMIN_AUTH_ENABLED=false` in production by default
+- #182 Fix DBCircuitBreaker cooldown and half-open semantics
+- #183 Prevent `/api/events` from exhausting sync Gunicorn workers
+- #184 Make DB circuit breaker observe real query and commit failures
+- #185 Make dead-letter job requeue idempotent or stateful
+- #186 Harden backup script to avoid exposing DB credentials in process args
+
+**Definition of Done**
+- Production cannot silently run with admin auth disabled unless an explicit unsafe override is enabled.
+- DBCircuitBreaker state transitions match documented cooldown/probe behavior.
+- Default deployment is not trivially starved by a handful of SSE clients.
+- DLQ requeue cannot unintentionally duplicate work from the same dead-letter record.
+- Backup execution avoids leaking DB credentials through process arguments.
+
 ---
 
 ## Dependencies
@@ -528,4 +635,7 @@ Przekształcić projekt z technicznego panelu w czytelniejszy produkt i ogranicz
 | 1.5.1 | Database Convergence & PostgreSQL Validation | unify schema and verify PG behavior | NEW schema convergence + NEW PG integration tests + NEW FK/limits |
 | 1.6.0 | API & Configuration Modernization | versioned API + OpenAPI + config cleanup | DONE api v1 + DONE OpenAPI + DONE config/packaging refactor |
 | 1.6.1 | Integration Adapter Boundary & Runtime Resilience | decouple providers + harden infra behavior | NEW adapter contracts + NEW env/bootstrap cleanup + NEW cache/retry strategy |
-| 1.7.0 | Product UX & Scope Rationalization | business-ready workflows + scope pruning | NEW UI redesign + NEW admin split + NEW feature audit |
+| 1.7.0 | Product UX & Scope Rationalization | business-ready workflows + scope pruning | DONE UI redesign + DONE admin split + DONE feature audit |
+| 1.8.0 | Resilience, Real-Time Ops & Onboarding | circuit breaker + DLQ + SSE + cache warming + Grafana | DONE DBCircuitBreaker + DONE DLQ + DONE SSE + DONE cache warming + DONE Grafana |
+| 1.8.1 | Post-1.8 Hardening & Runtime Corrections | auth guardrails + breaker correctness + SSE runtime safety + DLQ + backup hardening | DONE #181 + DONE #182 + DONE #183 + DONE #184 + DONE #185 + DONE #186 |
+| compliance-1.0 | ISO 27001 / NIST CSF Baseline | compliance docs + audit hash chain + DR + SIEM + SSDLC | DONE compliance docs + DONE DR + DONE SIEM + DONE SSDLC |

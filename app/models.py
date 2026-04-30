@@ -294,10 +294,13 @@ class DeadLetterJob(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     payload: Mapped[dict] = mapped_column(JSONCompat(), default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", server_default="pending")
     requeue_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    requeue_sync_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_requeued_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
 
     __table_args__ = (
         Index("idx_dlq_feed_created", "feed_source_id", "created_at"),
+        Index("idx_dlq_status_created", "status", "created_at"),
     )

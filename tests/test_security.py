@@ -881,6 +881,40 @@ class TestAdminAuthDisabled:
         finally:
             del os.environ["ADMIN_AUTH_ENABLED"]
 
+    def test_admin_auth_disabled_in_production_requires_unsafe_override(self, test_db):
+        from app.settings_store import get_admin_auth_enabled
+        with patch.dict(os.environ, {"APP_ENV": "production", "ADMIN_AUTH_ENABLED": "false"}, clear=False):
+            assert get_admin_auth_enabled(test_db) is True
+
+    def test_admin_auth_can_be_disabled_in_production_with_unsafe_override(self, test_db):
+        from app.settings_store import get_admin_auth_enabled
+        with patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "production",
+                "ADMIN_AUTH_ENABLED": "false",
+                "ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION": "true",
+            },
+            clear=False,
+        ):
+            assert get_admin_auth_enabled(test_db) is False
+
+    def test_create_app_blocks_admin_auth_disabled_in_production_without_override(self):
+        from app.main import create_app
+        with patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "production",
+                "ALLOWED_HOSTS": "ioc.local",
+                "CORS_ORIGINS": "https://ioc.local",
+                "ADMIN_AUTH_ENABLED": "false",
+                "SECRET_KEY": "a" * 64,
+            },
+            clear=False,
+        ):
+            with pytest.raises(RuntimeError, match="ADMIN_AUTH_ENABLED=false is blocked in production"):
+                create_app()
+
     def test_admin_auth_disabled_shows_warning_banner(self, admin_client):
         """Warning banner CSS class is present when auth is disabled."""
         # Admin client is already authenticated, check page renders
@@ -1270,6 +1304,11 @@ class TestDbAwareAdminSettings:
         from app.settings_store import get_admin_auth_enabled
         with patch.dict(os.environ, {"APP_ENV": "development", "ADMIN_AUTH_ENABLED": "false"}):
             assert get_admin_auth_enabled(test_db) is False
+
+    def test_get_admin_auth_enabled_prd_false_is_forced_true_without_override(self, test_db):
+        from app.settings_store import get_admin_auth_enabled
+        with patch.dict(os.environ, {"APP_ENV": "production", "ADMIN_AUTH_ENABLED": "false"}):
+            assert get_admin_auth_enabled(test_db) is True
 
     def test_get_admin_panel_enabled_defaults_true(self, test_db):
         from app.settings_store import get_admin_panel_enabled

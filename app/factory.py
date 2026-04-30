@@ -31,7 +31,7 @@ from werkzeug.exceptions import HTTPException
 from .audit_integrity import signed_audit_hash, verify_audit_chain
 from .cache import get_redis
 from .config import Config
-from .db import SessionLocal, get_session
+from .db import SessionLocal, get_session, register_db_circuit_observers
 from .formatters import FORMATTERS
 from .logging import setup_logging
 from .metrics import (
@@ -76,6 +76,7 @@ from .routes import (
 )
 from .routes.auth import auth_surface_request_is_secure, canonical_https_url
 from .security import enforce_allowed_hosts, get_client_ip, validate_search_query
+from .settings_store import admin_auth_disable_allowed_in_production
 from .services.common import (
     _db_circuit_breaker,
     _dep_status,
@@ -135,15 +136,25 @@ def create_app() -> Flask:
         if cfg.CORS_ORIGINS == "*":
             logger.warning("security_permissive_cors_origins", extra={"value": cfg.CORS_ORIGINS, "recommendation": "Set CORS_ORIGINS to specific origins in production"})
         if not getattr(cfg.security, "ADMIN_AUTH_ENABLED", True):
-            logger.warning("security_admin_auth_disabled", extra={"message": "ADMIN_AUTH_ENABLED is false. Admin panel is open to anyone. Use only in development/test environments."})
+            logger.warning("security_admin_auth_disabled", extra={"message": "ADMIN_AUTH_ENABLED is false. Use only in development/test environments."})
     if is_production and not cfg.SECURITY_ALLOW_PERMISSIVE_DEFAULTS:
         if cfg.ALLOWED_HOSTS == "*":
             raise RuntimeError("SECURITY ERROR: ALLOWED_HOSTS cannot be '*' in production. Set explicit hosts or SECURITY_ALLOW_PERMISSIVE_DEFAULTS=true.")
         if cfg.CORS_ORIGINS == "*":
             raise RuntimeError("SECURITY ERROR: CORS_ORIGINS cannot be '*' in production. Set explicit origins or SECURITY_ALLOW_PERMISSIVE_DEFAULTS=true.")
+    if is_production and not getattr(cfg.security, "ADMIN_AUTH_ENABLED", True) and not admin_auth_disable_allowed_in_production(cfg):
+        raise RuntimeError(
+            "SECURITY ERROR: ADMIN_AUTH_ENABLED=false is blocked in production. "
+            "Use ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION=true only for isolated lab/test scenarios."
+        )
 
     app = Flask(__name__)
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
+    app.config["GUNICORN_WORKER_CLASS"] = str(os.getenv("GUNICORN_WORKER_CLASS", ""))
+    register_db_circuit_observers(
+        on_success=_db_circuit_breaker.record_success,
+        on_failure=_db_circuit_breaker.record_failure,
+    )
 
     # SECURITY: Secure session cookie configuration
     app.config["SESSION_COOKIE_SECURE"] = bool(cfg.SESSION_COOKIE_SECURE_ENABLED)
@@ -273,7 +284,6 @@ def create_app() -> Flask:
                 sess = get_session(read_only=True)
             else:
                 sess = get_session(read_only=False)
-            _db_circuit_breaker.record_success()
             return sess
         except Exception:
             _db_circuit_breaker.record_failure()
@@ -1280,6 +1290,7 @@ def create_app() -> Flask:
         )
         return bool(token) and hmac.compare_digest(token, expected)
 
+    _db_circuit_breaker.record_success()
     _bootstrap_runtime_settings()
     configure_requests_tls_verify_from_env()
 

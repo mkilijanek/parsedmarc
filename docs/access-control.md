@@ -1,6 +1,6 @@
 # Access Control Baseline
 
-Status: updated for `1.6.1` (2026-04-21).
+Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
 
 This document defines the minimum access-control model currently enforced by IOC Service for the admin surface and the supported versioned API surface.
 
@@ -29,12 +29,18 @@ This document defines the minimum access-control model currently enforced by IOC
 | `/api/v1/runs/current` | public read | scheduler/job state view |
 | `/api/v1/logs` | public read | structured logs API, same visibility model as legacy API |
 | `/api/v1/sync` | public write | queue trigger path preserved additively from legacy `/api/sync` |
+| `/api/events` | public read | SSE stream: heartbeat, indicator count, sync status, feed health |
 | `/admin/*` | authenticated session + CSRF for writes | protected operator/admin plane |
+| `/admin/api/dead-letter-jobs` | authenticated session | DLQ inventory and manual requeue |
+| `/admin/api/db-circuit` | authenticated session | DBCircuitBreaker state query |
+| `/admin/audit/*` | no authentication enforced (gap SEC-1) | audit verify/report; should be admin-only |
 
-Rationale for `1.6.0`:
-- the milestone stabilizes and documents the existing API boundary rather than introducing a new machine-client auth system mid-migration,
-- protected administration remains on `/admin/*`,
-- future stronger machine-client auth can be layered onto `/api/v1/*` in a later milestone without changing the current compatibility story.
+Rationale for `1.8.0`:
+- admin surface is fully session-protected (since 1.4.2), with CSRF tokens on all state-changing flows,
+- `/api/v1/*` remains publicly readable, matching the legacy API posture,
+- `/api/events` SSE stream is publicly readable (operational transparency). In `1.8.1` it is bounded by explicit duration/capacity limits and rejected on sync workers by default,
+- machine-client auth for `/api/v1/*` remains a future milestone,
+- known gap: `/admin/audit/*` endpoints not covered by admin auth middleware (SEC-1).
 
 ## Active Roles
 
@@ -46,6 +52,9 @@ Capabilities:
 - test feed connections
 - trigger syncs
 - retry and cancel sync jobs
+- requeue dead-letter jobs from the DLQ
+- inspect DBCircuitBreaker state
+- verify audit log integrity (`/admin/audit/verify`)
 - access dangerous admin operations only after entering a valid `ADMIN_API_TOKEN`
   and the required confirmation values in the Web UI
 

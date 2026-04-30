@@ -563,8 +563,10 @@ def register_ops_api_routes(
                         "feed_source_id": r.feed_source_id,
                         "failure_class": r.failure_class,
                         "error": r.error,
+                        "status": r.status,
                         "retry_count": r.retry_count,
                         "requeue_count": r.requeue_count,
+                        "requeue_sync_job_id": r.requeue_sync_job_id,
                         "last_requeued_at": str(r.last_requeued_at) if r.last_requeued_at else None,
                         "created_at": str(r.created_at),
                     }
@@ -584,12 +586,29 @@ def register_ops_api_routes(
             dlq = db.scalar(select(DeadLetterJob).where(DeadLetterJob.id == dlq_id))
             if not dlq:
                 return jsonify({"error": "not_found"}), 404
-            _enqueue_sync_job(dlq.feed_source_id, trigger_type="manual_dlq_requeue", db=db)
+            if str(dlq.status or "").strip().lower() == "requeued" and dlq.requeue_sync_job_id:
+                return jsonify({
+                    "status": "already_requeued",
+                    "feed_source_id": dlq.feed_source_id,
+                    "sync_job_id": dlq.requeue_sync_job_id,
+                })
+            feed = db.scalar(select(Feed).where(Feed.source_id == dlq.feed_source_id))
+            if not feed:
+                return jsonify({"error": "feed_not_found", "feed_source_id": dlq.feed_source_id}), 404
+            sync_job, _created = _enqueue_sync_job(feed, trigger_type="manual_dlq_requeue", db=db)
+            dlq.status = "requeued"
             dlq.requeue_count = (dlq.requeue_count or 0) + 1
+            dlq.requeue_sync_job_id = sync_job.job_id
             dlq.last_requeued_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.commit()
-            _audit("dlq_requeue", entity_type="dead_letter_job", entity_id=dlq_id, db=db)
-            return jsonify({"status": "requeued", "feed_source_id": dlq.feed_source_id})
+            _audit(
+                "dlq_requeue",
+                entity_type="dead_letter_job",
+                entity_id=dlq_id,
+                metadata={"sync_job_id": sync_job.job_id, "feed_source_id": dlq.feed_source_id},
+                db=db,
+            )
+            return jsonify({"status": "requeued", "feed_source_id": dlq.feed_source_id, "sync_job_id": sync_job.job_id})
         finally:
             db.close()
 

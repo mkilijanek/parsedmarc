@@ -1,6 +1,6 @@
 # Configuration
 
-Status: updated for `1.7.0` (2026-04-28).
+Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
 
 ## Environment Variables
 
@@ -63,9 +63,10 @@ HSTS_ENABLED=false
 # Admin panel — choose one:
 ADMIN_PANEL_ENABLED=false    # hide /admin entirely (recommended for read-only deployments)
 ADMIN_PANEL_ENABLED=true
-ADMIN_AUTH_ENABLED=false     # panel open without login (dev/trusted-internal only)
+ADMIN_AUTH_ENABLED=false     # panel open without login (dev/lab only)
 ADMIN_AUTH_ENABLED=true      # panel requires ADMIN_API_TOKEN
 ADMIN_API_TOKEN=<token>      # required when ADMIN_AUTH_ENABLED=true
+ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION=false
 ```
 
 ### `ghcr.io/mkilijanek/ioc-service-tls` — TLS edge (nginx sidecar)
@@ -89,8 +90,9 @@ NGINX_HSTS_ENABLED=true      # nginx-level HSTS header
 ADMIN_PANEL_ENABLED=true     # (default) panel is visible
 ADMIN_AUTH_ENABLED=true      # (default) panel requires login
 ADMIN_API_TOKEN=<token>      # required — set a strong random token
-# or to allow panel without login (dev/staging only):
+# or to allow panel without login (lab only, explicit unsafe override required):
 ADMIN_AUTH_ENABLED=false
+ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION=true
 ```
 
 SSL certificate sourcing for the TLS variant: see `docs/deployment.md`.
@@ -119,6 +121,16 @@ Compatibility note:
 - existing code that still reads `cfg.DATABASE_URL` or `cfg.UPDATE_INTERVAL` continues to work through compatibility accessors.
 - environment variable names remain unchanged in `1.6.0`.
 
+## Runtime hardening in `1.8.1`
+
+- `ADMIN_AUTH_ENABLED=false` is blocked in `APP_ENV=production` unless `ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION=true` is also set.
+- `/api/events` is enabled by `SSE_ENABLED=true` and now has explicit safety bounds:
+  - `SSE_HEARTBEAT_INTERVAL_S`
+  - `SSE_MAX_DURATION_S`
+  - `SSE_MAX_CONNECTIONS`
+  - `SSE_ALLOW_SYNC_WORKERS`
+- Default container runtime now uses Gunicorn `gthread` workers to avoid trivial starvation from long-lived SSE clients.
+
 ## Configuration source of truth
 
 `app/db.py` no longer parses database environment variables independently. Database engine setup now reads from `DatabaseConfig.from_env()` in `app.config`, so runtime configuration has one parsing layer instead of duplicated environment reads.
@@ -137,6 +149,19 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 ```
+
+## New in `1.8.0` — Resilience and retention
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CACHE_TTL` | `300` | Redis cache TTL in seconds (also drives cache warming cadence) |
+| `LOG_RETENTION_DAYS` | `90` | Auto-purge `app_logs` rows older than N days (0 = disabled) |
+| `AUDIT_INTEGRITY_VERIFY_INTERVAL_S` | `3600` | Interval between scheduled audit hash chain verifications |
+| `SYNC_JOB_MAX_RETRIES` | `3` | Max retries before a sync job moves to the DLQ |
+
+DBCircuitBreaker thresholds (hardcoded in `app/services/common.py`):
+- `fail_threshold=5` — consecutive DB failures before circuit opens
+- `cooldown_s=30` — seconds before half-open probe after open
 
 ---
 

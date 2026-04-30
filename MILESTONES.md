@@ -218,23 +218,101 @@ Definition of done:
 
 ### 1.7.0 — Product UX & Scope Rationalization
 
-Problem focus:
-- UI is operator-centric rather than product-centric
-- No clear primary interface
-- Scope may exceed high-value user workflows
+Status: completed on `2026-04-28`
 
-Implementation items:
-- Identify the top 3 operator/business workflows and redesign UI around them.
-- Separate admin/debug UI from business-facing workflows.
-- State clearly which interface is primary for new users and integrators.
-- Audit features by maintenance cost and user value; mark candidates for simplification or deprecation.
-- Add UX acceptance criteria for search, export, sync visibility, and troubleshooting.
-- Explicitly map features into core product scope vs power-user/administrative surface.
+Problem focus:
+- UI was operator-centric rather than product-centric
+- No clear primary interface
+- Scope exceeded the highest-value daily workflows
+
+Delivered:
+- Redesigned UI around primary operator workflows.
+- Separated business-facing views from admin/debug tooling.
+- Introduced configuration priority model (env-var wins in dev, DB wins in prod).
+- Unified layout with sticky topbar, toast notifications, mobile-responsive nav, theme toggle.
 
 Definition of done:
 - UI supports primary workflows without operator-level knowledge.
 - Admin/debug capabilities remain available but intentionally separated.
 - The roadmap distinguishes core product scope from power-user surface.
+
+### 1.8.0 — Resilience, Real-Time Ops & Onboarding
+
+Status: completed on `2026-04-29`
+
+Problem focus:
+- Operational resilience was reactive rather than explicit
+- No first-class live operator telemetry surface
+- Cold caches and failed sync retries degraded operator experience
+
+Delivered:
+- DBCircuitBreaker with half-open probing, surfaced at `/health` and `/admin/api/db-circuit`.
+- Dead Letter Queue for permanently-failed sync jobs with manual requeue.
+- Cache warming for Redis dashboard widgets.
+- SSE `/api/events` live operational stream.
+- Grafana operational dashboard (10 panels, `grafana/dashboard.json`).
+- Onboarding tour (5 steps) and keyboard shortcuts in `layout.html`.
+
+Definition of done:
+- Database outages degrade gracefully via DBCircuitBreaker.
+- Exhausted sync retries are retained and recoverable through the DLQ.
+- Operators have a live event stream and dashboard for current system state.
+- UX onboarding and shortcuts are available without regressing existing flows.
+
+### 1.8.1 — Post-1.8 Hardening & Runtime Corrections
+
+Status: completed on `2026-04-30`
+
+Problem focus:
+- Production auth bypass remains possible through `ADMIN_AUTH_ENABLED=false`
+- DBCircuitBreaker semantics do not match the intended cooldown/probe model
+- Public SSE can exhaust sync Gunicorn workers in default deployments
+- DLQ requeue and backup handling need hardening after the `1.8.0` / `compliance-1.0` delivery
+
+Delivered:
+- Block `ADMIN_AUTH_ENABLED=false` in production by default and require an explicit unsafe override for non-test use.
+- Fix DBCircuitBreaker cooldown and half-open transitions.
+- Make the DBCircuitBreaker observe real query/commit failures, not only session acquisition.
+- Prevent `/api/events` from exhausting the default worker pool.
+- Make DLQ requeue idempotent or stateful.
+- Harden `scripts/backup.sh` so DB credentials are not exposed via process arguments.
+
+Tracked issues:
+- `#181`
+- `#182`
+- `#183`
+- `#184`
+- `#185`
+- `#186`
+
+Definition of done:
+- Production cannot silently run with admin auth disabled unless the explicit unsafe override is enabled.
+- DB outage handling matches documented breaker semantics and is exercised by tests.
+- Default deployment tolerates a small number of SSE clients without starving normal traffic.
+- DLQ requeue no longer fans out duplicate jobs from one dead-letter row.
+- Backup execution no longer leaks DB credentials through argv/process listing.
+
+### compliance-1.0 — ISO 27001 / NIST CSF Baseline
+
+Status: completed on `2026-04-29`
+
+Problem focus:
+- Compliance controls existed partially in code but were fragmented or undocumented
+- Backup, IR, SSDLC, and audit-integrity procedures needed a maintained baseline
+
+Delivered:
+- ISO 27001 controls matrix and NIST CSF mapping (`docs/compliance.md`).
+- SSDLC documentation and CI security gates (`docs/ssdlc.md`).
+- Incident response plan with severity classification (`docs/incident-response.md`).
+- Disaster recovery plan with RTO/RPO and backup procedures (`docs/disaster-recovery.md`, `scripts/backup.sh`).
+- SIEM integration guide (`docs/siem-integration.md`).
+- Asset management and classification inventory (`docs/asset-management.md`).
+- HMAC-SHA256 audit log hash chain with scheduled integrity verification.
+
+Definition of done:
+- Compliance evidence is documented and traceable to implementation artifacts.
+- Backup, disaster recovery, incident response, and SSDLC procedures are maintained in-repo.
+- Audit log integrity can be verified operationally.
 
 ## Tracking Notes
 
@@ -244,8 +322,11 @@ Definition of done:
 - Historical cleanup completed on 2026-04-07:
   - closed GitHub milestones: `1.1.x`, `1.2.1`, `1.3.0`, `1.4.0`
   - created missing GitHub releases for existing tags: `1.4.0`, `1.4.1`
-  - left `1.6.1` and `1.7.0` open because they are not yet fully delivered
 - Active delivery cleanup:
   - closed GitHub milestone `1.5.0` and released `1.5.0` on 2026-04-07
   - closed GitHub milestone `1.5.1` and released `1.5.1` on 2026-04-20
-  - completed local implementation/verification for `1.6.0` on 2026-04-21; GitHub closure and release follow the final push
+  - closed GitHub milestone `1.6.0` and released `1.6.0` on 2026-04-21
+  - closed GitHub milestone `1.6.1` and released `1.6.1` on 2026-04-21
+  - closed GitHub milestone `1.7.0` and released `1.7.0` on 2026-04-28
+  - closed GitHub milestone `1.8.0` and released `1.8.0` on 2026-04-29
+  - closed GitHub milestone `compliance-1.0` and released the associated compliance baseline on 2026-04-29

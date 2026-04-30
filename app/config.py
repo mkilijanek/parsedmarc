@@ -60,6 +60,11 @@ class RuntimeConfig:
     EXPORT_JOB_DIR: str = field(default_factory=lambda: _env_str("EXPORT_JOB_DIR", "/tmp/ioc-export-jobs"))
     EXPORT_ASYNC_THRESHOLD: int = field(default_factory=lambda: _env_int("EXPORT_ASYNC_THRESHOLD", 5000))
     LOG_RETENTION_DAYS: int = field(default_factory=lambda: _env_int("LOG_RETENTION_DAYS", 90))
+    SSE_ENABLED: bool = field(default_factory=lambda: _env_bool("SSE_ENABLED", True))
+    SSE_HEARTBEAT_INTERVAL_S: int = field(default_factory=lambda: _env_int("SSE_HEARTBEAT_INTERVAL_S", 15))
+    SSE_MAX_DURATION_S: int = field(default_factory=lambda: _env_int("SSE_MAX_DURATION_S", 300))
+    SSE_MAX_CONNECTIONS: int = field(default_factory=lambda: _env_int("SSE_MAX_CONNECTIONS", 25))
+    SSE_ALLOW_SYNC_WORKERS: bool = field(default_factory=lambda: _env_bool("SSE_ALLOW_SYNC_WORKERS", False))
 
 
 @dataclass(frozen=True)
@@ -188,6 +193,7 @@ class SecurityConfig:
     ADMIN_DANGEROUS_OPS: bool = field(default_factory=lambda: _env_bool("ADMIN_DANGEROUS_OPS", False))
     ADMIN_PANEL_ENABLED: bool = field(default_factory=lambda: _env_bool("ADMIN_PANEL_ENABLED", True))
     ADMIN_AUTH_ENABLED: bool = field(default_factory=lambda: _env_bool("ADMIN_AUTH_ENABLED", True))
+    ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION: bool = field(default_factory=lambda: _env_bool("ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION", False))
     ADMIN_API_TOKEN: str = field(default_factory=lambda: _env_str("ADMIN_API_TOKEN", ""))
     ADMIN_ROLE: str = field(default_factory=lambda: _env_str("ADMIN_ROLE", "admin"))
     INSTANCE_NAME: str = field(default_factory=lambda: _env_str("INSTANCE_NAME", "ioc-service"))

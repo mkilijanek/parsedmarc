@@ -1,6 +1,6 @@
 # Architecture
 
-Status: updated for `1.6.1` (2026-04-21).
+Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
 
 ## Overview
 
@@ -58,20 +58,24 @@ The Threat Feed Aggregator follows a **database-first** architecture where Postg
 - Audit logging
 
 **Key Files:**
-- `app/main.py` - App factory and wiring only
+- `app/factory.py` - App factory, composition root, and wiring only
 - `app/routes/public.py` - Public HTML/export routes
-- `app/routes/ops.py` - Admin and sync/API routes
+- `app/routes/auth.py` - Admin authentication and CSRF protection
+- `app/routes/ops_api.py` - Admin sync, DLQ, feeds, and operational API routes
+- `app/routes/events.py` - SSE live event stream
 - `app/routes/logs.py` - Logs UI and log API routes
 - `app/routes/health.py` - Health/readiness/dependency routes
 - `app/webui.py` - Web UI Blueprint
 - `app/security.py` - Security middleware and validation
-- `app/formatters.py` - Export format implementations
+- `app/services/common.py` - Shared resilience (CircuitBreaker, DBCircuitBreaker, retry, throttle)
+- `app/audit_integrity.py` - HMAC-SHA256 audit log hash chain
 
 **Characteristics:**
 - Stateless design for horizontal scalability
-- `app/main.py` contains no endpoint business logic after 1.4.0 route extraction
-- Immutable configuration (dataclass)
+- `app/factory.py` contains no endpoint business logic — all routes in `app/routes/*`
+- Immutable configuration (frozen dataclass hierarchy)
 - Structured logging with context
+- DBCircuitBreaker opens after 5 consecutive DB failures, enforces cooldown, then allows one half-open probe
 
 ### 2. Database Layer (PostgreSQL 16+)
 
@@ -191,7 +195,30 @@ schedule.every(10).minutes.do(update_all_feeds)
 - Errors logged with structured context
 - `feed_stats.last_fetch_error` tracking
 
-### 5. Adapter Boundary and Runtime Settings (`1.6.1`)
+### 5. Resilience Layer (`1.8.0`)
+
+**DBCircuitBreaker** (`app/services/common.py`):
+- Thread-safe circuit breaker wrapping every `_db()` call.
+- Opens after 5 consecutive database failures, blocking further calls for 30 s.
+- Half-open probe mechanism: after cooldown, exactly one request is allowed through to test recovery.
+- State (`closed` / `open` / `half_open`) exposed at `/admin/api/db-circuit` and `db_circuit_state` in `/health`.
+- Real query/statement failures feed the breaker through SQLAlchemy engine observers, not only session acquisition failures.
+
+**Dead Letter Queue** (`DeadLetterJob` model, `app/models.py`):
+- Sync jobs that exhaust all retries (default: 3) are moved to the DLQ.
+- DLQ entries preserve the original job ID, feed, failure class, error, retry count, and payload.
+- Manual requeue via `POST /admin/api/dead-letter-jobs/<id>/requeue` records requeue count, last-requeued timestamp, and the replacement sync job ID; repeated requeue of the same row is idempotent.
+- Inventory endpoint `GET /admin/api/dead-letter-jobs` supports filtering by feed.
+
+**Cache Warming** (scheduler loop in `app/factory.py`):
+- Runs at most twice per cache TTL (default: every 10 minutes when `CACHE_TTL=300`).
+- Pre-populates Redis keys `warm:indicator_type_counts` and `warm:total_active` for dashboard widgets.
+
+**SSE Event Stream** (`/api/events`, `app/routes/events.py`):
+- Pushes heartbeat, active indicator count, latest sync run statuses, and feed health every 15 s.
+- Bounded by runtime config (`SSE_MAX_DURATION_S`, `SSE_MAX_CONNECTIONS`); sync workers are rejected by default unless explicitly allowed.
+
+### 6. Adapter Boundary and Runtime Settings (`1.6.1`)
 
 The integration layer now has an explicit repository-local adapter boundary:
 - `app/adapters/contracts.py` defines the feed/export adapter protocols,
@@ -209,7 +236,7 @@ Instead:
 
 This keeps provider configuration isolated to the current execution scope and removes cross-job/process leakage risk from mutable global env state.
 
-### 5. Sync Scheduler / Queue (1.1.x)
+### 7. Sync Scheduler / Queue (1.1.x)
 
 The application now uses a DB-backed sync queue:
 - `sync_jobs` table for job lifecycle tracking
@@ -299,19 +326,24 @@ Permissions-Policy: geolocation=(), microphone=(), camera=()
 
 ### Authentication & Authorization
 
-**Current State:** No authentication required
+**Current State (1.4.2+):**
+- `/admin` surface requires session-based login (`ADMIN_API_TOKEN`), protected with CSRF tokens.
+- Admin sessions carry `admin_authenticated`, `admin_user_id`, and `admin_role`.
+- State-changing admin requests are CSRF-validated.
+- Login endpoint is rate-limited; rate limit exceeded returns an HTML operator-facing response.
+- `/api/v1/*` public query surface is unauthenticated, matching the legacy model.
+- Public `/healthz`, `/readyz`, `/api/events` are unauthenticated operational probes.
 
 **Recommended for Production:**
-1. Deploy behind VPN/private network
-2. Add nginx basic auth for /metrics
-3. Implement API key middleware
-4. Use IP whitelisting
+1. Deploy `/metrics` behind internal network/VPN
+2. Set `ALLOWED_HOSTS` to your domain
+3. Enable `MISP_VERIFY_SSL=true` (default)
+4. Rotate `SECRET_KEY` and `ADMIN_API_TOKEN` per policy (see `docs/asset-management.md`)
 
 **Future Enhancements:**
-- JWT-based authentication
-- Role-based access control (RBAC)
-- TLP-based filtering per user
-- API key rotation
+- JWT-based machine-client authentication for `/api/v1/*`
+- TLP-based filtering per user/role
+- API key rotation automation
 
 ---
 
@@ -422,7 +454,16 @@ node_disk_io
 - `/healthz` (liveness, no external calls)
 - `/readyz` (readiness, DB+Redis)
 - `/deps` (external dependency snapshot, cached)
-- `/health` (legacy combined check)
+- `/api/events` (SSE live operational stream, unauthenticated)
+- `/health` (legacy combined check including `db_circuit_state`)
+
+### Grafana Dashboard
+
+Provided at `grafana/dashboard.json` (UID `ioc-service-ops`), 10 panels:
+Active IOC count (stat), HTTP request rate (timeseries), sync jobs queued (stat),
+feed fetch rate by source and status (timeseries), error rate (timeseries),
+P95 HTTP latency (timeseries), cache hit ratio (timeseries), DB query P99 (timeseries),
+sync retries (timeseries), export jobs pending (gauge).
 
 **Checks:**
 - Liveness: process + HTTP stack
@@ -472,10 +513,10 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 ## Future Enhancements
 
 ### High Priority
-- [ ] API authentication (API keys, JWT)
+- [x] API authentication (session-based admin auth delivered in 1.4.2)
+- [x] Real-time updates (SSE delivered in 1.8.0 — `/api/events`)
+- [ ] Machine-client authentication for `/api/v1/*` (JWT / API keys)
 - [ ] Multi-tenancy support
-- [ ] Real-time updates (WebSocket/SSE)
-- [ ] Advanced query language (AST-based)
 
 ### Medium Priority
 - [ ] GraphQL API

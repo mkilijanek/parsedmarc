@@ -1,6 +1,6 @@
 # Risk Register
 
-Status: introduced for `1.5.1`.
+Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
 
 ## Method
 
@@ -22,13 +22,17 @@ Treatment values:
 
 | ID | Threat | Vulnerability | Asset | Likelihood | Impact | Level | Treatment | Owner | Status | Review |
 |---|---|---|---|---:|---:|---|---|---|---|---|
-| R001 | Unauthorized admin access | Weak or leaked admin token | Admin surface | 3 | 5 | high | mitigate with session auth, CSRF, RBAC and audit | Security | in progress | quarterly |
-| R002 | Feed outage or API throttling | External provider instability | Feed ingestion | 4 | 3 | high | mitigate with circuit breaker, retries and job backoff | Platform | in progress | monthly |
-| R003 | Schema drift | ORM, Alembic and SQL init divergence | PostgreSQL schema | 3 | 4 | high | mitigate with schema drift CI gate and PostgreSQL tests | Database | in progress | every release |
-| R004 | Audit tampering | Mutable database logs | Audit trail | 2 | 5 | high | mitigate with HMAC hash chain and scheduled verification | Security | in progress | monthly |
-| R005 | Vulnerable dependency | Delayed patching | Application runtime | 3 | 4 | high | mitigate with Dependabot and pip-audit CI gate | Platform | in progress | weekly |
-| R006 | Unencrypted backup leak | Manual backup handling | Database backups | 2 | 4 | medium | require encrypted backup target and documented restore controls | Operations | planned | quarterly |
-| R007 | Large export leakage | Unapproved bulk export | Export files | 2 | 4 | medium | audit every export and require restricted filesystem retention | Security | in progress | monthly |
+| R001 | Unauthorized admin access | Weak or leaked admin token | Admin surface | 3 | 5 | high | mitigate with session auth, CSRF, RBAC and audit | Security | done (1.4.2) | quarterly |
+| R002 | Feed outage or API throttling | External provider instability | Feed ingestion | 4 | 3 | high | mitigate with circuit breakers, retries, DLQ and job backoff | Platform | done (1.8.0) | monthly |
+| R003 | Schema drift | ORM, Alembic and SQL init divergence | PostgreSQL schema | 3 | 4 | high | mitigate with schema drift CI gate and PostgreSQL tests | Database | done (1.5.1) | every release |
+| R004 | Audit tampering | Mutable database logs | Audit trail | 2 | 5 | high | mitigate with HMAC hash chain and scheduled verification | Security | done (compliance-1.0) | monthly |
+| R005 | Vulnerable dependency | Delayed patching | Application runtime | 3 | 4 | high | mitigate with Dependabot, pip-audit, bandit and OSV Scanner CI gates | Platform | done (1.8.0) | weekly |
+| R006 | Unencrypted backup leak | Manual backup handling | Database backups | 2 | 4 | medium | encrypted backup script and documented restore controls | Operations | done (compliance-1.0) | quarterly |
+| R007 | Large export leakage | Unapproved bulk export | Export files | 2 | 4 | medium | audit every export and require restricted filesystem retention | Security | done (1.8.0) | monthly |
+| R008 | DBCircuitBreaker false open | Transient DB hiccup trips circuit unnecessarily | API availability | 2 | 4 | medium | enforced cooldown + single half-open probe; monitor open-transition rate | Platform | mitigated (`1.8.1`) | monthly |
+| R009 | DLQ accumulation | Unmonitored dead-letter jobs mask systemic feed failures | Sync pipeline | 3 | 3 | medium | DLQ inventory endpoint, manual requeue, metric-based alerting | Platform | accepted | monthly |
+| R010 | SSE endpoint exposure | Public event stream leaks operational metadata to unauthenticated clients | Operational telemetry | 2 | 2 | low | documented as public-read surface; consider future restriction | Security | accepted | quarterly |
+| R011 | Cache warming failure | Redis unavailability causes cold caches for dashboard widgets | Dashboard UX | 2 | 2 | low | cache warming is best-effort; dashboard falls back to live queries | Platform | accepted | monthly |
 
 ## Review Process
 

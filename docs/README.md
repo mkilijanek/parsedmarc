@@ -1,6 +1,6 @@
 # Threat Feed Aggregator - Documentation
 
-Status: updated for `1.6.0` (2026-04-21).
+Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
 
 Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed Aggregation system.
 
@@ -12,6 +12,7 @@ Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed A
 - 🔁 **[API v1 Migration](api-v1-migration.md)** - legacy-to-versioned API route mapping and migration notes
 - 🗺️ **[Milestone 1.6.0 Plan](milestone-1.6.0-plan.md)** - execution plan for versioned API, OpenAPI, config, and packaging changes
 - 📚 **[Swagger UI Endpoint](../README.md#endpoints)** - bundled interactive API explorer at `/api/swagger`
+- 📊 **[Grafana Dashboard](../grafana/dashboard.json)** - 10-panel operational dashboard
 - 🏗️ **[Architecture](architecture.md)** - System design and components
 - ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
 - 🔐 **[Access Control](access-control.md)** - Admin auth, roles, CSRF, and operational boundaries
@@ -114,7 +115,11 @@ type:ip AND confidence:>70 AND (tags:apt OR tags:malware)
 Cross-source correlation endpoint:
 
 ```bash
-curl "https://localhost:7003/correlations?min_sources=2&type=domain"
+# app-only
+curl "http://localhost:7005/correlations?min_sources=2&type=domain"
+
+# TLS variant
+curl -k "https://localhost:7003/correlations?min_sources=2&type=domain"
 ```
 
 ### 📤 17 Export Formats
@@ -138,8 +143,10 @@ Background worker fetches from MISP and CrowdSec every 10 minutes (configurable)
 - TLS 1.2+ with modern ciphers
 - Rate limiting per endpoint
 - Comprehensive security headers
-- Audit logging
+- Audit logging with HMAC-SHA256 integrity chain
 - IP tracking with proxy awareness
+- DBCircuitBreaker with half-open probing
+- Dead Letter Queue for permanently-failed jobs
 
 ### ⚡ Performance
 
@@ -158,34 +165,39 @@ Background worker fetches from MISP and CrowdSec every 10 minutes (configurable)
 ### Health & Monitoring
 
 ```bash
-curl https://localhost:7003/health
-curl https://localhost:7003/metrics
+# app-only variant
+curl http://localhost:7005/health
+curl http://localhost:7005/metrics
+
+# TLS variant
+curl -k https://localhost:7003/health
+curl -k https://localhost:7003/metrics
 ```
 
 ### Search & View
 
 ```bash
-# HTML interface
-curl https://localhost:7003/indicators
+# HTML interface (app-only)
+curl http://localhost:7005/indicators
 
-# With filters
-curl "https://localhost:7003/indicators?type=ip&min_conf=80&tlp=AMBER"
+# With filters (TLS variant)
+curl -k "https://localhost:7003/indicators?type=ip&min_conf=80&tlp=AMBER"
 ```
 
 ### Export Formats
 
 ```bash
 # Plain text
-curl https://localhost:7003/indicators/txt
+curl http://localhost:7005/indicators/txt
 
 # FortiGate blocklist
-curl https://localhost:7003/indicators/fortigate
+curl http://localhost:7005/indicators/fortigate
 
 # Elasticsearch bulk
-curl https://localhost:7003/indicators/elasticsearch
+curl http://localhost:7005/indicators/elasticsearch
 
 # Splunk HEC
-curl https://localhost:7003/indicators/splunk
+curl http://localhost:7005/indicators/splunk
 ```
 
 See **[API Documentation](api.md)** for full details.
@@ -385,7 +397,7 @@ pytest tests/ -v
 
 # Run app
 export SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
-python -m flask --app app.main run --debug
+python -m flask --app app.factory run --debug
 ```
 
 ---
@@ -414,15 +426,26 @@ python -m flask --app app.main run --debug
 
 | Document | Last Updated | Version |
 |----------|--------------|---------|
-| api.md | 2025-12-18 | 1.0 |
-| architecture.md | 2025-12-18 | 1.0 |
-| configuration.md | 2025-12-18 | 1.0 |
-| data-sources.md | 2025-12-18 | 1.0 |
-| database.md | 2025-12-18 | 1.0 |
-| cli.md | 2025-12-18 | 1.0 |
-| web-ui.md | 2025-12-18 | 1.0 |
-| ssl.md | 2025-12-18 | 1.0 |
+| api.md | 2026-04-30 | 1.8.0 |
+| architecture.md | 2026-04-30 | 1.8.0 |
+| configuration.md | 2026-04-30 | 1.8.0 |
+| access-control.md | 2026-04-30 | 1.8.0 |
+| data-sources.md | 2026-04-21 | 1.6.0 |
+| database.md | 2026-04-21 | 1.6.0 |
+| cli.md | 2026-04-21 | 1.6.0 |
+| web-ui.md | 2026-04-21 | 1.6.0 |
+| ssl.md | 2026-04-21 | 1.6.0 |
+| runbook.md | 2026-04-30 | 1.8.0 |
+| risk-register.md | 2026-04-30 | 1.8.0 |
+| vulnerability-management.md | 2026-04-30 | 1.8.0 |
+| data-protection.md | 2026-04-30 | 1.8.0 |
+| compliance.md | 2026-04-29 | compliance-1.0 |
+| incident-response.md | 2026-04-29 | compliance-1.0 |
+| disaster-recovery.md | 2026-04-29 | compliance-1.0 |
+| ssdlc.md | 2026-04-29 | compliance-1.0 |
+| asset-management.md | 2026-04-29 | compliance-1.0 |
+| siem-integration.md | 2026-04-29 | compliance-1.0 |
 
 ---
 
-**Note:** This documentation reflects the state of the codebase after security audit and remediation (commit: `claude/security-audit-kili-2Ah1l`).
+**Note:** This documentation reflects the state of the codebase at `1.8.0` + `compliance-1.0` (2026-04-30).

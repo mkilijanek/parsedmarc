@@ -1,13 +1,14 @@
 # Threat Intelligence Feed Aggregator
 
-Updated for release line `1.6.1` (2026-04-21).
+Updated for release line `1.8.0` + `compliance-1.0` (2026-04-30).
 
 Production-ready threat feed aggregation and export service:
 - Ingests **CrowdSec** blocklists and **MISP** (IDS-flagged only, warninglist enforced)
 - Stores IOCs in **PostgreSQL 16** (JSONB + pg_trgm) with audit trail and feed stats
-- Caches exports/views in **Redis 7** (AOF, 512MB, LRU)
+- Caches exports/views in **Redis 7** (AOF, 512MB, LRU), with scheduler cache warming
+- Monitored via **Prometheus** metrics and **Grafana** operational dashboard (`grafana/dashboard.json`)
 - Serves HTTPS via **Nginx** (TLS 1.2+, HTTP/2, security headers, rate limiting)
-- Web UI: `/indicators` (Kibana-like search) with WCAG/ARIA attributes
+- Web UI: `/indicators` (Kibana-like search) with WCAG/ARIA attributes, onboarding tour, keyboard shortcuts
 - Source shortcuts: `/sources/<src>` (e.g. `/sources/bazaar`, `/sources/mwdb`)
 - 17 export formats via `/indicators/<format>`
 - Queue-based sync jobs with per-feed idempotency (`sync_jobs`)
@@ -36,6 +37,35 @@ Production-ready threat feed aggregation and export service:
   - `ghcr.io/mkilijanek/ioc-service` for direct HTTP/F5 upstream deployments without edge TLS
   - `ghcr.io/mkilijanek/ioc-service-tls` for bundled nginx edge TLS termination
 - Added manual GitHub Actions deployment workflow for selecting and rolling out either image variant.
+
+## Release Highlights (1.7.0)
+
+- Redesigned UI around primary operator workflows: search, export, IOC browsing.
+- Separated business-facing views from admin/debug tooling.
+- Introduced configuration priority model: env‑var wins in development, DB‑stored settings win in production.
+- Unified layout with sticky topbar, toast notifications, mobile-responsive nav, and consistent light/dark theme.
+- Added `ADMIN_PANEL_ENABLED` and `ADMIN_AUTH_ENABLED` runtime toggles with priority-model resolution.
+
+## Release Highlights (1.8.0)
+
+- **DBCircuitBreaker** (`app/services/common.py`) — shared database circuit breaker opens after 5 consecutive failures (30 s cooldown), enforces cooldown before a single half-open probe, and surfaces state at `/health` and `/admin/api/db-circuit`.
+- **Dead Letter Queue** (`DeadLetterJob` model, `/admin/api/dead-letter-jobs`) — permanently-failed sync jobs are moved to a DLQ with manual requeue support, idempotent requeue state, and audit trail.
+- **Cache warming** — scheduler pre-populates Redis with active-indicator type counts and total count on cold start and after TTL expiry.
+- **SSE event stream** (`/api/events`) — live server-sent events for heartbeat, active indicator count changes, latest sync run statuses, and feed health, with bounded duration/capacity and non-sync worker defaults.
+- **Grafana dashboard** (`grafana/dashboard.json`) — 10-panel operational dashboard: IOC count, HTTP rate, sync queued, fetch rate, errors, p95 latency, cache hit ratio, DB p99, retries, export gauge.
+- **Onboarding tour** — 5-step first-visit feature highlight (localStorage guard `ioc_tour_done`).
+- **Keyboard shortcuts** — `g i/a/l/d` for navigation, `/` for search focus, `r` for reload, `?` for help dialog.
+
+## Release Highlights (compliance-1.0)
+
+- Introduced ISO 27001 (A.18) and NIST CSF (DE.CM, RS.RP, RC.RP) compliance documentation and controls matrix (`docs/compliance.md`).
+- Delivered HMAC-SHA256 audit log hash chain with integrity verification (`/admin/audit/verify`, `/admin/audit/report`) and scheduled verification.
+- Published Secure Software Development Lifecycle controls (`docs/ssdlc.md`) with CI security gates: pip-audit, bandit, ruff, mypy, pytest, OSV Scanner.
+- Delivered incident response plan with severity classification, containment playbooks, and evidence preservation checklist (`docs/incident-response.md`).
+- Delivered disaster recovery plan with RTO/RPO targets, backup procedures (`scripts/backup.sh`), and 5 DR scenarios (`docs/disaster-recovery.md`).
+- Published asset management and classification inventory for data, software, and credentials (`docs/asset-management.md`).
+- Published SIEM integration guide with CEF format reference and Splunk/ELK/Sentinel integration examples (`docs/siem-integration.md`).
+- Added `CACHE_TTL`, `LOG_RETENTION_DAYS`, and `AUDIT_INTEGRITY_VERIFY_INTERVAL_S` configuration knobs with sensible defaults (300 s, 90 days, 3600 s).
 
 ## Release Highlights (1.4.2)
 
@@ -83,7 +113,7 @@ cp .env.example .env
 - CrowdSec: set `CROWDSEC_API_KEY` and `CROWDSEC_LISTS` (comma-separated list IDs)
 - MISP: set `MISP_URL`, `MISP_API_KEY`, and `MISP_VERIFY_SSL`
 
-3) Start automated deploy (DB + Redis + app, host port `7003` by default):
+3) Start automated deploy (DB + Redis + app, host port `7005` by default for the app-only variant):
 ```bash
 bash scripts/deploy-compose.sh
 ```
@@ -96,13 +126,13 @@ docker compose up -d --build app worker
 
 4) Validate:
 ```bash
-curl http://localhost:7003/healthz
-curl http://localhost:7003/readyz
-curl http://localhost:7003/indicators
-curl http://localhost:7003/indicators/arcsight | head
+curl http://localhost:7005/healthz
+curl http://localhost:7005/readyz
+curl http://localhost:7005/indicators
+curl http://localhost:7005/indicators/arcsight | head
 ```
 
-Optional TLS edge (`nginx` profile):
+Optional TLS edge (`nginx` profile, HTTPS on `7003`):
 ```bash
 ./scripts/setup-ssl.sh
 docker compose --profile edge up -d nginx
@@ -132,6 +162,7 @@ Manual GitHub Actions rollout:
 - `GET /healthz` – liveness probe (no external calls)
 - `GET /readyz` – readiness probe (DB + Redis)
 - `GET /health` – legacy health summary
+- `GET /api/events` – live SSE event stream: heartbeat, indicator count, sync status, feed health
 - `GET /api/v1/openapi.yaml` – versioned API contract
 - `GET /api/v1/openapi.json` – JSON rendering of the versioned API contract
 - `GET /api/v1/docs` – embedded docs viewer for the versioned API
@@ -142,6 +173,11 @@ Manual GitHub Actions rollout:
 - `GET /api/v1/feeds/metrics` – versioned feed telemetry
 - `GET /api/v1/runs/current` – versioned current scheduler/job view
 - `GET /api/v1/logs` – versioned structured logs API
+- `GET /admin/api/dead-letter-jobs` – DLQ inventory (admin)
+- `POST /admin/api/dead-letter-jobs/<id>/requeue` – DLQ manual requeue (admin)
+- `GET /admin/api/db-circuit` – DBCircuitBreaker state (admin)
+- `GET /admin/audit/verify` – audit log integrity verification
+- `GET /admin/audit/report` – compliance audit report
 - `GET /` – status overview
 - `GET /indicators` – unified view (HTML)
 - `GET /indicators/<fmt>` – export (TXT/CSV/JSON/XML + vendor formats)
@@ -189,6 +225,10 @@ Kibana-like:
 - Defense-in-depth validation of query strings (`max 500` chars, rejects obvious injection markers).
 - CrowdSec indicators are **always** enforced as `TLP:AMBER`.
 - Disable `HSTS_ENABLED` and `SESSION_COOKIE_SECURE_ENABLED` only for trusted lab/F5 upstream scenarios where the public HTTPS boundary lives outside the container stack.
+- Audit trail secured with HMAC-SHA256 hash chain across all admin actions.
+- DBCircuitBreaker protects against database outages (opens after 5 failures, 30 s cooldown).
+- Admin credentials and feed keys stored AES-GCM encrypted at rest (`app_settings` table).
+- ISO 27001 / NIST CSF compliance baseline documented in `docs/compliance.md`.
 
 ## Development
 
@@ -257,7 +297,9 @@ docker compose run --rm -e BENCHMARK_BASE_URL=http://app:8080 app --benchmark
 Contribution and quality gate:
 - See `CONTRIBUTING.md` for merge policy and smoke-test checklist.
 - CI (`.github/workflows/ci.yml`) enforces tests on Python 3.11/3.12 for pushes and PRs.
-- Performance artifacts: `docs/performance.md`, `monitoring/alerts/m12-slo-alerts.yml`, `monitoring/grafana/m12-dashboard.json`.
+- Defenses: DBCircuitBreaker against DB outages, per-feed CircuitBreaker with cooldown, retry with exponential backoff
+- Dead Letter Queue for permanently-failed sync jobs with manual requeue
+- Performance artifacts: `docs/performance.md`, `grafana/dashboard.json`.
 - Confluence package (pages/subpages for Confluence 9.2.13): `Confluence/README.md`, `Confluence/manifest.yaml`, `Confluence/pages/*.wiki`.
 - UML diagrams and generation guide: `docs/uml/README.md`.
 

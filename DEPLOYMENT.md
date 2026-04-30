@@ -1,21 +1,24 @@
 # Deployment Guide
 
-Updated for release line `1.6.1` (2026-04-28).
+Updated for release line `1.8.0` + `compliance-1.0` (2026-04-30).
 
 ## Quick Start
 
 ```bash
-# 1. Generate secrets
-./scripts/generate-secrets.sh
+# 1. Create environment file
+cp .env.example .env
 
-# 2. Configure .env
-vim .env  # Add MISP and CrowdSec credentials
+# 2. Generate and append secrets
+./scripts/generate-secrets.sh >> .env
 
-# 3. Start services
+# 3. Configure .env
+vim .env  # Review generated secrets and add feed credentials
+
+# 4. Start services
 docker compose up -d postgres redis
 docker compose up -d app worker
 
-# 4. Verify
+# 5. Verify
 curl http://localhost:7005/health
 ```
 
@@ -71,11 +74,15 @@ On self-hosted runners, the workflow expects runtime secrets in `/home/kili/Repo
 ### Monitoring
 - App-only health: http://your-host:7005/healthz
 - App-only readiness: http://your-host:7005/readyz
+- Full health (incl. DBCircuitBreaker): http://your-host:7005/health
 - TLS edge health: https://your-domain:7003/healthz
 - TLS edge readiness: https://your-domain:7003/readyz
+- SSE event stream: http://your-host:7005/api/events
+- DBCircuitBreaker state: requires authenticated admin session at `http://your-host:7005/admin/api/db-circuit`
 - Logs: docker compose logs -f
 - Stats: https://your-domain:7003/api/stats
 - Metrics: https://your-domain:7003/metrics (deploy behind VPN/internal network)
+- Grafana dashboard: import `grafana/dashboard.json`
 
 **Key Prometheus metrics for alerting:**
 
@@ -89,12 +96,19 @@ On self-hosted runners, the workflow expects runtime secrets in `/home/kili/Repo
 See `docs/api.md` for the full list of exposed metrics.
 
 ### Backup
+
+Automated encrypted backup (compliance-1.0):
+```bash
+bash scripts/backup.sh
+```
+
+Manual backup:
 ```bash
 # Backup database
-docker compose exec postgres pg_dump -U threatfeed threatfeed > backup.sql
+docker compose exec postgres sh -c 'PGPASSFILE=/run/secrets/pgpass pg_dump -U threatfeed threatfeed' | gzip > backup_$(date +%Y%m%d_%H%M%S).sql.gz
 
-# Backup .env
-cp .env .env.backup
+# Backup .env (encrypted)
+gpg -c .env  # Creates .env.gpg
 ```
 
 ### Updates
