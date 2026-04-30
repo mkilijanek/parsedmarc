@@ -310,7 +310,10 @@ class RuntimeSession(requests.Session):
         env_proxies = get_environ_proxies(url, no_proxy=self.runtime_no_proxy) if self.trust_env else {}
         merged_proxies = merge_setting(proxies, env_proxies)
         merged_proxies = merge_setting(merged_proxies, self.runtime_proxies)
-        effective_verify = self.runtime_verify if self.runtime_verify is not None else verify
+        # Respect an explicit per-request ``verify=...`` override first.
+        # Session-level runtime_verify remains the default for callers that do
+        # not pass their own TLS preference.
+        effective_verify = verify if verify is not None else self.runtime_verify
         if effective_verify is False:
             warnings.filterwarnings("ignore", category=InsecureRequestWarning)
         return {
