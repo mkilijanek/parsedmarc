@@ -2805,3 +2805,10 @@ Coverage goal: raise from 68% to >=75%
 [final docs]
 - Marked `1.8.1` complete in `MILESTONES.md` and `ROADMAP.md`.
 - Updated resilience, SSE, DLQ, and backup wording in architecture / deployment / security docs to match the shipped `1.8.1` behavior.
+
+[release notes]
+- While publishing the completed milestone, `origin/main` had already advanced and GitHub already contained tag/release `1.8.1` on commit `cedaf93`.
+- Chose the safe path:
+  - rebased the completed milestone work onto `origin/main`
+  - preserved the existing public `1.8.1` tag/history
+  - prepared the delivery for the next patch release tag instead of rewriting an already-published release
