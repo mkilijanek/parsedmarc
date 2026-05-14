@@ -47,3 +47,22 @@ def test_query_correlations_groups_across_sources(test_db):
     assert "malware" in g["tags"]
     assert "apt" in g["tags"]
     assert g["enrichment"]["domain_root"] == "example.org"
+
+
+# ---------------------------------------------------------------------------
+# TestCorrelationEdgeCases — migrated from test_coverage_boost2.py
+# ---------------------------------------------------------------------------
+
+class TestCorrelationEdgeCases:
+
+    def test_query_correlations_empty_db(self, test_db):
+        result = query_correlations(test_db, min_sources=2, limit=10, ioc_type=None)
+        assert isinstance(result, list)
+
+    def test_query_correlations_with_type_filter(self, test_db):
+        result = query_correlations(test_db, min_sources=2, limit=10, ioc_type="ip")
+        assert isinstance(result, list)
+
+    def test_query_correlations_min_sources_3(self, test_db):
+        result = query_correlations(test_db, min_sources=3, limit=5, ioc_type=None)
+        assert isinstance(result, list)

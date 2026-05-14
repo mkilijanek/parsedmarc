@@ -1,0 +1,241 @@
+/* ============================================================
+   Threat Ops Design System -- colors_and_type.css
+   Distilled from:
+     - mkilijanek/ioc-service  (app/templates/layout.html + static/app.css)
+     - mkilijanek/CyberMasterChef (packages/workbench/src/styles.css)
+
+   Both products share the same DNA: Tailwind-slate neutrals, sky/cyan
+   accent, system-ui type, mono for code, 8-12px rounded geometry, and
+   light/dark themes driven by `data-theme` on `<body>`.
+   ============================================================ */
+
+/* ---------- 1. Raw palette (Tailwind-slate + sky + status) ---------- */
+:root {
+  /* neutrals -- slate */
+  --slate-50:  #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+  --slate-950: #0b0f14;
+
+  /* the IOC service light theme uses #dbe1ea for borders --
+     keep it as a named token so we don't lose that nuance */
+  --line-light: #dbe1ea;
+  --line-dark:  #223042;
+  --panel-dark: #0f1720;
+
+  /* primary -- sky */
+  --sky-300: #7dd3fc;
+  --sky-400: #38bdf8;
+  --sky-500: #0ea5e9;
+  --sky-600: #0284c7;
+  --sky-700: #0369a1;
+
+  /* status (light variants live in /500, dark in /400) */
+  --success-500: #22c55e;  --success-400: #4ade80;
+  --warning-500: #f59e0b;  --warning-400: #fbbf24;
+  --error-500:   #ef4444;  --error-400:   #f87171;
+  --info-500:    #3b82f6;  --info-400:    #60a5fa;
+
+  /* TLP -- straight from app.css */
+  --tlp-white-bg: #e2e8f0; --tlp-white-fg: #475569;
+  --tlp-green-bg: #dcfce7; --tlp-green-fg: #166534;
+  --tlp-amber-bg: #fef9c3; --tlp-amber-fg: #854d0e;
+  --tlp-red-bg:   #fee2e2; --tlp-red-fg:   #991b1b;
+
+  /* IOC type pills */
+  --type-ip-bg:     #dbeafe; --type-ip-fg:     #1e40af;
+  --type-domain-bg: #f3e8ff; --type-domain-fg: #7e22ce;
+  --type-hash-bg:   #fce7f3; --type-hash-fg:   #9d174d;
+  --type-url-bg:    #ecfdf5; --type-url-fg:    #065f46;
+  --type-email-bg:  #fff7ed; --type-email-fg:  #9a3412;
+
+  /* cyber-loader neon (only used on the startup scan) */
+  --neon-cyan:  #37dcff;
+  --neon-mint:  #7effc8;
+  --neon-deep:  #05131d;
+
+  /* ---------- 2. Type system ---------- */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu,
+               Cantarell, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+               "Liberation Mono", monospace;
+
+  /* type ramp (rems, base 16) */
+  --fs-xs:   0.75rem;   /* 12 -- table cells, hints, badges       */
+  --fs-sm:   0.8125rem; /* 13 -- table headers (uppercase)        */
+  --fs-base: 0.9375rem; /* 15 -- body                             */
+  --fs-md:   1rem;      /* 16 -- form inputs                      */
+  --fs-lg:   1.125rem;  /* 18 -- h3                               */
+  --fs-xl:   1.25rem;   /* 20 -- card titles                      */
+  --fs-2xl:  1.5rem;    /* 24 -- h2                               */
+  --fs-3xl:  1.875rem;  /* 30 -- h1                               */
+
+  --lh-tight: 1.3;
+  --lh-base:  1.5;
+
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+
+  --tracking-eyebrow: 0.025em;
+  --tracking-loader:  0.08em;
+
+  /* ---------- 3. Geometry ---------- */
+  --radius-xs: 4px;    /* skeleton blocks                         */
+  --radius-sm: 6px;    /* workbench panels                        */
+  --radius-md: 8px;    /* buttons, inputs, nav links              */
+  --radius-lg: 10px;   /* metric cards, mini-charts               */
+  --radius-xl: 12px;   /* cards, table wraps, filter bars         */
+  --radius-2xl:16px;   /* admin cards, startup-loader card        */
+  --radius-pill: 9999px;
+
+  /* spacing -- Tailwind-ish 0.25rem steps; we expose a curated set */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* shadows -- IOC service uses subtle, raised-on-hover */
+  --shadow-card:       0 1px 3px rgba(0,0,0,0.10);
+  --shadow-card-hover: 0 4px 12px rgba(0,0,0,0.15);
+  --shadow-toast:      0 4px 12px rgba(0,0,0,0.15);
+  --shadow-loader:     0 20px 50px rgba(0,0,0,0.45);
+  --shadow-popover:    0 8px 32px rgba(0,0,0,0.25);
+  --shadow-focus:      0 0 0 3px rgba(14,165,233,0.10);
+
+  /* motion */
+  --motion-fast:   0.15s ease;
+  --motion-medium: 0.3s ease;
+  --motion-shimmer:1.5s linear infinite;
+}
+
+/* ---------- 4. Semantic tokens -- light theme (default) ---------- */
+:root,
+body[data-theme="light"],
+body:not([data-theme]) {
+  --bg:           var(--slate-50);
+  --fg:           var(--slate-900);
+  --panel:        #ffffff;
+  --card:         #ffffff;
+  --line:         var(--line-light);
+  --muted:        var(--slate-500);
+  --link:         var(--sky-700);
+
+  --primary:        var(--sky-500);
+  --primary-hover:  var(--sky-600);
+  --on-primary:     #ffffff;
+
+  --success: var(--success-500);
+  --warning: var(--warning-500);
+  --error:   var(--error-500);
+  --info:    var(--info-500);
+
+  /* tinted status surfaces -- used for toasts/chips on light */
+  --success-soft: rgba(34,197,94,0.10);
+  --warning-soft: rgba(245,158,11,0.10);
+  --error-soft:   rgba(239,68,68,0.10);
+  --info-soft:    rgba(59,130,246,0.10);
+
+  /* admin status chips -- paler than badge versions */
+  --chip-ok-bg:    #ecfdf3; --chip-ok-fg:    #166534;
+  --chip-warn-bg:  #fffbeb; --chip-warn-fg:  #92400e;
+  --chip-error-bg: #fef2f2; --chip-error-fg: #991b1b;
+  --chip-off-bg:   #f1f5f9; --chip-off-fg:   #334155;
+  --chip-misc-bg:  #fdf4ff; --chip-misc-fg:  #7e22ce;
+
+  color-scheme: light;
+}
+
+/* ---------- 5. Semantic tokens -- dark theme ---------- */
+body[data-theme="dark"] {
+  --bg:           var(--slate-900);
+  --fg:           #e2e8f0;
+  --panel:        var(--panel-dark);
+  --card:         var(--slate-800);
+  --line:         var(--line-dark);
+  --muted:        #9fb3c8;
+  --link:         var(--sky-300);
+
+  --primary:        var(--sky-400);
+  --primary-hover:  var(--sky-300);
+  --on-primary:     var(--slate-900);
+
+  --success: var(--success-400);
+  --warning: var(--warning-400);
+  --error:   var(--error-400);
+  --info:    var(--info-400);
+
+  --success-soft: rgba(74,222,128,0.12);
+  --warning-soft: rgba(251,191,36,0.12);
+  --error-soft:   rgba(248,113,113,0.12);
+  --info-soft:    rgba(96,165,250,0.12);
+
+  color-scheme: dark;
+}
+
+/* ---------- 6. Element-level defaults ---------- */
+html { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: inherit; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  background: var(--bg);
+  color: var(--fg);
+  margin: 0;
+}
+
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1 { font-size: var(--fs-3xl); font-weight: var(--fw-semibold); margin: 0 0 var(--space-4); line-height: var(--lh-tight); }
+h2 { font-size: var(--fs-2xl); font-weight: var(--fw-semibold); margin: 0 0 var(--space-3); line-height: var(--lh-tight); }
+h3 { font-size: var(--fs-xl);  font-weight: var(--fw-semibold); margin: 0 0 var(--space-3); line-height: var(--lh-tight); }
+h4 { font-size: var(--fs-lg);  font-weight: var(--fw-semibold); margin: 0 0 var(--space-2); line-height: var(--lh-tight); }
+
+p  { margin: 0 0 var(--space-3); }
+
+code, pre, kbd, samp { font-family: var(--font-mono); }
+code { font-size: 0.92em; }
+
+th {
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  text-align: left;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ---------- 7. Utility shapes ---------- */
+.ds-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--motion-fast);
+}
+.ds-card:hover { box-shadow: var(--shadow-card-hover); }
+
+.ds-mono  { font-family: var(--font-mono); }
+.ds-muted { color: var(--muted); }

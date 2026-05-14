@@ -1113,3 +1113,64 @@ class TestReadyzEndpoint:
             mock_redis.return_value.ping.return_value = True
             response = client.get("/readyz")
             assert_security_headers(response)
+
+
+# ---------------------------------------------------------------------------
+# TestApiV1Coverage — migrated from test_coverage_boost2.py
+# ---------------------------------------------------------------------------
+
+class TestApiV1Coverage:
+
+    def test_api_v1_indicators_returns_200(self, client):
+        resp = client.get("/api/v1/indicators")
+        assert resp.status_code == 200
+
+    def test_api_v1_indicators_json_structure(self, client):
+        resp = client.get("/api/v1/indicators")
+        body = json.loads(resp.data)
+        assert "items" in body or "indicators" in body or "data" in body or isinstance(body, (list, dict))
+
+    def test_api_v1_indicators_filter_by_type(self, client):
+        resp = client.get("/api/v1/indicators?type=ip")
+        assert resp.status_code == 200
+
+    def test_api_v1_indicators_filter_by_source(self, client):
+        resp = client.get("/api/v1/indicators?source=misp")
+        assert resp.status_code == 200
+
+    def test_api_v1_indicators_pagination(self, client):
+        resp = client.get("/api/v1/indicators?limit=5&offset=0")
+        assert resp.status_code == 200
+
+    def test_api_v1_feeds_returns_200(self, client):
+        resp = client.get("/api/v1/feeds")
+        assert resp.status_code == 200
+
+    def test_api_v1_feeds_json(self, client):
+        resp = client.get("/api/v1/feeds")
+        body = json.loads(resp.data)
+        assert isinstance(body, (dict, list))
+
+    def test_api_v1_sync_missing_source(self, client):
+        resp = client.post("/api/v1/sync", json={})
+        assert resp.status_code == 400
+
+    def test_api_v1_sync_invalid_source(self, client):
+        resp = client.post("/api/v1/sync", json={"source": "nonexistent_source_xyz"})
+        assert resp.status_code in (400, 202)
+
+    def test_api_v1_runs_current(self, client):
+        resp = client.get("/api/v1/runs/current")
+        assert resp.status_code in (200, 404)
+
+    def test_api_v1_logs_returns_200(self, client):
+        resp = client.get("/api/v1/logs")
+        assert resp.status_code in (200, 404)
+
+    def test_openapi_yaml_accessible(self, client):
+        resp = client.get("/api/v1/openapi.yaml")
+        assert resp.status_code in (200, 404)
+
+    def test_openapi_json_accessible(self, client):
+        resp = client.get("/api/v1/openapi.json")
+        assert resp.status_code in (200, 404)
