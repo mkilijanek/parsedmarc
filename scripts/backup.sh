@@ -55,7 +55,9 @@ query = parse_qs(parsed.query)
 sslmode = query.get("sslmode", [""])[0]
 
 def emit(name: str, value: str) -> None:
-    safe = value.replace("\\", "\\\\").replace('"', '\\"')
+    # Escape for eval: backslashes first, then double-quotes, dollar signs, and backticks.
+    # Without this, passwords like "pa$$word" or "pa`id`word" execute shell expansions.
+    safe = value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
     print(f'{name}="{safe}"')
 
 emit("PGHOST", parsed.hostname or "localhost")

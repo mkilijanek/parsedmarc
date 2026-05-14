@@ -187,7 +187,7 @@ class DBCircuitBreaker:
             if self._half_open:
                 return False
             if now >= self._open_until:
-                if self._open_until > 0.0 and not self._half_open:
+                if self._open_until > 0.0:
                     self._half_open = True
                 # Closed or cooldown elapsed -> allow a normal call or a single probe.
                 return True
