@@ -72,7 +72,8 @@ def test_dark_mode_toggle_script_present(client, sample_indicators):
     response = client.get("/indicators")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "localStorage.setItem(themeKey, next);" in html
+    # localStorage is wrapped in safe helpers (_lsGet/_lsSet) to handle SecurityError
+    assert "lsSet(themeKey, next)" in html
     assert "id=\"themeToggle\"" in html
 
 
@@ -107,9 +108,9 @@ def test_dark_mode_toggle_present_on_overview_and_logs(client, sample_indicators
     overview_html = overview.get_data(as_text=True)
     logs_html = logs.get_data(as_text=True)
     assert "id=\"themeToggle\"" in overview_html
-    assert "localStorage.getItem(themeKey)" in overview_html
+    assert "lsGet(themeKey)" in overview_html
     assert "id=\"themeToggle\"" in logs_html
-    assert "localStorage.getItem(themeKey)" in logs_html
+    assert "lsGet(themeKey)" in logs_html
 
 
 def test_global_topbar_present_on_indicators_and_admin(admin_client, client, sample_indicators, sample_feed_stats):

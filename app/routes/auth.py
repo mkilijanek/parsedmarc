@@ -255,8 +255,11 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
                 "</div>"
             )
             if "<body" in body:
-                # Insert after opening body tag
-                body = body.replace(">", ">" + warning_banner, 1)
+                # Find the closing > of the <body ...> tag to insert after it,
+                # not the first > in the document (which belongs to <!doctype>).
+                body_start = body.index("<body")
+                tag_end = body.index(">", body_start)
+                body = body[:tag_end + 1] + warning_banner + body[tag_end + 1:]
             else:
                 body = warning_banner + body
             response.set_data(body)
