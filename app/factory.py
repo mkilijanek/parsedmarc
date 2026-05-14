@@ -1767,7 +1767,7 @@ def create_app() -> Flask:
                     .order_by(func.count().desc())
                     .limit(20)
                 ).all()
-                warm_payload = {r.type: r.cnt for r in rows}
+                warm_payload = {row.type: row.cnt for row in rows}
                 cache_key = _cache_key("warm:indicator_type_counts")
                 r.setex(cache_key, max(60, int(cfg.CACHE_TTL)), json.dumps(warm_payload))
                 # Total active count

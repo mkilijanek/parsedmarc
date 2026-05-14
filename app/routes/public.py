@@ -149,7 +149,6 @@ def register_public_routes(
             if source not in source_options:
                 source_options.append(source)
         except Exception:
-            db.close()
             logger.exception("indicators_view_query_failed")
             return jsonify({"error": "Query failed"}), 400
         finally:

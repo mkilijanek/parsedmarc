@@ -96,11 +96,6 @@ def should_redirect_auth_surface_to_https(cfg) -> bool:
     return incoming_port == app_port and incoming_port != https_port
 
 
-def _get_db():
-    from ..db import get_db
-    return next(get_db())
-
-
 def register_auth_routes(app, *, limiter, cfg) -> None:
     def _ensure_admin_csrf_token() -> str:
         token = str(session.get("admin_csrf_token") or "").strip()
@@ -109,9 +104,18 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
             session["admin_csrf_token"] = token
         return token
 
+    def _with_db(fn):
+        from ..db import get_db
+        gen = get_db()
+        db = next(gen)
+        try:
+            return fn(db)
+        finally:
+            gen.close()
+
     def _resolve_admin_api_token() -> str:
         try:
-            return get_admin_api_token(_get_db(), cfg)
+            return _with_db(lambda db: get_admin_api_token(db, cfg))
         except Exception:
             return (cfg.ADMIN_API_TOKEN or "").strip()
 
@@ -120,7 +124,7 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
 
     def _admin_auth_disabled() -> bool:
         try:
-            return not get_admin_auth_enabled(_get_db(), cfg)
+            return not _with_db(lambda db: get_admin_auth_enabled(db, cfg))
         except Exception:
             if getattr(cfg.runtime, "APP_ENV", "development") == "production":
                 return bool(
@@ -131,7 +135,7 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
 
     def _admin_panel_disabled() -> bool:
         try:
-            return not get_admin_panel_enabled(_get_db(), cfg)
+            return not _with_db(lambda db: get_admin_panel_enabled(db, cfg))
         except Exception:
             return not getattr(cfg.security, "ADMIN_PANEL_ENABLED", True)
 
