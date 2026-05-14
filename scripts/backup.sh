@@ -101,9 +101,13 @@ if [[ -n "${REDIS_URL}" ]]; then
   REDIS_PASS=$(echo "${REDIS_URL}" | sed -E 's|redis://:([^@]*)@.*|\1|' || echo "")
 
   REDIS_CLI_ARGS=(-h "${REDIS_HOST}" -p "${REDIS_PORT}")
-  [[ -n "${REDIS_PASS}" ]] && REDIS_CLI_ARGS+=(-a "${REDIS_PASS}")
-
-  redis-cli "${REDIS_CLI_ARGS[@]}" BGSAVE >/dev/null 2>&1 || log "redis-cli not available — skipping Redis backup"
+  # Use REDISCLI_AUTH env var instead of -a flag to keep the password out of
+  # the process argument list (visible via ps aux).
+  if [[ -n "${REDIS_PASS}" ]]; then
+    REDISCLI_AUTH="${REDIS_PASS}" redis-cli "${REDIS_CLI_ARGS[@]}" BGSAVE >/dev/null 2>&1 || log "redis-cli not available — skipping Redis backup"
+  else
+    redis-cli "${REDIS_CLI_ARGS[@]}" BGSAVE >/dev/null 2>&1 || log "redis-cli not available — skipping Redis backup"
+  fi
   log "Redis BGSAVE triggered (RDB will be saved by Redis to its configured dir)"
 else
   log "REDIS_URL not set — skipping Redis backup"

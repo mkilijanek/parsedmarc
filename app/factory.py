@@ -161,6 +161,7 @@ def create_app() -> Flask:
     app.config["SESSION_COOKIE_HTTPONLY"] = True  # Prevent JavaScript access
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # CSRF protection
     app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # 1 hour session
+    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB upload limit
 
     # Web UI blueprint
     app.register_blueprint(webui_bp)

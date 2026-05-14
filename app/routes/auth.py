@@ -330,7 +330,10 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         configured_role = str(getattr(cfg, "ADMIN_ROLE", "admin") or "admin").strip().lower()
         session["admin_role"] = configured_role if configured_role in ROLE_PERMISSIONS else "admin"
         session["admin_csrf_token"] = secrets.token_urlsafe(32)
-        return redirect(next_url if next_url.startswith("/") else "/admin")
+        # Reject protocol-relative URLs (//evil.com) that start with / but
+        # redirect off-domain when interpreted by browsers.
+        safe_next = next_url if (next_url.startswith("/") and not next_url.startswith("//")) else "/admin"
+        return redirect(safe_next)
 
     @app.post("/auth/logout")
     def auth_logout():

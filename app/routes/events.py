@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any, Callable, Dict
 
-from flask import Response, jsonify, request
+from flask import Response, jsonify, request, session
 from sqlalchemy import func, select
 
 _SSE_SLOT_LOCK = threading.Lock()
@@ -34,6 +34,8 @@ def register_events_routes(
     @limiter.limit("10 per minute")
     def api_events():
         """SSE stream: heartbeat, sync status, feed health, indicator count."""
+        if not session.get("admin_authenticated"):
+            return jsonify({"error": "unauthorized"}), 401
         if not getattr(cfg.runtime, "SSE_ENABLED", True):
             return jsonify({"error": "sse_disabled"}), 404
         worker_class = str(app.config.get("GUNICORN_WORKER_CLASS") or "").strip().lower()

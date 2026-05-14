@@ -241,19 +241,23 @@ class TestSSEEventsEndpoint:
     """Tests for /api/events SSE endpoint (#160)."""
 
     def test_events_endpoint_exists(self, client):
-        # SSE is streaming — just check the route responds
         with client.application.test_request_context():
             from flask import url_for
             url = url_for("api_events")
         assert url == "/api/events"
 
-    def test_events_content_type(self, client):
+    def test_events_requires_auth(self, client):
         resp = client.get("/api/events", headers={"Accept": "text/event-stream"})
-        # The response may be streamed; check we got the right content type
+        assert resp.status_code == 401
+
+    def test_events_content_type(self, admin_client):
+        resp = admin_client.get("/api/events", headers={"Accept": "text/event-stream"})
         assert "text/event-stream" in resp.content_type or resp.status_code == 200
 
     def test_events_reject_sync_workers_outside_testing(self, app):
         with app.test_client() as c:
+            with c.session_transaction() as sess:
+                sess["admin_authenticated"] = True
             app.config["TESTING"] = False
             app.config["GUNICORN_WORKER_CLASS"] = "sync"
             resp = c.get("/api/events", headers={"Accept": "text/event-stream"})
