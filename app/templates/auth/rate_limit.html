@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Login Temporarily Blocked</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; max-width: 42rem; }
+    code { background: #f3f3f3; padding: .1rem .25rem; }
+  </style>
+</head>
+<body>
+  <h1>Too Many Login Attempts</h1>
+  <p>Admin login is temporarily rate-limited after repeated attempts from your IP address.</p>
+  <p>Wait about {{ wait_minutes }} minutes and try again with the currently configured <code>ADMIN_API_TOKEN</code>.</p>
+  {% if retry_after %}<p>Retry-After: about {{ retry_after }} seconds.</p>{% endif %}
+  {% if secure_hint %}{{ secure_hint|safe }}{% endif %}
+  <p>Correlation ID: <code>{{ corr }}</code></p>
+</body>
+</html>

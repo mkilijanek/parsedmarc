@@ -21,7 +21,7 @@ from threading import Lock, Thread
 from typing import Any, Dict, List
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from flask import Flask, Response, jsonify, make_response, request, session
+from flask import Flask, Response, jsonify, make_response, render_template, request, session
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy import and_, func, or_, select, text
@@ -364,29 +364,14 @@ def create_app() -> Flask:
                     f"<p>If you opened the direct app port, switch to the HTTPS admin entrypoint: "
                     f"<a href=\"{_esc(target)}\">{_esc(target)}</a>.</p>"
                 )
-            retry_hint = f"<p>Retry-After: about {retry_after} seconds.</p>" if retry_after else ""
-            html_body = f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Admin Login Temporarily Blocked</title>
-  <style>
-    body {{ font-family: sans-serif; margin: 2rem; max-width: 42rem; }}
-    code {{ background: #f3f3f3; padding: .1rem .25rem; }}
-  </style>
-</head>
-<body>
-  <h1>Too Many Login Attempts</h1>
-  <p>Admin login is temporarily rate-limited after repeated attempts from your IP address.</p>
-  <p>Wait about {wait_minutes} minutes and try again with the currently configured <code>ADMIN_API_TOKEN</code>.</p>
-  {retry_hint}
-  {secure_hint}
-  <p>Correlation ID: <code>{_esc(corr)}</code></p>
-</body>
-</html>"""
+            html_body = render_template(
+                "auth/rate_limit.html",
+                wait_minutes=wait_minutes,
+                retry_after=retry_after,
+                secure_hint=secure_hint,
+                corr=corr,
+            )
             response = make_response(html_body, 429)
-            response.headers["Content-Type"] = "text/html; charset=utf-8"
             if retry_after:
                 response.headers["Retry-After"] = retry_after
             return response

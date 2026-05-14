@@ -4,7 +4,7 @@ import hmac
 import secrets
 from urllib.parse import quote
 
-from flask import Response, current_app, redirect, request, session, url_for
+from flask import Response, current_app, redirect, render_template, request, session, url_for
 
 from ..settings_store import (
     admin_auth_disable_allowed_in_production,
@@ -271,49 +271,20 @@ def register_auth_routes(app, *, limiter, cfg) -> None:
         next_url = (request.args.get("next") or "/admin").strip() or "/admin"
         msg = (request.args.get("msg") or "").strip()
         configured = _admin_auth_configured()
-        canonical_url = canonical_https_url(cfg, f"/auth/login?next={quote(next_url, safe='/?:=&')}")
         https_hint = ""
         if should_redirect_auth_surface_to_https(cfg):
+            canonical_url = canonical_https_url(cfg, f"/auth/login?next={quote(next_url, safe='/?:=&')}")
             https_hint = (
-                "<p><strong>Use the HTTPS admin entrypoint.</strong> "
+                f"<p><strong>Use the HTTPS admin entrypoint.</strong> "
                 f"<a href=\"{canonical_url}\">{canonical_url}</a></p>"
             )
-        disabled_note = (
-            "<p><strong>Admin authentication is not configured.</strong> "
-            "Set <code>ADMIN_API_TOKEN</code> before using the admin panel.</p>"
-            if not configured
-            else ""
+        return render_template(
+            "auth/login.html",
+            next_url=quote(next_url, safe="/:?=&"),
+            msg=msg,
+            configured=configured,
+            https_hint=https_hint,
         )
-        message_html = f"<p style='color:#b00020'>{msg}</p>" if msg else ""
-        escaped_next = quote(next_url, safe="/:?=&")
-        return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Admin Login</title>
-  <style>
-    body {{ font-family: sans-serif; margin: 2rem; max-width: 32rem; }}
-    form {{ display: grid; gap: .75rem; }}
-    input {{ padding: .6rem; }}
-    button {{ padding: .7rem 1rem; }}
-    code {{ background: #f3f3f3; padding: .1rem .25rem; }}
-  </style>
-</head>
-<body>
-  <h1>Admin Login</h1>
-  <p>Authenticate with the configured admin token to access <code>/admin</code>.</p>
-  {disabled_note}
-  {https_hint}
-  {message_html}
-  <form method="post" action="/auth/login">
-    <input type="hidden" name="next" value="{escaped_next}">
-    <label for="admin_token">Admin token</label>
-    <input id="admin_token" type="password" name="admin_token" autocomplete="current-password" required>
-    <button type="submit">Login</button>
-  </form>
-</body>
-</html>"""
 
     @app.post("/auth/login")
     @limiter.limit(_get_dynamic_login_rate_limit)
