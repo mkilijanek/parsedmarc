@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import os
 import re
 from flask import request as flask_request, abort
 from typing import Optional
+
+from .runtime_env import get_runtime_env
 
 _MAX_QUERY_LEN = 500
 
@@ -39,7 +40,7 @@ def validate_search_query(query: str) -> bool:
     return not any(d in up for d in dangerous)
 
 def enforce_allowed_hosts() -> None:
-    allowed = os.getenv("ALLOWED_HOSTS", "*").strip()
+    allowed = (get_runtime_env("ALLOWED_HOSTS", "*") or "*").strip()
     if allowed == "*" or not allowed:
         return
     allowed_set = {h.strip().lower() for h in allowed.split(",") if h.strip()}
@@ -57,7 +58,7 @@ def get_client_ip() -> Optional[str]:
 
     Returns the most reliable IP address available.
     """
-    trusted_proxy_count = int(os.getenv("TRUSTED_PROXY_COUNT", "0"))
+    trusted_proxy_count = int(get_runtime_env("TRUSTED_PROXY_COUNT", "0") or "0")
 
     if trusted_proxy_count > 0 and "X-Forwarded-For" in request.headers:
         # X-Forwarded-For format: client, proxy1, proxy2, ...

@@ -63,7 +63,7 @@ from .models import (
     SyncJob,
     tags_contains,
 )
-from .runtime_env import push_runtime_env_overrides, update_proxy_settings_from_mapping
+from .runtime_env import get_runtime_env, push_runtime_env_overrides, update_proxy_settings_from_mapping
 from .query_parser import Term, Token, parse_kibana_query
 from .routes import (
     register_api_v1_routes,
@@ -150,7 +150,7 @@ def create_app() -> Flask:
 
     app = Flask(__name__)
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
-    app.config["GUNICORN_WORKER_CLASS"] = str(os.getenv("GUNICORN_WORKER_CLASS", ""))
+    app.config["GUNICORN_WORKER_CLASS"] = str(get_runtime_env("GUNICORN_WORKER_CLASS", "") or "")
     register_db_circuit_observers(
         on_success=_db_circuit_breaker.record_success,
         on_failure=_db_circuit_breaker.record_failure,

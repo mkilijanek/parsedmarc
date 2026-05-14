@@ -79,10 +79,10 @@ def _source_env_suffix(source: str) -> str:
 
 
 def _env_feed_limiter_config(*, source: str = "external_feed") -> tuple[bool, int, int]:
-    enabled = os.getenv("FEED_RATE_LIMIT_ENABLED", "true").strip().lower() in {"1", "true", "yes", "y", "on"}
+    enabled = (get_runtime_env("FEED_RATE_LIMIT_ENABLED", "true") or "true").strip().lower() in {"1", "true", "yes", "y", "on"}
     suffix = _source_env_suffix(source)
-    per_second = int(os.getenv(f"FEED_REQUESTS_PER_SECOND_{suffix}", os.getenv("FEED_REQUESTS_PER_SECOND", "10")))
-    per_minute = int(os.getenv(f"FEED_REQUESTS_PER_MINUTE_{suffix}", os.getenv("FEED_REQUESTS_PER_MINUTE", "55")))
+    per_second = int(get_runtime_env(f"FEED_REQUESTS_PER_SECOND_{suffix}") or get_runtime_env("FEED_REQUESTS_PER_SECOND", "10") or "10")
+    per_minute = int(get_runtime_env(f"FEED_REQUESTS_PER_MINUTE_{suffix}") or get_runtime_env("FEED_REQUESTS_PER_MINUTE", "55") or "55")
     return enabled, per_second, per_minute
 
 

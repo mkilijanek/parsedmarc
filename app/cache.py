@@ -4,15 +4,16 @@ import os
 import redis
 from typing import Optional
 
-REDIS_URL = os.getenv("REDIS_URL", "")
+from .runtime_env import get_runtime_env
 
 _client: Optional[redis.Redis] = None
 
 def get_redis() -> redis.Redis:
     global _client
     if _client is None:
+        redis_url = get_runtime_env("REDIS_URL", "") or os.getenv("REDIS_URL", "")
         _client = redis.from_url(
-            REDIS_URL,
+            redis_url,
             decode_responses=True,
             socket_timeout=5,
             socket_connect_timeout=5,
