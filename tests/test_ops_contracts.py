@@ -68,8 +68,11 @@ def test_admin_routes_use_per_user_rate_limit_keys():
 
 
 def test_feed_runtime_overrides_fall_back_to_env_when_db_row_absent():
-    factory = (ROOT / "app" / "factory.py").read_text()
-    assert "def _runtime_override_or_env(" in factory
-    assert 'return str(os.environ.get(env_key) or "")' in factory
-    assert 'setting_key=_feed_secret_key(feed.source_id, str(f["key"]))' in factory
-    assert 'env_key=env_key' in factory
+    # Implementation moved to app/services/settings_svc.py and
+    # app/services/scheduler_svc.py during factory.py decomposition.
+    settings_svc = (ROOT / "app" / "services" / "settings_svc.py").read_text()
+    assert "def _runtime_override_or_env(" in settings_svc
+    assert 'return str(os.environ.get(env_key) or "")' in settings_svc
+    scheduler_svc = (ROOT / "app" / "services" / "scheduler_svc.py").read_text()
+    assert 'setting_key=feed_secret_key_fn(feed.source_id, str(f["key"]))' in scheduler_svc
+    assert 'env_key=env_key' in scheduler_svc
