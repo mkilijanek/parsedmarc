@@ -752,14 +752,51 @@ def create_app() -> Flask:
         }
 
     def _is_valid_http_url(value: str) -> bool:
-        v = (value or "").strip().lower()
-        return v.startswith("http://") or v.startswith("https://")
+        v = (value or "").strip()
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(v)
+            return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+        except Exception:
+            return False
+
+    def _is_valid_cron_field(expr: str, *, min_v: int, max_v: int) -> bool:
+        expr = expr.strip()
+        if expr == "*":
+            return True
+        if expr.startswith("*/"):
+            try:
+                step = int(expr[2:])
+                return step > 0
+            except ValueError:
+                return False
+        for part in expr.split(","):
+            part = part.strip()
+            try:
+                n = int(part)
+                if not (min_v <= n <= max_v):
+                    return False
+            except ValueError:
+                return False
+        return True
 
     def _validate_feed_form(feed: Feed, form_data: Any, state: Dict[str, Any], db: Session) -> List[str]:
         errors: List[str] = []
         schedule_cron = (form_data.get("schedule_cron") or "*/15 * * * *").strip()
-        if len(schedule_cron.split()) != 5:
+        cron_parts = schedule_cron.split()
+        if len(cron_parts) != 5:
             errors.append("Invalid cron expression (expected 5 fields).")
+        else:
+            _cron_field_specs = [
+                (cron_parts[0], 0, 59, "minute"),
+                (cron_parts[1], 0, 23, "hour"),
+                (cron_parts[2], 1, 31, "day"),
+                (cron_parts[3], 1, 12, "month"),
+                (cron_parts[4], 0, 7, "day-of-week"),
+            ]
+            bad = [name for expr, mn, mx, name in _cron_field_specs if not _is_valid_cron_field(expr, min_v=mn, max_v=mx)]
+            if bad:
+                errors.append(f"Invalid cron field(s): {', '.join(bad)}.")
         if feed.source_type in {"misp", "mwdb"}:
             base_url = (form_data.get("base_url") or "").strip()
             if not base_url:
@@ -1734,19 +1771,27 @@ def create_app() -> Flask:
         if isinstance(last, datetime) and (now - last).total_seconds() < interval_s:
             return
         cutoff = now.replace(tzinfo=None) - timedelta(days=retention_days)
+        dlq_retention_days = int(getattr(cfg, "DLQ_RETENTION_DAYS", retention_days))
+        dlq_cutoff = now.replace(tzinfo=None) - timedelta(days=dlq_retention_days)
         db = _db()
         try:
             deleted = db.execute(
                 AppLog.__table__.delete().where(AppLog.created_at < cutoff)
             ).rowcount
+            dlq_deleted = db.execute(
+                DeadLetterJob.__table__.delete().where(
+                    (DeadLetterJob.__table__.c.created_at < dlq_cutoff)
+                )
+            ).rowcount
             db.commit()
         except Exception:
             db.rollback()
             deleted = 0
+            dlq_deleted = 0
         finally:
             db.close()
         scheduler_state["last_log_retention_at"] = now
-        _app_log("INFO", "maintenance", "log_retention_cleanup", metadata={"deleted": deleted, "retention_days": retention_days})
+        _app_log("INFO", "maintenance", "log_retention_cleanup", metadata={"deleted": deleted, "retention_days": retention_days, "dlq_deleted": dlq_deleted, "dlq_retention_days": dlq_retention_days})
 
     def _run_cache_warming_if_due(now: datetime) -> None:
         """Pre-populate Redis for the most common read queries on cold start or after TTL expiry."""
