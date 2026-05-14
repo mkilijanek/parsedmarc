@@ -2812,3 +2812,65 @@ Coverage goal: raise from 68% to >=75%
   - rebased the completed milestone work onto `origin/main`
   - preserved the existing public `1.8.1` tag/history
   - prepared the delivery for the next patch release tag instead of rewriting an already-published release
+
+---
+
+2026-05-14
+
+[context]
+Multi-session issue sweep: design system CSS integration + all open GitHub issues (#187–#204).
+
+[priority batches addressed]
+
+[P0 — data integrity / connection leaks]
+- #187: Removed redundant db.close() in public.py indicators_view except block (finally covers all paths)
+- Fixed _with_db() generator in auth.py to always call gen.close() via try/finally
+- Renamed comprehension variable r → row in factory.py cache warming (clarity, not bug)
+
+[P1 — security]
+- Open redirect in /auth/login: reject next_url starting with "//" even when it starts with "/"
+- SSE /api/events: added session.get("admin_authenticated") guard — unauthenticated callers get 401
+- backup.sh: switched Redis -a password to REDISCLI_AUTH env var (keeps password out of ps aux)
+- factory.py: added MAX_CONTENT_LENGTH = 16 MB
+
+[P2 — defensive hardening]
+- localStorage safety wrappers (lsGet/lsSet) in layout.html — prevent SecurityError crash in sandboxed iframes / Firefox private mode
+- Auth warning banner injection fixed to insert after <body ...> tag close, not at first ">"
+- scheduler_state reads in ops_api.py / api_v1.py replaced with dict.copy() snapshot for atomic two-field read
+
+[P3 — runtime config consistency]
+- Migrated os.getenv → get_runtime_env for: ALLOWED_HOSTS, TRUSTED_PROXY_COUNT, REDIS_URL (lazy in get_redis()), FEED_RATE_LIMIT_ENABLED, FEED_REQUESTS_PER_SECOND, FEED_REQUESTS_PER_MINUTE, GUNICORN_WORKER_CLASS
+- Removed now-unused os import from security.py
+
+[P4/P5 — validation and retention]
+- #198: _is_valid_http_url now uses urlparse + netloc check (rejects bare schemes, spaces, null bytes)
+- #197: _validate_feed_form now validates cron field ranges (0-59 for minute, etc.)
+- #196: _run_log_retention_if_due now also purges dead_letter_jobs beyond DLQ_RETENTION_DAYS (default 90)
+- Added DLQ_RETENTION_DAYS to RuntimeConfig
+- #194: Extracted login page and rate-limit page from inline f-strings to app/templates/auth/login.html and rate_limit.html; render_template() used throughout
+
+[deps]
+- Bumped Mako 1.3.11 → 1.3.12 (CVE-2026-44307 path traversal on Windows)
+- Bumped cryptography 46.0.7 → 48.0.0 (CVE-2026-44307 subgroup attack, CVE-2026-39892 buffer overflow)
+
+[bugs]
+- #189: backup.sh emit() now escapes $ and backticks before eval (passwords like "pa$$word" no longer expand)
+- #191: Removed dead not self._half_open guard in DBCircuitBreaker.allow_request()
+
+[false positives confirmed]
+- BUG-1 (metadata overwrite): upsert index includes source, so conflicts only occur within the same source; metadata dict always has one key; overwrite is correct
+- BUG-9 (Python comprehension scope leak): Python 3 comprehensions don't leak variables; outer r (Redis) was never overwritten
+- SEC-1 (audit routes unprotected): _require_admin_session before_request hook covers all /admin/* paths
+
+[tests]
+- PYTHONPATH=/home/kili/Repo/ioc-service .venv/bin/pytest tests/ -x -q → 846 passed, 2 skipped throughout
+
+[issues closed]
+- #187, #188, #189, #191, #192, #194, #195, #196, #197, #198, #204
+
+[remaining open issues]
+- #193: factory.py God Object decomposition (2379 lines) — large refactor requiring dedicated planning
+- #199: SSE_MAX_CONNECTIONS semaphore ignores runtime config changes — low priority
+- #200: test_coverage_boost naming — cosmetic, low priority
+- #201, #202: factory.py service extraction — large refactor
+- #203: interactive Docker Compose installer — enhancement
