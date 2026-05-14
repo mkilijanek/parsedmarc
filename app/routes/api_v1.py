@@ -470,11 +470,12 @@ def register_api_v1_routes(
             latest = list(db.scalars(select(FeedRun).order_by(FeedRun.started_at.desc()).limit(20)).all())
             queued_jobs = list(db.scalars(select(SyncJob).where(SyncJob.status.in_(["queued", "running"])).order_by(SyncJob.created_at.asc()).limit(50)).all())
             heartbeat = _get_setting(db, "scheduler.heartbeat", "")
+            sched_snap = scheduler_state.copy()
             return jsonify(
                 {
                     "scheduler_heartbeat": heartbeat,
-                    "active_run_id": scheduler_state.get("active_run_id"),
-                    "active_job_id": scheduler_state.get("active_job_id"),
+                    "active_run_id": sched_snap.get("active_run_id"),
+                    "active_job_id": sched_snap.get("active_job_id"),
                     "queued_jobs": [
                         {
                             "job_id": j.job_id,
