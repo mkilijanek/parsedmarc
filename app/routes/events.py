@@ -14,7 +14,8 @@ from flask import Response, jsonify, request, session
 from sqlalchemy import func, select
 
 _SSE_SLOT_LOCK = threading.Lock()
-_SSE_CONNECTION_SLOTS: Dict[int, threading.BoundedSemaphore] = {}
+# Maps app id → (capacity, BoundedSemaphore). Recreated when capacity changes.
+_SSE_CONNECTION_SLOTS: Dict[int, tuple[int, threading.BoundedSemaphore]] = {}
 
 
 def register_events_routes(
@@ -46,10 +47,13 @@ def register_events_routes(
             }), 503
         with _SSE_SLOT_LOCK:
             limiter_key = id(app)
-            semaphore = _SSE_CONNECTION_SLOTS.setdefault(
-                limiter_key,
-                threading.BoundedSemaphore(max(1, int(getattr(cfg.runtime, "SSE_MAX_CONNECTIONS", 25)))),
-            )
+            current_max = max(1, int(getattr(cfg.runtime, "SSE_MAX_CONNECTIONS", 25)))
+            existing = _SSE_CONNECTION_SLOTS.get(limiter_key)
+            if existing is None or existing[0] != current_max:
+                # Config changed (or first call) — create a fresh semaphore.
+                # Connections on the old semaphore release it when they close.
+                _SSE_CONNECTION_SLOTS[limiter_key] = (current_max, threading.BoundedSemaphore(current_max))
+            semaphore = _SSE_CONNECTION_SLOTS[limiter_key][1]
         if not semaphore.acquire(blocking=False):
             return jsonify({"error": "sse_capacity_exceeded"}), 503
 
