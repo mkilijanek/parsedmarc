@@ -13,21 +13,33 @@
 
 set -euo pipefail
 
-# ── Locate script dir ────────────────────────────────────────────────────────
+# ── Bash version guard ────────────────────────────────────────────────────────
+# Associative arrays (declare -A) require bash 4.0+.
+# macOS ships bash 3.2; users need to install bash via Homebrew.
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "ERROR: bash 4.0 or higher is required (found ${BASH_VERSION})." >&2
+  echo "       On macOS: brew install bash" >&2
+  exit 1
+fi
+
+# ── Locate script dir ─────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/.env"
 NON_INTERACTIVE=false
+NGINX_DIR=""   # overridable via --nginx-dir for testing / custom layouts
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --non-interactive) NON_INTERACTIVE=true; shift ;;
     --env-file=*)      ENV_FILE="${1#*=}"; shift ;;
     --env-file)        ENV_FILE="$2"; shift 2 ;;
+    --nginx-dir=*)     NGINX_DIR="${1#*=}"; shift ;;
+    --nginx-dir)       NGINX_DIR="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
 
-# ── Colour helpers ───────────────────────────────────────────────────────────
+# ── Colour helpers ────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
   BOLD='\033[1m'; CYAN='\033[0;36m'; GREEN='\033[0;32m'
   YELLOW='\033[1;33m'; RED='\033[0;31m'; RESET='\033[0m'
@@ -40,15 +52,28 @@ success() { printf "${GREEN}✓ %s${RESET}\n" "$*"; }
 warn()    { printf "${YELLOW}WARNING: %s${RESET}\n" "$*"; }
 die()     { printf "${RED}ERROR: %s${RESET}\n" "$*" >&2; exit 1; }
 
-# ── Load existing .env ───────────────────────────────────────────────────────
+# ── Pre-flight checks ─────────────────────────────────────────────────────────
+command -v docker >/dev/null 2>&1 \
+  || warn "docker not found — install Docker before running 'docker compose up'."
+
+# ── Load existing .env ────────────────────────────────────────────────────────
 declare -A ENV_MAP
 if [[ -f "${ENV_FILE}" ]]; then
   info "Loading existing values from ${ENV_FILE}"
   while IFS= read -r line || [[ -n "${line}" ]]; do
-    [[ "${line}" =~ ^#.*$ || -z "${line}" ]] && continue
+    # Skip blank lines and comment lines (including leading-space comments)
+    [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
+    # Strip optional 'export ' prefix
+    line="${line#export }"
     key="${line%%=*}"
     val="${line#*=}"
-    ENV_MAP["${key}"]="${val}"
+    # Strip surrounding single or double quotes from the value
+    if [[ "${val}" =~ ^\"(.*)\"$ ]]; then
+      val="${BASH_REMATCH[1]}"
+    elif [[ "${val}" =~ ^\'(.*)\'$ ]]; then
+      val="${BASH_REMATCH[1]}"
+    fi
+    [[ -n "${key}" ]] && ENV_MAP["${key}"]="${val}"
   done < "${ENV_FILE}"
 fi
 
@@ -64,7 +89,7 @@ env_get() {
   fi
 }
 
-# ── Prompt helper ────────────────────────────────────────────────────────────
+# ── Prompt helper ─────────────────────────────────────────────────────────────
 # ask VAR_NAME "Question" "default"
 ask() {
   local var_name="$1" question="$2" default="$3"
@@ -97,7 +122,7 @@ ask_yn() {
   [[ "${answer,,}" =~ ^y(es)?$ ]] && printf -v "${var_name}" 'y' || printf -v "${var_name}" 'n'
 }
 
-# ── Validators ───────────────────────────────────────────────────────────────
+# ── Validators ────────────────────────────────────────────────────────────────
 is_valid_port() {
   local p="$1"
   [[ "${p}" =~ ^[0-9]+$ ]] && (( p >= 1 && p <= 65535 ))
@@ -110,6 +135,11 @@ require_port() {
     local val; val="${!var_name}"
     if is_valid_port "${val}"; then
       break
+    fi
+    # In non-interactive mode a bad default is a configuration error — abort
+    # rather than spin forever.
+    if [[ "${NON_INTERACTIVE}" == "true" ]]; then
+      die "Default value '${val}' for '${var_name}' is not a valid port (1-65535). Fix your .env file or supply a valid --env-file."
     fi
     warn "'${val}' is not a valid port (1-65535). Please try again."
   done
@@ -124,11 +154,49 @@ require_file() {
       break
     fi
     warn "File '${val}' not found. Please enter a valid path."
-    [[ "${NON_INTERACTIVE}" == "true" ]] && break
+    if [[ "${NON_INTERACTIVE}" == "true" ]]; then
+      die "Required file '${val}' (${var_name}) does not exist. Cannot continue in non-interactive mode."
+    fi
   done
 }
 
-# ── Banner ───────────────────────────────────────────────────────────────────
+# ── .env writer ───────────────────────────────────────────────────────────────
+# set_env_key rewrites one key in .env, preserving all other lines and their
+# ordering. Uses a temp-file + mv for atomicity; safe for any value including
+# those containing |, \, &, or newlines.
+_ENV_BACKED_UP=false
+set_env_key() {
+  local key="$1" val="$2"
+
+  # Take a one-time backup of the original .env before the first write.
+  if [[ "${_ENV_BACKED_UP}" == "false" && -f "${ENV_FILE}" ]]; then
+    cp "${ENV_FILE}" "${ENV_FILE}.bak" \
+      || warn "Could not create backup of ${ENV_FILE} — continuing anyway."
+    _ENV_BACKED_UP=true
+    info "Backup saved to ${ENV_FILE}.bak"
+  fi
+
+  if [[ -f "${ENV_FILE}" ]] && grep -qF "${key}=" "${ENV_FILE}"; then
+    local tmpfile
+    tmpfile="$(mktemp "${ENV_FILE}.tmp.XXXXXX")" \
+      || die "Cannot create a temporary file for .env update."
+    # Rewrite preserving every line except the one being replaced.
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+      if [[ "${line}" == "${key}="* ]]; then
+        printf '%s=%s\n' "${key}" "${val}"
+      else
+        printf '%s\n' "${line}"
+      fi
+    done < "${ENV_FILE}" > "${tmpfile}"
+    mv "${tmpfile}" "${ENV_FILE}"
+  else
+    printf '%s=%s\n' "${key}" "${val}" >> "${ENV_FILE}"
+  fi
+
+  ENV_MAP["${key}"]="${val}"
+}
+
+# ── Banner ────────────────────────────────────────────────────────────────────
 cat <<'BANNER'
 
   ╔═══════════════════════════════════════════════════════╗
@@ -137,21 +205,20 @@ cat <<'BANNER'
 
 BANNER
 
-# ── Step 1: Exposure mode ────────────────────────────────────────────────────
+# ── Step 1: Exposure mode ─────────────────────────────────────────────────────
 info "Step 1 — Exposure mode"
 echo "  direct  : app is accessed directly (no nginx)"
 echo "  nginx   : app sits behind nginx (TLS termination, rate limiting)"
 echo ""
 ask_yn USE_NGINX "Use nginx as reverse proxy?" "$(env_get USE_NGINX_SETUP n)"
 
-# ── Step 2: App port ─────────────────────────────────────────────────────────
+# ── Step 2: App port ──────────────────────────────────────────────────────────
 info "Step 2 — App port"
 if [[ "${USE_NGINX}" == "y" ]]; then
   DEFAULT_APP_PORT="$(env_get APP_HOST_PORT 8080)"
   require_port APP_HOST_PORT \
     "Internal app port (Docker host-side, nginx will proxy to this)" \
     "${DEFAULT_APP_PORT}"
-  # In nginx mode the app should only bind localhost
   ask_yn APP_LOCALHOST_ONLY "Bind app port to 127.0.0.1 only (recommended when behind nginx)?" "y"
 else
   DEFAULT_APP_PORT="$(env_get APP_HOST_PORT 7005)"
@@ -159,7 +226,7 @@ else
   APP_LOCALHOST_ONLY="n"
 fi
 
-# ── Step 3: Nginx-specific questions ─────────────────────────────────────────
+# ── Step 3: Nginx-specific questions ──────────────────────────────────────────
 if [[ "${USE_NGINX}" == "y" ]]; then
   info "Step 3 — nginx configuration"
 
@@ -168,6 +235,11 @@ if [[ "${USE_NGINX}" == "y" ]]; then
 
   DEFAULT_HTTPS_PORT="$(env_get HTTPS_PORT 7003)"
   require_port HTTPS_PORT "nginx HTTPS port" "${DEFAULT_HTTPS_PORT}"
+
+  # Port conflict: nginx ports must not equal the internal app port
+  if [[ "${HTTP_PORT}" == "${APP_HOST_PORT}" || "${HTTPS_PORT}" == "${APP_HOST_PORT}" ]]; then
+    die "Port conflict: APP_HOST_PORT (${APP_HOST_PORT}) must differ from the nginx ports (${HTTP_PORT}, ${HTTPS_PORT}). Both would bind the same Docker host port."
+  fi
 
   ask SERVER_NAME "Server name / domain (used in nginx server_name)" \
     "$(env_get SERVER_NAME "_")"
@@ -210,17 +282,39 @@ else
   TLS_CERT_PATH=""; TLS_KEY_PATH=""; TLS_CHAIN_PATH=""
 fi
 
-# ── Step 4: Generate nginx config ────────────────────────────────────────────
+# ── Step 4: Generate nginx config ─────────────────────────────────────────────
 if [[ "${USE_NGINX}" == "y" ]]; then
   info "Step 4 — Generating nginx config"
-  NGINX_CONF_DIR="${SCRIPT_DIR}/nginx/conf.d"
-  mkdir -p "${NGINX_CONF_DIR}"
+  NGINX_CONF_DIR="${NGINX_DIR:-${SCRIPT_DIR}/nginx/conf.d}"
+  mkdir -p "${NGINX_CONF_DIR}" \
+    || die "Cannot create directory '${NGINX_CONF_DIR}' — check permissions."
   NGINX_CONF="${NGINX_CONF_DIR}/default.conf"
+
+  # Back up existing nginx config if present
+  if [[ -f "${NGINX_CONF}" ]]; then
+    cp "${NGINX_CONF}" "${NGINX_CONF}.bak" \
+      || warn "Could not back up existing ${NGINX_CONF}."
+  fi
 
   if [[ "${TLS_ENABLED}" == "y" ]]; then
     CHAIN_DIRECTIVE=""
     if [[ -n "${TLS_CHAIN_PATH}" ]]; then
       CHAIN_DIRECTIVE="  ssl_trusted_certificate ${TLS_CHAIN_PATH};"
+    fi
+
+    # Omit port suffix in redirect URL when using the standard HTTPS port (443)
+    if [[ "${HTTPS_PORT}" == "443" ]]; then
+      HTTPS_REDIRECT_URL="https://\$host\$request_uri"
+    else
+      HTTPS_REDIRECT_URL="https://\$host:${HTTPS_PORT}\$request_uri"
+    fi
+
+    # Build the listen directive, optionally restricted to localhost
+    HTTP_LISTEN="${HTTP_PORT}"
+    HTTPS_LISTEN="${HTTPS_PORT} ssl http2"
+    if [[ "${NGINX_LOCALHOST_ONLY}" == "y" ]]; then
+      HTTP_LISTEN="127.0.0.1:${HTTP_PORT}"
+      HTTPS_LISTEN="127.0.0.1:${HTTPS_PORT} ssl http2"
     fi
 
     cat > "${NGINX_CONF}" <<NGINXCONF
@@ -230,7 +324,7 @@ upstream app_upstream {
 }
 
 server {
-  listen ${HTTP_PORT};
+  listen ${HTTP_LISTEN};
   server_name ${SERVER_NAME};
 
   location /.well-known/acme-challenge/ {
@@ -239,12 +333,12 @@ server {
   }
 
   location / {
-    return 301 https://\$host:${HTTPS_PORT}\$request_uri;
+    return 301 ${HTTPS_REDIRECT_URL};
   }
 }
 
 server {
-  listen ${HTTPS_PORT} ssl http2;
+  listen ${HTTPS_LISTEN};
   server_name ${SERVER_NAME};
 
   ssl_certificate     ${TLS_CERT_PATH};
@@ -292,6 +386,9 @@ ${CHAIN_DIRECTIVE}
 NGINXCONF
   else
     # HTTP-only nginx (plain proxy, no TLS)
+    HTTP_LISTEN="${HTTP_PORT}"
+    [[ "${NGINX_LOCALHOST_ONLY}" == "y" ]] && HTTP_LISTEN="127.0.0.1:${HTTP_PORT}"
+
     cat > "${NGINX_CONF}" <<NGINXCONF
 upstream app_upstream {
   server app:${APP_HOST_PORT};
@@ -299,7 +396,7 @@ upstream app_upstream {
 }
 
 server {
-  listen ${HTTP_PORT};
+  listen ${HTTP_LISTEN};
   server_name ${SERVER_NAME};
 
   client_max_body_size 5m;
@@ -320,17 +417,6 @@ fi
 
 # ── Step 5: Update .env ───────────────────────────────────────────────────────
 info "Step 5 — Updating ${ENV_FILE}"
-
-# Helper: set a key in .env (preserves comments and other keys).
-set_env_key() {
-  local key="$1" val="$2"
-  if [[ -f "${ENV_FILE}" ]] && grep -q "^${key}=" "${ENV_FILE}"; then
-    sed -i "s|^${key}=.*|${key}=${val}|" "${ENV_FILE}"
-  else
-    echo "${key}=${val}" >> "${ENV_FILE}"
-  fi
-  ENV_MAP["${key}"]="${val}"
-}
 
 # Deployment keys updated by this installer.
 APP_PORT_BIND="${APP_HOST_PORT}"
@@ -353,15 +439,15 @@ fi
 
 success ".env updated"
 
-# ── Step 6: Summary and next steps ───────────────────────────────────────────
+# ── Step 6: Summary and next steps ────────────────────────────────────────────
 echo ""
 printf "${BOLD}═══════════════ Setup complete ═══════════════${RESET}\n"
 echo ""
 echo "  Mode       : $([ "${USE_NGINX}" == 'y' ] && echo 'nginx reverse proxy' || echo 'direct')"
 echo "  App port   : ${APP_HOST_PORT}$([ "${APP_LOCALHOST_ONLY}" == 'y' ] && echo ' (localhost only)')"
 if [[ "${USE_NGINX}" == "y" ]]; then
-  echo "  HTTP port  : ${HTTP_PORT}"
-  echo "  HTTPS port : ${HTTPS_PORT}"
+  echo "  HTTP port  : ${HTTP_PORT}$([ "${NGINX_LOCALHOST_ONLY}" == 'y' ] && echo ' (localhost only)')"
+  echo "  HTTPS port : ${HTTPS_PORT}$([ "${NGINX_LOCALHOST_ONLY}" == 'y' ] && echo ' (localhost only)')"
   echo "  Server     : ${SERVER_NAME}"
   echo "  TLS        : $([ "${TLS_ENABLED}" == 'y' ] && echo 'enabled' || echo 'disabled')"
 fi
@@ -373,8 +459,19 @@ if [[ "${USE_NGINX}" == "y" ]]; then
 else
   echo "  1. docker compose up -d"
 fi
-echo "  3. docker compose run --rm migrate"
+echo "  2. docker compose run --rm migrate"
 _scheme="http"; [[ "${TLS_ENABLED}" == "y" ]] && _scheme="https"
-_port="${APP_HOST_PORT}"; [[ "${USE_NGINX}" == "y" ]] && _port="${HTTPS_PORT:-${HTTP_PORT}}"
-echo "  4. Open ${_scheme}://${SERVER_NAME}:${_port}/health"
+if [[ "${USE_NGINX}" == "y" ]]; then
+  _display_host="${SERVER_NAME}"
+  _port="${HTTPS_PORT:-${HTTP_PORT}}"
+  # Standard ports don't need to appear in the URL
+  if [[ "${_scheme}" == "https" && "${_port}" == "443" ]] \
+     || [[ "${_scheme}" == "http"  && "${_port}" == "80"  ]]; then
+    echo "  3. Open ${_scheme}://${_display_host}/health"
+  else
+    echo "  3. Open ${_scheme}://${_display_host}:${_port}/health"
+  fi
+else
+  echo "  3. Open ${_scheme}://localhost:${APP_HOST_PORT}/health"
+fi
 echo ""
