@@ -2874,3 +2874,50 @@ Multi-session issue sweep: design system CSS integration + all open GitHub issue
 - #200: test_coverage_boost naming — cosmetic, low priority
 - #201, #202: factory.py service extraction — large refactor
 - #203: interactive Docker Compose installer — enhancement
+
+2026-05-15
+
+[session: CI fixes + post-decomposition cleanup]
+
+[CI failures fixed]
+- Ruff F401: removed 6 stale imports from factory.py (export_jobs_pending,
+  sync_job_retries_total, sync_jobs_queued, sync_jobs_running, build_feed_session,
+  redact_proxy_credentials) — left over from God Object decomposition
+- Alembic StringDataRightTruncation: migration 0007_dead_letter_job_requeue_state
+  (35 chars) exceeded VARCHAR(32). Fixed by renaming revision ID to
+  0007_dlq_requeue_state (22 chars). Reverted env.py ALTER TABLE workaround
+  (broke SQLite in schema drift job).
+- CI is now fully green: all jobs pass.
+
+[lint cleanup — 38 ruff violations cleared across app/]
+- F401: unused imports in cli.py, security.py, services/common.py, cleanup.py,
+  export_svc.py, query_parser.py, malwarebazaar.py, scheduler_svc.py, webui.py,
+  metrics.py (re-exports annotated with noqa), routes/events.py, routes/public.py
+- F841: dead variable captures removed from routes/events.py (SyncJob),
+  routes/public.py (request_count, request_duration)
+- E701: expanded inline-if in formatters.py
+- E741: renamed ambiguous `l` → `lvl` in routes/logs.py
+- services/__init__.py: all re-export imports annotated with noqa: F401
+- Result: ruff check app/ → All checks passed!
+
+[test coverage — new service modules]
+- tests/test_scheduler_svc.py (25 tests): cron matching (wildcard, step, list,
+  exact hour, comma-list, disabled feeds, same-minute dedup, invalid expr),
+  advisory lock non-postgresql path, log retention guard, backlog metrics
+  scheduler_svc.py: 17% → 34%
+- tests/test_settings_svc.py (22 tests): encrypt/decrypt v2 round-trip, wrong key,
+  malformed blobs, CRUD get/set (new/existing row, secret flag), mask_secret,
+  runtime_override_or_env
+  settings_svc.py: 62% → 82% (remaining: v1 legacy decrypt, proxy bootstrap)
+- tests/test_feed_config_svc.py (31 tests): is_valid_http_url, proxy_test_expected_match,
+  validate_feed_form (cron, URL, abusech), key helpers
+  feed_config_svc.py: 66% → 70%
+
+[test count]
+- 846 → 924 passed, 2 skipped
+
+[repository state — 2026-05-15]
+- All GitHub issues: 0 open
+- All CI jobs: passing
+- ruff violations: 0 in app/
+- Tests: 924 passed, 2 skipped
