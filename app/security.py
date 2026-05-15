@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from flask import request as flask_request, abort
 from typing import Optional
 

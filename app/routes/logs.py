@@ -30,7 +30,7 @@ def _build_filter_stmt(AppLog, request_args):
     if job_id:
         stmt = stmt.where(AppLog.run_id == job_id)
     if level:
-        levels = [l.strip() for l in level.replace(",", "|").split("|") if l.strip()]
+        levels = [lvl.strip() for lvl in level.replace(",", "|").split("|") if lvl.strip()]
         if len(levels) == 1:
             stmt = stmt.where(AppLog.level == levels[0])
         else:

@@ -12,7 +12,6 @@ from threading import Thread
 from typing import Any, Dict, List
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from ..formatters import FORMATTERS
 from ..models import ExportJob, Indicator

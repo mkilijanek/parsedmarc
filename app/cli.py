@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from dataclasses import dataclass
 from datetime import datetime, date, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple

@@ -32,8 +32,10 @@ def _ip_or_all(indicators: Iterable[Indicator]) -> List[Indicator]:
     return rows if rows else list(indicators)
 
 def _severity_from_confidence(conf: int) -> str:
-    if conf >= 85: return "high"
-    if conf >= 65: return "medium"
+    if conf >= 85:
+        return "high"
+    if conf >= 65:
+        return "medium"
     return "low"
 
 def _tlp_lower(tlp: str) -> str:

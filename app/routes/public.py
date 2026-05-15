@@ -47,8 +47,6 @@ def register_public_routes(
     FORMATTERS = deps["FORMATTERS"]
     DB_SUPPORTED_FORMATS = deps["DB_SUPPORTED_FORMATS"]
     query_correlations = deps["query_correlations"]
-    request_count = deps["request_count"]
-    request_duration = deps["request_duration"]
     active_indicators = deps["active_indicators"]
     generate_latest = deps["generate_latest"]
     CONTENT_TYPE_LATEST = deps["CONTENT_TYPE_LATEST"]

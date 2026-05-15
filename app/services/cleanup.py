@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import delete, update
+from sqlalchemy import delete
 
 from ..config import Config
 from ..db import SessionLocal

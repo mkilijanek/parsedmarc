@@ -8,9 +8,9 @@ from __future__ import annotations
 import json
 import threading
 import time
-from typing import Any, Callable, Dict
+from typing import Any, Dict
 
-from flask import Response, jsonify, request, session
+from flask import Response, jsonify, session
 from sqlalchemy import func, select
 
 _SSE_SLOT_LOCK = threading.Lock()
@@ -28,7 +28,6 @@ def register_events_routes(
     _db = deps["_db"]
     _dep_status = deps["_dep_status"]
     Indicator = deps["Indicator"]
-    SyncJob = deps["SyncJob"]
     FeedRun = deps["FeedRun"]
 
     @app.get("/api/events")
