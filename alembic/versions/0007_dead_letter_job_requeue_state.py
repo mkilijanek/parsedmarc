@@ -1,6 +1,6 @@
 """dead letter job requeue state
 
-Revision ID: 0007_dead_letter_job_requeue_state
+Revision ID: 0007_dlq_requeue_state
 Revises: 0006_dead_letter_jobs
 Create Date: 2026-04-30 12:00:00
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = "0007_dead_letter_job_requeue_state"
+revision = "0007_dlq_requeue_state"
 down_revision = "0006_dead_letter_jobs"
 branch_labels = None
 depends_on = None
