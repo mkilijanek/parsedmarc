@@ -31,13 +31,9 @@ from .metrics import (
     correlation_queries_total,
     correlation_query_duration_seconds,
     db_query_duration_seconds,
-    export_jobs_pending,
     generate_latest,
     request_count,
     request_duration,
-    sync_job_retries_total,
-    sync_jobs_queued,
-    sync_jobs_running,
 )
 from .models import (
     AppLog,
@@ -69,9 +65,7 @@ from .settings_store import admin_auth_disable_allowed_in_production
 from .services.common import (
     _db_circuit_breaker,
     _dep_status,
-    build_feed_session,
     configure_requests_tls_verify_from_env,
-    redact_proxy_credentials,
     sum_update_result,
 )
 from .services.correlation import query_correlations

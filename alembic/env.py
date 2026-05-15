@@ -3,7 +3,7 @@ from __future__ import annotations
 from logging.config import fileConfig
 import os
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 from alembic import context
 
 from app.db import Base
@@ -46,6 +46,15 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Alembic's default version_num column is VARCHAR(32); widen it so
+        # migration IDs longer than 32 chars (e.g. 0007_dead_letter_job_requeue_state)
+        # can be written without StringDataRightTruncation.
+        connection.execute(text(
+            "ALTER TABLE IF EXISTS alembic_version "
+            "ALTER COLUMN version_num TYPE VARCHAR(128)"
+        ))
+        connection.commit()
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
