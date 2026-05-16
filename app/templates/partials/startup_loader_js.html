@@ -65,7 +65,7 @@
   function finish() {
     if (done) { return; }
     done = true;
-    var minMs = 600;
+    var minMs = 2800;
     var remaining = Math.max(0, minMs - (Date.now() - startedAt));
     window.setTimeout(function () {
       bar.style.width = '100%';
