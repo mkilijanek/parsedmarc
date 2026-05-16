@@ -2921,3 +2921,28 @@ Multi-session issue sweep: design system CSS integration + all open GitHub issue
 - All CI jobs: passing
 - ruff violations: 0 in app/
 - Tests: 924 passed, 2 skipped
+
+---
+
+## 2026-05-16 — issue #238: async export artifact access token and expiry
+
+[current stage]
+Implementing milestone v1.9.0 issues: #238 (export expiry), #237 (worker coverage), #240 (overall coverage), #239 (UML docs).
+
+[actions performed — #238]
+- Added `access_token` (String(64), unique) and `expires_at` (DateTime) to `ExportJob` model.
+- Added `EXPORT_JOB_TTL_HOURS` (default 24) to `RuntimeConfig`.
+- Alembic migration `0008_export_job_token`: adds access_token + expires_at columns to export_jobs.
+- `export_svc._persist_export_job`: generates `secrets.token_hex(32)` access_token and sets expires_at on job creation.
+- `routes/public.py`: export_job_status and export_job_download validate access_token via hmac.compare_digest; return 403 for wrong token, 410 for expired jobs.
+- Async export responses now include `access_token` and token-embedded `status_url`/`download_url`.
+- `services/cleanup.py`: cleanup_export_files now removes artifacts for expired ExportJob rows (DB-driven); retains mtime-based fallback for orphaned files.
+- Updated tests/test_cleanup.py, tests/test_compliance.py to mock SessionLocal for the new DB path.
+- New test file: tests/test_export_expiry.py (11 tests covering token validation, expiry 410, cleanup).
+- Updated docs/api.md and docs/access-control.md.
+
+[false positives confirmed]
+- Access token approach chosen over signed URLs (simpler, no HMAC key complexity for caller) and over public-with-TTL (explicit auth is clearer).
+
+[tests]
+- PYTHONPATH=. pytest -q → 1278 passed, 2 skipped

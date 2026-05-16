@@ -61,6 +61,7 @@ class RuntimeConfig:
     EXPORT_ASYNC_THRESHOLD: int = field(default_factory=lambda: _env_int("EXPORT_ASYNC_THRESHOLD", 5000))
     LOG_RETENTION_DAYS: int = field(default_factory=lambda: _env_int("LOG_RETENTION_DAYS", 90))
     DLQ_RETENTION_DAYS: int = field(default_factory=lambda: _env_int("DLQ_RETENTION_DAYS", 90))
+    EXPORT_JOB_TTL_HOURS: int = field(default_factory=lambda: _env_int("EXPORT_JOB_TTL_HOURS", 24))
     SSE_ENABLED: bool = field(default_factory=lambda: _env_bool("SSE_ENABLED", True))
     SSE_HEARTBEAT_INTERVAL_S: int = field(default_factory=lambda: _env_int("SSE_HEARTBEAT_INTERVAL_S", 15))
     SSE_MAX_DURATION_S: int = field(default_factory=lambda: _env_int("SSE_MAX_DURATION_S", 300))

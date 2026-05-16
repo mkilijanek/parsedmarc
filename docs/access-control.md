@@ -42,6 +42,7 @@ Rationale for `1.8.0` (updated 2026-05-16):
 - `/api/v1/*` read surfaces remain publicly readable, matching the legacy API posture,
 - **`POST /api/v1/sync`, `POST /api/sync`, `POST /api/sentinel/export`** now require `X-Admin-Token` header; these are write/trigger operations — unauthenticated access was a security gap,
 - **Admin token is not accepted via query string** (`?admin_token=`); tokens in URLs appear in access logs, browser history, and `Referer` headers,
+- **Async export jobs** (`GET /indicators/<fmt>?async=1`, `POST /api/sentinel/export`) return a per-job `access_token` in the response. Status and download endpoints require this token via `?token=<access_token>`. Without a valid token the endpoints return `403 Forbidden`. The token is not an admin credential and is scoped to one job only. Artifacts expire after `EXPORT_JOB_TTL_HOURS` (default 24 h); expired jobs return `410 Gone`.
 - `auth_mode` for Sentinel export is read from server config (`AZURE_SENTINEL_AUTH_MODE`), not from caller parameters,
 - `/api/events` SSE stream is publicly readable (operational transparency). In `1.8.1` it is bounded by explicit duration/capacity limits and rejected on sync workers by default,
 - machine-client auth for `/api/v1/*` read routes remains a future milestone,

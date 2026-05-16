@@ -7,6 +7,8 @@ make_export_service(). Nothing in this module imports from factory.py.
 from __future__ import annotations
 
 import json
+import secrets
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Thread
 from typing import Any, Dict, List
@@ -17,7 +19,7 @@ from ..formatters import FORMATTERS
 from ..models import ExportJob, Indicator
 
 
-def make_export_service(*, cfg, db_fn, app_log_fn, count_indicators_fn, query_indicators_fn, get_setting_fn):
+def make_export_service(*, cfg, db_fn, app_log_fn, count_indicators_fn, query_indicators_fn, get_setting_fn, ttl_hours_fn=None):
     """Return a namespace of export-related functions."""
 
     # ------------------------------------------------------------------ render
@@ -38,12 +40,16 @@ def make_export_service(*, cfg, db_fn, app_log_fn, count_indicators_fn, query_in
     def _persist_export_job(job_id: str, fmt: str, params: Dict[str, Any]) -> None:
         db = db_fn()
         try:
+            ttl_hours = ttl_hours_fn() if ttl_hours_fn else cfg.EXPORT_JOB_TTL_HOURS
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
             db.add(
                 ExportJob(
                     job_id=job_id,
                     fmt=fmt,
                     status="queued",
                     query_json=params,
+                    access_token=secrets.token_hex(32),
+                    expires_at=expires_at,
                 )
             )
             db.commit()

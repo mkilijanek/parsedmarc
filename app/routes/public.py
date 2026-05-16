@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
+from datetime import timezone
 from flask import Response, jsonify, make_response, redirect, request, send_file, stream_with_context, url_for
 from sqlalchemy import func, select
 
@@ -295,12 +296,19 @@ def register_public_routes(
             }
             _persist_export_job(job_id, fmt, params)
             _spawn_export_job(job_id)
+            _tok_db = _db(read_only=True)
+            try:
+                _ejob = _tok_db.scalar(select(ExportJob).where(ExportJob.job_id == job_id))
+                _tok = _ejob.access_token if _ejob else ""
+            finally:
+                _tok_db.close()
             return (
                 jsonify(
                     {
                         "job_id": job_id,
-                        "status_url": url_for("export_job_status", job_id=job_id, _external=False),
-                        "download_url": url_for("export_job_download", job_id=job_id, _external=False),
+                        "access_token": _tok,
+                        "status_url": url_for("export_job_status", job_id=job_id, token=_tok, _external=False),
+                        "download_url": url_for("export_job_download", job_id=job_id, token=_tok, _external=False),
                     }
                 ),
                 202,
@@ -357,17 +365,26 @@ def register_public_routes(
     @app.get("/export-jobs/<job_id>")
     @limiter.limit("60 per minute")
     def export_job_status(job_id: str):
+        import datetime as _dt
+        token = request.args.get("token", "").strip()
         db = _db(read_only=True)
         try:
             job = db.scalar(select(ExportJob).where(ExportJob.job_id == job_id))
             if not job:
                 return jsonify({"error": "job not found"}), 404
+            if job.access_token and not hmac.compare_digest(job.access_token, token):
+                return jsonify({"error": "invalid token"}), 403
+            now = _dt.datetime.now(timezone.utc)
+            job_expires = job.expires_at.replace(tzinfo=timezone.utc) if job.expires_at and job.expires_at.tzinfo is None else job.expires_at
+            if job_expires and job_expires < now:
+                return jsonify({"error": "job expired"}), 410
             payload = {
                 "job_id": job.job_id,
                 "format": job.fmt,
                 "status": job.status,
                 "error": job.error,
-                "download_url": url_for("export_job_download", job_id=job.job_id, _external=False),
+                "expires_at": job.expires_at.isoformat() if job.expires_at else None,
+                "download_url": url_for("export_job_download", job_id=job.job_id, token=token, _external=False),
             }
             return jsonify(payload)
         finally:
@@ -402,12 +419,19 @@ def register_public_routes(
         }
         _persist_export_job(job_id, "sentinel_graph", params)
         _spawn_export_job(job_id)
+        _tok_db2 = _db(read_only=True)
+        try:
+            _ejob2 = _tok_db2.scalar(select(ExportJob).where(ExportJob.job_id == job_id))
+            _tok2 = _ejob2.access_token if _ejob2 else ""
+        finally:
+            _tok_db2.close()
         return (
             jsonify(
                 {
                     "job_id": job_id,
-                    "status_url": url_for("export_job_status", job_id=job_id, _external=False),
-                    "download_url": url_for("export_job_download", job_id=job_id, _external=False),
+                    "access_token": _tok2,
+                    "status_url": url_for("export_job_status", job_id=job_id, token=_tok2, _external=False),
+                    "download_url": url_for("export_job_download", job_id=job_id, token=_tok2, _external=False),
                 }
             ),
             202,
@@ -416,11 +440,19 @@ def register_public_routes(
     @app.get("/export-jobs/<job_id>/download")
     @limiter.limit("30 per minute")
     def export_job_download(job_id: str):
+        import datetime as _dt
+        token = request.args.get("token", "").strip()
         db = _db(read_only=True)
         try:
             job = db.scalar(select(ExportJob).where(ExportJob.job_id == job_id))
             if not job:
                 return jsonify({"error": "job not found"}), 404
+            if job.access_token and not hmac.compare_digest(job.access_token, token):
+                return jsonify({"error": "invalid token"}), 403
+            now = _dt.datetime.now(timezone.utc)
+            job_expires = job.expires_at.replace(tzinfo=timezone.utc) if job.expires_at and job.expires_at.tzinfo is None else job.expires_at
+            if job_expires and job_expires < now:
+                return jsonify({"error": "artifact expired"}), 410
             if job.status != "completed" or not job.result_path:
                 return jsonify({"error": "job not completed", "status": job.status}), 409
             p = Path(job.result_path)

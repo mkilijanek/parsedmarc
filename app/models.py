@@ -193,6 +193,8 @@ class ExportJob(Base):
     result_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     query_json: Mapped[dict] = mapped_column(JSONCompat(), default=dict, nullable=False)
+    access_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    expires_at: Mapped["DateTime | None"] = mapped_column(DateTime, nullable=True)
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

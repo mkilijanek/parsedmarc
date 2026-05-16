@@ -249,7 +249,7 @@ Query parameters:
 - `chunk_size` — number of indicators per Graph API batch (default from `AZURE_SENTINEL_CHUNK_SIZE`)
 
 Response:
-- `202 Accepted` + `job_id`, `status_url`, `download_url`
+- `202 Accepted` + `job_id`, `access_token`, `status_url` (with `?token=`), `download_url` (with `?token=`)
 - `401 Unauthorized` if token is missing or incorrect
 
 Notes:
@@ -257,6 +257,9 @@ Notes:
 - `auth_mode` is set via `AZURE_SENTINEL_AUTH_MODE` env var (`client_secret` or `certificate`).
 - Secrets are read from admin settings (`sentinel.client_secret`, `sentinel.cert_private_key_pem`) and are not returned by API.
 - Job report (`download_url`) contains `sent/failed/skipped/chunks` summary.
+- The `access_token` in the response is a per-job secret required for status and download requests. Include it as `?token=<access_token>` in all status and download URL calls.
+- Artifact TTL is controlled by `EXPORT_JOB_TTL_HOURS` (default 24 h). Status and download return `410 Gone` after expiry.
+- Download returns `403 Forbidden` for invalid or missing token.
 
 ### Logs API
 
