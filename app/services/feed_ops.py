@@ -177,3 +177,44 @@ def percentile(values: list[int], p: float) -> float | None:
         return float(vals[low])
     weight = rank - low
     return round((vals[low] * (1.0 - weight)) + (vals[high] * weight), 2)
+
+
+def enqueue_sync_for_source(
+    source_name: str,
+    *,
+    feed_rows: list,
+    read_feed_config_state_fn,
+    enqueue_sync_job_fn,
+    db,
+    trigger_type: str = "manual",
+) -> dict:
+    """Resolve targets, check config readiness, and enqueue sync jobs.
+
+    Returns dict: targets_found, queued, reused, blocked, error.
+    error is non-empty only when source_name is not a known feed and not 'all'.
+    """
+    feed_map = {f.source_id: f for f in feed_rows}
+    if source_name == "all":
+        targets = [f for f in feed_rows if f.enabled]
+    elif source_name in feed_map:
+        targets = [feed_map[source_name]]
+    else:
+        return {"targets_found": False, "queued": [], "reused": [], "blocked": [], "error": f"Invalid source: {source_name}"}
+
+    blocked: list[str] = []
+    queued: list[dict] = []
+    reused: list[dict] = []
+
+    for feed in targets:
+        state = read_feed_config_state_fn(db, feed)
+        if not state["ready"]:
+            blocked.append(f"{feed.source_id} (missing: {', '.join(state['missing'])})")
+            continue
+        job, created = enqueue_sync_job_fn(feed, trigger_type=trigger_type, db=db)
+        entry = {"feed_source_id": str(feed.source_id), "job_id": str(job.job_id), "created": created}
+        if created:
+            queued.append(entry)
+        else:
+            reused.append(entry)
+
+    return {"targets_found": True, "queued": queued, "reused": reused, "blocked": blocked, "error": ""}

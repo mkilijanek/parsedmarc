@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from flask import jsonify, redirect, render_template, request, session, url_for
 from flask_limiter.util import get_remote_address
 from sqlalchemy import select
+from ..services.feed_ops import enqueue_sync_for_source
 
 
 def register_ops_api_routes(
@@ -55,30 +56,18 @@ def register_ops_api_routes(
         try:
             _app_log("INFO", "scheduler", "manual_sync_requested", metadata={"source": source_name}, db=db)
             _ensure_default_feeds(db)
-            feed_rows = _read_feed_rows(db)
-            feed_map = {f.source_id: f for f in feed_rows}
-            targets: List[Feed] = []
-            if source_name == "all":
-                targets = [f for f in feed_rows if f.enabled]
-            elif source_name not in feed_map:
+            result = enqueue_sync_for_source(
+                source_name,
+                feed_rows=_read_feed_rows(db),
+                read_feed_config_state_fn=_read_feed_config_state,
+                enqueue_sync_job_fn=_enqueue_sync_job,
+                db=db,
+            )
+            if not result["targets_found"]:
                 return redirect(url_for("admin_panel", msg="Invalid source for sync."))
-            else:
-                targets = [feed_map[source_name]]
-
-            blocked: List[str] = []
-            queued: List[str] = []
-            reused: List[str] = []
-            for feed in targets:
-                state = _read_feed_config_state(db, feed)
-                if not state["ready"]:
-                    blocked.append(f"{feed.source_id} (missing: {', '.join(state['missing'])})")
-                    continue
-                job, created = _enqueue_sync_job(feed, trigger_type="manual", db=db)
-                if created:
-                    queued.append(job.job_id)
-                else:
-                    reused.append(job.job_id)
-
+            queued = [e["job_id"] for e in result["queued"]]
+            reused = [e["job_id"] for e in result["reused"]]
+            blocked = result["blocked"]
             if source_name != "all" and not queued and not reused:
                 return redirect(url_for("admin_panel", msg=f"Cannot sync {source_name}: configuration incomplete."))
 
@@ -240,28 +229,19 @@ def register_ops_api_routes(
         db = _db()
         try:
             _ensure_default_feeds(db)
-            feed_rows = _read_feed_rows(db)
-            feed_map = {f.source_id: f for f in feed_rows}
-            if source_name == "all":
-                targets = [f for f in feed_rows if f.enabled]
-            elif source_name in feed_map:
-                targets = [feed_map[source_name]]
-            else:
+            result = enqueue_sync_for_source(
+                source_name,
+                feed_rows=_read_feed_rows(db),
+                read_feed_config_state_fn=_read_feed_config_state,
+                enqueue_sync_job_fn=_enqueue_sync_job,
+                db=db,
+            )
+            if not result["targets_found"]:
                 return jsonify({"error": "Invalid source"}), 400
-
-            blocked: List[str] = []
-            queued: List[Dict[str, Any]] = []
-            for feed in targets:
-                state = _read_feed_config_state(db, feed)
-                if not state["ready"]:
-                    blocked.append(feed.source_id)
-                    continue
-                job, created = _enqueue_sync_job(feed, trigger_type="manual", db=db)
-                queued.append({"feed_source_id": feed.source_id, "job_id": job.job_id, "created": created})
-
-            if source_name != "all" and not queued:
-                return jsonify({"error": "Configuration incomplete", "source": source_name, "blocked": blocked}), 400
-            return jsonify({"source": source_name, "jobs": queued, "blocked": blocked}), 202
+            all_jobs = result["queued"] + result["reused"]
+            if source_name != "all" and not all_jobs:
+                return jsonify({"error": "Configuration incomplete", "source": source_name, "blocked": result["blocked"]}), 400
+            return jsonify({"source": source_name, "jobs": all_jobs, "blocked": result["blocked"]}), 202
         finally:
             db.close()
 
