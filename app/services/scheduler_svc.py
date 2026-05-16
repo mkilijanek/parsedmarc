@@ -675,4 +675,6 @@ def make_scheduler_service(
         run_audit_integrity_check_if_due=_run_audit_integrity_check_if_due,
         db_try_advisory_lock=_db_try_advisory_lock,
         db_advisory_unlock=_db_advisory_unlock,
+        classify_sync_failure=_classify_sync_failure,
+        sync_retry_delay_s=_sync_retry_delay_s,
     )

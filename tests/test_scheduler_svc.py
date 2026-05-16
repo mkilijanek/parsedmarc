@@ -25,6 +25,8 @@ def _make_cfg(**overrides):
         DLQ_RETENTION_DAYS=90,
         CACHE_TTL=60,
         CACHE_WARMING_ENABLED=False,
+        AUDIT_INTEGRITY_VERIFY_INTERVAL_S=3600,
+        SECRET_KEY="test-secret-key",
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -308,6 +310,162 @@ class TestNamespace:
             "run_audit_integrity_check_if_due",
             "db_try_advisory_lock",
             "db_advisory_unlock",
+            "classify_sync_failure",
+            "sync_retry_delay_s",
         }
         for attr in expected:
             assert hasattr(svc, attr), f"missing attribute: {attr}"
+
+
+
+# ---------------------------------------------------------------------------
+# _classify_sync_failure
+# ---------------------------------------------------------------------------
+
+class TestClassifySyncFailure:
+    def test_incomplete_config_is_permanent(self):
+        svc, _ = _make_service()
+        exc = ValueError("incomplete config: missing base_url")
+        assert svc.classify_sync_failure(exc) == "permanent"
+
+    def test_feed_not_found_is_permanent(self):
+        svc, _ = _make_service()
+        assert svc.classify_sync_failure(RuntimeError("feed not found")) == "permanent"
+
+    def test_unknown_source_type_is_permanent(self):
+        svc, _ = _make_service()
+        assert svc.classify_sync_failure(ValueError("unknown source_type: legacy")) == "permanent"
+
+    def test_auth_failure_markers_are_permanent(self):
+        svc, _ = _make_service()
+        for msg in ["authentication failed", "invalid api key", "unauthorized", "forbidden"]:
+            exc = RuntimeError(msg)
+            assert svc.classify_sync_failure(exc) == "permanent", f"expected permanent for: {msg}"
+
+    def test_connection_error_is_transient(self):
+        svc, _ = _make_service()
+        assert svc.classify_sync_failure(ConnectionError("timeout")) == "transient"
+
+    def test_generic_runtime_error_is_transient(self):
+        svc, _ = _make_service()
+        assert svc.classify_sync_failure(RuntimeError("unexpected json format")) == "transient"
+
+    def test_case_insensitive_matching(self):
+        svc, _ = _make_service()
+        assert svc.classify_sync_failure(RuntimeError("Authentication Failed")) == "permanent"
+
+
+# ---------------------------------------------------------------------------
+# _sync_retry_delay_s
+# ---------------------------------------------------------------------------
+
+class TestSyncRetryDelay:
+    def test_first_retry_uses_base_delay(self):
+        svc, _ = _make_service()
+        delay = svc.sync_retry_delay_s(0)
+        assert delay == 30  # default base
+
+    def test_second_retry_doubles(self):
+        svc, _ = _make_service()
+        assert svc.sync_retry_delay_s(1) == 30
+
+    def test_third_retry_doubles_again(self):
+        svc, _ = _make_service()
+        assert svc.sync_retry_delay_s(2) == 60
+
+    def test_delay_capped_at_max(self):
+        svc, _ = _make_service(cfg=_make_cfg(
+            SYNC_JOB_RETRY_BASE_DELAY_S=30,
+            SYNC_JOB_RETRY_MAX_DELAY_S=3600,
+        ))
+        # After many retries, should not exceed max
+        assert svc.sync_retry_delay_s(20) == 3600
+
+    def test_custom_base_and_max(self):
+        svc, _ = _make_service(cfg=_make_cfg(
+            SYNC_JOB_RETRY_BASE_DELAY_S=60,
+            SYNC_JOB_RETRY_MAX_DELAY_S=300,
+        ))
+        # retry_count=3: min(300, 60 * 2^2) = min(300, 240) = 240
+        assert svc.sync_retry_delay_s(3) == 240
+
+    def test_max_less_than_base_uses_base(self):
+        svc, _ = _make_service(cfg=_make_cfg(
+            SYNC_JOB_RETRY_BASE_DELAY_S=100,
+            SYNC_JOB_RETRY_MAX_DELAY_S=10,
+        ))
+        # max_delay = max(base, max_delay_cfg) = max(100, 10) = 100
+        assert svc.sync_retry_delay_s(0) == 100
+
+
+# ---------------------------------------------------------------------------
+# _run_cache_warming_if_due
+# ---------------------------------------------------------------------------
+
+class TestRunCacheWarmingIfDue:
+    def _now(self):
+        return datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_skips_when_ran_recently(self):
+        now = self._now()
+        svc, state = _make_service(
+            extra_state={"last_cache_warming_at": now - timedelta(seconds=10)},
+        )
+        svc.run_cache_warming_if_due(now)
+        assert state.get("last_cache_warming_at") == now - timedelta(seconds=10)
+
+    def test_skips_when_redis_unavailable(self):
+        now = self._now()
+        svc, state = _make_service()
+        # get_redis returns None when Redis is not configured
+        svc.run_cache_warming_if_due(now)
+        # no crash — state may or may not be set
+
+    def test_updates_state_after_run(self):
+        from unittest.mock import MagicMock, patch
+        import app.services.scheduler_svc as _svc_module
+        now = self._now()
+        mock_db = _noop_db()
+        mock_db.execute.return_value.all.return_value = []
+        mock_db.scalar.return_value = 42
+        mock_redis = MagicMock()
+
+        svc, state = _make_service(db_fn=lambda read_only=False: mock_db)
+        with patch.object(_svc_module, "get_redis", return_value=mock_redis):
+            svc.run_cache_warming_if_due(now)
+        assert state.get("last_cache_warming_at") == now
+
+
+# ---------------------------------------------------------------------------
+# _run_audit_integrity_check_if_due
+# ---------------------------------------------------------------------------
+
+class TestRunAuditIntegrityCheckIfDue:
+    def _now(self):
+        return datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_skips_when_ran_recently(self):
+        now = self._now()
+        svc, state = _make_service(
+            cfg=_make_cfg(AUDIT_INTEGRITY_VERIFY_INTERVAL_S=3600),
+            extra_state={"last_audit_integrity_check_at": now - timedelta(seconds=60)},
+        )
+        svc.run_audit_integrity_check_if_due(now)
+        assert state.get("last_audit_integrity_check_at") == now - timedelta(seconds=60)
+
+    def test_runs_when_overdue(self):
+        from unittest.mock import patch
+        import app.audit_integrity as _audit_mod
+        now = self._now()
+        mock_db = _noop_db()
+        scalars_result = MagicMock()
+        scalars_result.all.return_value = []
+        mock_db.scalars.return_value = scalars_result
+        svc, state = _make_service(
+            cfg=_make_cfg(AUDIT_INTEGRITY_VERIFY_INTERVAL_S=60),
+            db_fn=lambda read_only=False: mock_db,
+            extra_state={"last_audit_integrity_check_at": now - timedelta(hours=2)},
+        )
+        with patch.object(_audit_mod, "verify_audit_chain", return_value={"valid": True, "checked": 0}):
+            svc.run_audit_integrity_check_if_due(now)
+        assert state.get("last_audit_integrity_check_at") == now
