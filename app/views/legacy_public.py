@@ -7,74 +7,10 @@ from flask import render_template
 
 from ..models import Indicator
 
-STARTUP_LOADER_STYLE = """
-    .startup-loader { position: fixed; inset: 0; z-index: 9999; background: radial-gradient(circle at 20% 20%, #103040 0%, rgba(16,48,64,.55) 35%, transparent 70%), radial-gradient(circle at 80% 0%, #2a1f3f 0%, rgba(42,31,63,.45) 35%, transparent 70%), #05090f; display: flex; align-items: center; justify-content: center; padding: 20px; transition: opacity .35s ease, visibility .35s ease; }
-    .startup-loader.done { opacity: 0; visibility: hidden; }
-    .startup-loader-card { position: relative; overflow: hidden; width: min(560px, 94vw); border: 1px solid #224b63; background: linear-gradient(180deg, #071523 0%, #0a1520 100%); border-radius: 16px; padding: 22px 20px; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
-    .startup-loader-card h2 { margin: 0 0 8px; color: #9cecff; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
-    .startup-loader-card p { margin: 0 0 14px; color: #b5d7e8; font-size: 14px; }
-    .startup-loader-grid { position: absolute; inset: -200% -50% auto -50%; height: 220%; background: repeating-linear-gradient(90deg, rgba(40,176,255,.08) 0, rgba(40,176,255,.08) 1px, transparent 1px, transparent 22px), repeating-linear-gradient(0deg, rgba(40,176,255,.06) 0, rgba(40,176,255,.06) 1px, transparent 1px, transparent 22px); transform: perspective(380px) rotateX(68deg); opacity: .65; }
-    .startup-loader-scan { position: absolute; left: 0; right: 0; top: -40%; height: 38%; background: linear-gradient(180deg, rgba(76,208,255,0), rgba(76,208,255,.22), rgba(76,208,255,0)); animation: loader-scan 2.1s linear infinite; }
-    .startup-loader-progress { position: relative; height: 8px; border: 1px solid #2d6486; background: #05131d; border-radius: 999px; overflow: hidden; }
-    .startup-loader-progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #37dcff, #7effc8); box-shadow: 0 0 16px rgba(55,220,255,.8); transition: width .16s ease; }
-    @keyframes loader-scan { 0% { transform: translateY(0); } 100% { transform: translateY(300%); } }
-"""
-
-STARTUP_LOADER_MARKUP = """
-<div id="startupLoader" class="startup-loader" aria-live="polite" aria-label="Application startup in progress">
-  <div class="startup-loader-card">
-    <div class="startup-loader-grid" aria-hidden="true"></div>
-    <div class="startup-loader-scan" aria-hidden="true"></div>
-    <h2>IOC Service</h2>
-    <p>Booting modules, validating feeds, preparing data plane...</p>
-    <div class="startup-loader-progress"><span id="startupLoaderBar"></span></div>
-  </div>
-</div>
-"""
-
-STARTUP_LOADER_SCRIPT = """
-(function () {
-  const loader = document.getElementById('startupLoader');
-  const bar = document.getElementById('startupLoaderBar');
-  if (!loader || !bar) { return; }
-  const startedAt = Date.now();
-  let done = false;
-  let width = 10;
-  const tick = window.setInterval(function () {
-    if (done) { return; }
-    width = Math.min(92, width + Math.random() * 7);
-    bar.style.width = width.toFixed(1) + '%';
-  }, 120);
-  function finish() {
-    if (done) { return; }
-    done = true;
-    const minVisibleMs = 400;
-    const remaining = Math.max(0, minVisibleMs - (Date.now() - startedAt));
-    window.setTimeout(function () {
-      bar.style.width = '100%';
-      loader.classList.add('done');
-      window.setTimeout(function () {
-        loader.remove();
-      }, 450);
-      window.clearInterval(tick);
-    }, remaining);
-  }
-  const timeout = window.setTimeout(finish, 3500);
-  fetch('/health', { cache: 'no-store' })
-    .then(function () { finish(); })
-    .catch(function () { finish(); })
-    .finally(function () { window.clearTimeout(timeout); });
-  window.addEventListener('load', finish, { once: true });
-})();
-"""
 
 
-def _esc(s: str) -> str:
-    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
-def _badge(label: str, cls: str, aria: str) -> str:
-    return f"<span class='badge {cls}' aria-label='{_esc(aria)}'>{_esc(label)}</span>"
 
 
 def render_index(total: int, active: int, feeds: list[Any]) -> str:
@@ -83,9 +19,6 @@ def render_index(total: int, active: int, feeds: list[Any]) -> str:
         total=total,
         active=active,
         feeds=list(feeds),
-        startup_loader_style=STARTUP_LOADER_STYLE,
-        startup_loader_markup=STARTUP_LOADER_MARKUP,
-        startup_loader_script=STARTUP_LOADER_SCRIPT,
     )
 
 
@@ -106,47 +39,35 @@ def render_indicators(
     def _query_escape(value: str) -> str:
         return (value or "").replace("\\", "\\\\").replace('"', '\\"')
 
-    def type_badge(t: str) -> str:
-        cls = {"ip": "b-ip", "domain": "b-domain", "url": "b-url", "hash": "b-hash", "email": "b-email"}.get(t, "b-other")
-        return _badge(t, cls, f"Type {t}")
-
-    def tlp_badge(t: str) -> str:
-        cls = {"WHITE": "b-white", "GREEN": "b-green", "AMBER": "b-amber", "RED": "b-red"}.get(t, "b-green")
-        return _badge(t, cls, f"TLP {t}")
-
     view_rows: list[dict[str, Any]] = []
     for ind in rows:
         conf = int(ind.confidence or 0)
-        misp_link = ""
-        if ind.source == "misp" and ind.source_id:
-            misp_link = f"<a href='/misp/event/{_esc(ind.source_id)}' aria-label='Open MISP event {ind.source_id}'>Event {ind.source_id}</a>"
+        itype = str(ind.type or "")
+        itlp = str(ind.tlp or "")
+        isource = str(ind.source or "")
+        isource_id = str(ind.source_id or "")
 
-        if ind.source == "misp" and ind.source_id:
-            exports = " ".join(
-                [
-                    f"<a href='/misp/event/{_esc(ind.source_id)}/{_esc(ind.type)}/{fmt}' aria-label='Export MISP event indicator in {fmt} format'>{fmt.upper()}</a>"
-                    for fmt in ("csv", "txt", "json", "fortigate")
-                ]
-            )
+        export_formats_misp = ("csv", "txt", "json", "fortigate")
+        export_formats_generic = ("txt", "csv", "json", "fortigate")
+
+        if isource == "misp" and isource_id:
+            q_row = None
         else:
-            q_row = f'value:"{_query_escape(ind.value)}" AND source:"{_query_escape(ind.source)}"'
-            exports = " ".join(
-                [
-                    f"<a href='/indicators/{fmt}?{_esc(urlencode({'q': q_row}))}' aria-label='Export indicator in {fmt} format'>{fmt.upper()}</a>"
-                    for fmt in ("txt", "csv", "json", "fortigate")
-                ]
-            )
+            q_row = f'value:"{_query_escape(str(ind.value or ""))}" AND source:"{_query_escape(isource)}"'
 
         view_rows.append(
             {
                 "value": str(ind.value or ""),
-                "type_badge": type_badge(ind.type),
+                "itype": itype,
                 "confidence": conf,
-                "tlp_badge": tlp_badge(ind.tlp),
-                "source": str(ind.source or ""),
-                "exports": exports,
+                "itlp": itlp,
+                "source": isource,
+                "source_id": isource_id,
+                "is_misp": isource == "misp" and bool(isource_id),
+                "q_row": q_row,
+                "export_formats_misp": export_formats_misp,
+                "export_formats_generic": export_formats_generic,
                 "tags": list((ind.tags or [])[:10]),
-                "misp_link": misp_link,
             }
         )
 
@@ -210,7 +131,4 @@ def render_indicators(
         next_link=next_link,
         filter_suffix=filter_suffix,
         view_rows=view_rows,
-        startup_loader_style=STARTUP_LOADER_STYLE,
-        startup_loader_markup=STARTUP_LOADER_MARKUP,
-        startup_loader_script=STARTUP_LOADER_SCRIPT,
     )

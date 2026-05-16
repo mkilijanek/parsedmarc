@@ -69,8 +69,6 @@ def register_ops_admin_routes(
     FeedRun = deps["FeedRun"]
     AppLog = deps["AppLog"]
     SyncJob = deps["SyncJob"]
-    ADMIN_FEED_METRICS_WIDGET_HTML = deps["ADMIN_FEED_METRICS_WIDGET_HTML"]
-    ADMIN_FEED_METRICS_WIDGET_SCRIPT = deps["ADMIN_FEED_METRICS_WIDGET_SCRIPT"]
 
     @app.get("/admin")
     @limiter.limit("100 per minute", key_func=_admin_rate_limit_key)
@@ -145,40 +143,7 @@ def register_ops_admin_routes(
             db.close()
 
         status_msg = request.args.get("msg", "")
-        proxy_test_rows_html = "".join(
-            [
-                (
-                    "<tr>"
-                    f"<td>{_esc(str(row.get('target') or ''))}</td>"
-                    f"<td>{_esc(str(row.get('status') or ''))}</td>"
-                    f"<td>{_esc(str(row.get('http') if row.get('http') is not None else '-'))}</td>"
-                    f"<td>{_esc(str(row.get('latency_ms') if row.get('latency_ms') is not None else '-'))}</td>"
-                    f"<td>{_esc(str(row.get('title') or ''))}</td>"
-                    f"<td>{_esc(str(row.get('notes') or ''))}</td>"
-                    "</tr>"
-                )
-                for row in proxy_test_results
-            ]
-        )
-        if not proxy_test_rows_html:
-            proxy_test_rows_html = "<tr><td colspan='6'>No proxy test results yet.</td></tr>"
-        proxy_test_raw_json = _esc(json.dumps(proxy_test_results, ensure_ascii=True))
-        feed_rows_html = "".join(
-            [
-                (
-                    "<tr>"
-                    f"<td>{_esc(str(row.source))}</td>"
-                    f"<td>{_esc(str(row.source_id or ''))}</td>"
-                    f"<td>{_esc(str(row.last_fetch_status or ''))}</td>"
-                    f"<td>{_esc(str(row.last_update or ''))}</td>"
-                    f"<td>{_esc(str(row.last_fetch_error or ''))}</td>"
-                    "</tr>"
-                )
-                for row in raw_page
-            ]
-        )
-        if not feed_rows_html:
-            feed_rows_html = "<tr><td colspan='5'>No feed statistics yet.</td></tr>"
+        proxy_test_raw_json = json.dumps(proxy_test_results, ensure_ascii=True)
 
         def _admin_query(**kwargs: Any) -> str:
             q = {
@@ -204,41 +169,6 @@ def register_ops_admin_routes(
         raw_end = min(raw_offset + raw_limit, raw_total)
         raw_prev_link = f"/admin?{_admin_query(raw_offset=raw_prev_offset, raw_limit=raw_limit)}"
         raw_next_link = f"/admin?{_admin_query(raw_offset=raw_next_offset, raw_limit=raw_limit)}"
-        raw_prev_html = f"<a href='{raw_prev_link}'>Previous</a>" if raw_has_prev else "Previous"
-        raw_next_html = f"<a href='{raw_next_link}'>Next</a>" if raw_has_next else "Next"
-        raw_pager_html = f"<p><strong>Raw stats:</strong> showing {raw_start}-{raw_end} of {raw_total}. {raw_prev_html} | {raw_next_html}</p>"
-
-        source_ctrl_html = "".join(
-            [
-                (
-                    "<tr>"
-                    f"<td><code>{_esc(item['source_id'])}</code><br/>{_esc(item['display_name'])}<br/><small>{_esc(item['source_type'])}</small></td>"
-                    f"<td>{'enabled' if item['enabled'] else 'disabled'}</td>"
-                    f"<td>{_esc(item['schedule_cron'])}</td>"
-                    f"<td>{'OK' if item['ready'] else 'Incomplete: ' + _esc(', '.join(item['missing']))}</td>"
-                    f"<td>{_esc(item['last_run_status'])}</td>"
-                    f"<td>{_esc(str(item['last_run_at'] or 'n/a'))}</td>"
-                    f"<td><form method='post' action='/admin/feed-toggle' style='display:inline'>"
-                    f"<input type='hidden' name='source' value='{_esc(item['source_id'])}'/>"
-                    f"<input type='hidden' name='enabled' value='{'0' if item['enabled'] else '1'}'/>"
-                    f"<button type='submit'>{'Disable' if item['enabled'] else 'Enable'}</button>"
-                    "</form> "
-                    f"<a href='/admin/feed/{_esc(item['source_id'])}/configure'>Configure</a> "
-                    f"<form method='post' action='/admin/sync' style='display:inline'>"
-                    f"<input type='hidden' name='source' value='{_esc(item['source_id'])}'/>"
-                    f"<button type='submit' {'disabled' if not item['ready'] else ''}>Sync now</button>"
-                    "</form> "
-                    f"<a href='/logs?feed={_esc(item['source_id'])}'>View logs</a> "
-                    f"<form method='post' action='/admin/feed/{_esc(item['source_id'])}/delete' style='display:inline' onsubmit='return confirm(\"Delete feed {_esc(item['source_id'])}?\")'>"
-                    "<button type='submit'>Delete</button>"
-                    "</form></td>"
-                    "</tr>"
-                )
-                for item in page_feed_items
-            ]
-        )
-        if not source_ctrl_html:
-            source_ctrl_html = "<tr><td colspan='7'>No feeds match current filters.</td></tr>"
 
         prev_offset = max(0, int(offset) - int(table_params["limit"]))
         next_offset = int(offset) + int(table_params["limit"])
@@ -246,161 +176,40 @@ def register_ops_admin_routes(
         has_next = next_offset < total_feeds
         page_start = (int(offset) + 1) if total_feeds > 0 else 0
         page_end = min(int(offset) + int(table_params["limit"]), total_feeds)
-        prev_link_html = f"<a href='/admin?{_admin_query(feeds_offset=prev_offset)}'>Previous</a>" if has_prev else "Previous"
-        next_link_html = f"<a href='/admin?{_admin_query(feeds_offset=next_offset)}'>Next</a>" if has_next else "Next"
-
-        feed_filter_controls = f"""
-        <form method='get' action='/admin' style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;align-items:end;margin:.7rem 0 1rem'>
-          <label>Status
-            <select name='feeds_status'>
-              <option value='all' {'selected' if str(table_params['status']) == 'ALL' else ''}>all</option>
-              <option value='ok' {'selected' if str(table_params['status']) == 'OK' else ''}>OK</option>
-              <option value='warning' {'selected' if str(table_params['status']) == 'WARNING' else ''}>WARNING</option>
-              <option value='error' {'selected' if str(table_params['status']) == 'ERROR' else ''}>ERROR</option>
-              <option value='disabled' {'selected' if str(table_params['status']) == 'DISABLED' else ''}>DISABLED</option>
-              <option value='not_configured' {'selected' if str(table_params['status']) == 'NOT_CONFIGURED' else ''}>NOT_CONFIGURED</option>
-            </select>
-          </label>
-          <label>Datasource
-            <select name='feeds_datasource'>
-              <option value='all' {'selected' if str(table_params['datasource']) in {'', 'all'} else ''}>all</option>
-              {''.join([f"<option value='{_esc(src)}' {'selected' if str(table_params['datasource']) == src else ''}>{_esc(src)}</option>" for src in datasource_options])}
-            </select>
-          </label>
-          <label>Configured
-            <select name='feeds_configured'>
-              <option value='all' {'selected' if str(table_params['configured']) == 'all' else ''}>all</option>
-              <option value='configured' {'selected' if str(table_params['configured']) == 'configured' else ''}>configured</option>
-              <option value='not_configured' {'selected' if str(table_params['configured']) == 'not_configured' else ''}>not configured</option>
-            </select>
-          </label>
-          <label>Search
-            <input type='text' name='feeds_q' value='{_esc(str(table_params['q']))}' placeholder='feed name / source id'/>
-          </label>
-          <label>Sort
-            <select name='feeds_sort'>
-              <option value='source' {'selected' if str(table_params['sort']) == 'source' else ''}>source</option>
-              <option value='status' {'selected' if str(table_params['sort']) == 'status' else ''}>status</option>
-              <option value='last_run_at' {'selected' if str(table_params['sort']) == 'last_run_at' else ''}>last_run_at</option>
-              <option value='last_error_at' {'selected' if str(table_params['sort']) == 'last_error_at' else ''}>last_error_at</option>
-              <option value='fetched_count' {'selected' if str(table_params['sort']) == 'fetched_count' else ''}>fetched_count</option>
-            </select>
-          </label>
-          <label>Order
-            <select name='feeds_order'>
-              <option value='asc' {'selected' if str(table_params['order']) == 'asc' else ''}>asc</option>
-              <option value='desc' {'selected' if str(table_params['order']) == 'desc' else ''}>desc</option>
-            </select>
-          </label>
-          <label>Per page
-            <select name='feeds_limit'>
-              <option value='25' {'selected' if int(table_params['limit']) == 25 else ''}>25</option>
-              <option value='50' {'selected' if int(table_params['limit']) == 50 else ''}>50</option>
-              <option value='100' {'selected' if int(table_params['limit']) == 100 else ''}>100</option>
-            </select>
-          </label>
-          <label style='display:flex;align-items:center;gap:.5rem'>
-            <input type='checkbox' name='feeds_problems_only' value='1' {'checked' if bool(table_params['problems_only']) else ''}/> Problems only
-          </label>
-          <input type='hidden' name='feeds_offset' value='0'/>
-          <div style='display:flex;gap:.5rem'>
-            <button type='submit'>Apply filters</button>
-            <a href='/admin'>Clear</a>
-          </div>
-        </form>
-        <p><strong>Feeds:</strong> showing {page_start}-{page_end} of {total_feeds} (server-side)</p>
-        <p>
-          {prev_link_html} |
-          {next_link_html}
-        </p>
-        """
-
-        recent_jobs_html = "".join(
-            [
-                (
-                    "<tr>"
-                    f"<td><code>{_esc(j.job_id)}</code></td>"
-                    f"<td>{_esc(j.feed_source_id)}</td>"
-                    f"<td>{_esc(j.trigger_type)}</td>"
-                    f"<td>{_esc(j.status)}</td>"
-                    f"<td>{_esc(str(j.created_at or ''))}</td>"
-                    f"<td>{_esc(str(j.started_at or ''))}</td>"
-                    f"<td>{_esc(str(j.finished_at or ''))}</td>"
-                    f"<td>{_esc(str(getattr(j, 'retry_count', 0) or 0))}/{_esc(str(getattr(j, 'max_retries', 0) or 0))}</td>"
-                    f"<td>{_esc(str(getattr(j, 'next_attempt_at', '') or ''))}</td>"
-                    "<td>"
-                    f"<a href='/admin/sync-jobs/{_esc(j.job_id)}'>Details</a> "
-                    + (
-                        f"<form method='post' action='/admin/sync-jobs/{_esc(j.job_id)}/retry' style='display:inline'>"
-                        "<button type='submit'>Retry</button></form> "
-                        if str(j.status or "").lower() in {"failed", "cancelled"}
-                        else ""
-                    )
-                    + (
-                        f"<form method='post' action='/admin/sync-jobs/{_esc(j.job_id)}/cancel' style='display:inline'>"
-                        "<button type='submit'>Cancel</button></form>"
-                        if str(j.status or "").lower() in {"queued", "running", "cancel_requested"}
-                        else ""
-                    )
-                    + "</td>"
-                    "</tr>"
-                )
-                for j in recent_sync_jobs
-            ]
-        )
-        if not recent_jobs_html:
-            recent_jobs_html = "<tr><td colspan='10'>No sync jobs yet.</td></tr>"
-
-        danger_zone_html = f"""
-  <div class="card">
-    <h2>Danger Zone</h2>
-    <p>High-risk operations. Requires the admin token, confirmation phrase and instance name.</p>
-    <form method="post" action="/admin/danger/wipe">
-      <p><label>Operation
-        <select name="operation">
-          <option value="soft">Soft reset (indicators, runs, logs, stats, jobs, cache)</option>
-          <option value="factory">Factory reset (all dynamic + feeds/settings)</option>
-          <option value="selected">Selected tables</option>
-        </select>
-      </label></p>
-      <fieldset>
-        <legend>Selected tables (used when operation=selected)</legend>
-        <label><input type="checkbox" name="tables" value="indicators"/> indicators</label>
-        <label><input type="checkbox" name="tables" value="feed_stats"/> feed_stats</label>
-        <label><input type="checkbox" name="tables" value="feed_runs"/> feed_runs</label>
-        <label><input type="checkbox" name="tables" value="sync_jobs"/> sync_jobs</label>
-        <label><input type="checkbox" name="tables" value="app_logs"/> app_logs</label>
-        <label><input type="checkbox" name="tables" value="export_jobs"/> export_jobs</label>
-        <label><input type="checkbox" name="tables" value="feeds"/> feeds</label>
-        <label><input type="checkbox" name="tables" value="app_settings"/> app_settings</label>
-      </fieldset>
-      <p><label>Admin token <input type="password" name="admin_token" placeholder="ADMIN_API_TOKEN" required/></label></p>
-      <p><label>Type confirmation <input type="text" name="confirm_phrase" placeholder="WIPE" required/></label></p>
-      <p><label>Instance name <input type="text" name="confirm_instance" placeholder="{_esc(cfg.INSTANCE_NAME)}" required/></label></p>
-      <button type="submit">Execute wipe</button>
-    </form>
-  </div>
-            """
+        prev_link = f"/admin?{_admin_query(feeds_offset=prev_offset)}"
+        next_link = f"/admin?{_admin_query(feeds_offset=next_offset)}"
 
         return render_template(
             "admin/panel.html",
             settings_count=settings_count,
-            scheduler_heartbeat=_esc(scheduler_heartbeat or "n/a"),
-            status_msg=_esc(status_msg),
-            proxy_conf={k: _esc(str(v or "")) for k, v in proxy_conf.items()},
+            scheduler_heartbeat=scheduler_heartbeat or "n/a",
+            status_msg=status_msg,
+            proxy_conf={k: str(v or "") for k, v in proxy_conf.items()},
             proxy_skip_tls_verify_checked=str(proxy_conf["proxy_skip_tls_verify"]).strip().lower() in {"1", "true", "yes", "on"},
             sentinel_certificate_selected=str(proxy_conf["sentinel_auth_mode"]).strip().lower() == "certificate",
-            proxy_test_rows_html=proxy_test_rows_html,
+            proxy_test_results=proxy_test_results,
             proxy_test_raw_json=proxy_test_raw_json,
-            feed_filter_controls=feed_filter_controls,
-            source_ctrl_html=source_ctrl_html,
-            admin_feed_metrics_widget_html=ADMIN_FEED_METRICS_WIDGET_HTML,
-            admin_feed_metrics_widget_script=ADMIN_FEED_METRICS_WIDGET_SCRIPT,
-            raw_pager_html=raw_pager_html,
-            feed_rows_html=feed_rows_html,
-            recent_jobs_html=recent_jobs_html,
-            danger_zone_html=danger_zone_html,
-            security_conf={k: _esc(str(v or "")) for k, v in security_conf.items()},
+            table_params=table_params,
+            datasource_options=datasource_options,
+            page_feed_items=page_feed_items,
+            page_start=page_start,
+            page_end=page_end,
+            total_feeds=total_feeds,
+            has_prev=has_prev,
+            has_next=has_next,
+            prev_link=prev_link,
+            next_link=next_link,
+            raw_page=raw_page,
+            raw_start=raw_start,
+            raw_end=raw_end,
+            raw_total=raw_total,
+            raw_has_prev=raw_has_prev,
+            raw_has_next=raw_has_next,
+            raw_prev_link=raw_prev_link,
+            raw_next_link=raw_next_link,
+            recent_sync_jobs=recent_sync_jobs,
+            instance_name=cfg.INSTANCE_NAME,
+            security_conf={k: str(v or "") for k, v in security_conf.items()},
         )
 
     @app.post("/admin/global-config")

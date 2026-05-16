@@ -5,7 +5,7 @@
 {% block content %}
 {% set active_page = 'home' %}
 
-{{ startup_loader_markup|safe }}
+{% include "partials/startup_loader.html" %}
 
 <div class="card" role="region" aria-label="System overview">
   <h1>Threat Feed Aggregator</h1>
@@ -51,9 +51,9 @@
 {% endblock %}
 
 {% block extra_css %}
-{{ startup_loader_style|safe }}
+{% include "partials/startup_loader_css.html" %}
 {% endblock %}
 
 {% block extra_js %}
-{{ startup_loader_script|safe }}
+{% include "partials/startup_loader_js.html" %}
 {% endblock %}

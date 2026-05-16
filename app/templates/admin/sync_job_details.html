@@ -22,7 +22,21 @@
   <div class="table-container">
     <table>
       <thead><tr><th>Time</th><th>Level</th><th>Component</th><th>Message</th><th>Metadata</th></tr></thead>
-      <tbody>{{ log_rows|safe }}</tbody>
+      <tbody>
+        {% if logs %}
+          {% for item in logs %}
+          <tr>
+            <td>{{ item.created_at }}</td>
+            <td>{{ item.level }}</td>
+            <td>{{ item.component }}</td>
+            <td>{{ item.message }}</td>
+            <td><code>{{ item.metadata_|tojson }}</code></td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="5">No logs for this job.</td></tr>
+        {% endif %}
+      </tbody>
     </table>
   </div>
 </div>

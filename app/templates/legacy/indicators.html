@@ -45,13 +45,13 @@
   th.sort-desc::after { content: ' ↓'; opacity: 1; color: var(--primary); }
   th[aria-sort="ascending"]::after { content: ' ↑'; }
   th[aria-sort="descending"]::after { content: ' ↓'; }
-  {{ startup_loader_style|safe }}
+  {% include "partials/startup_loader_css.html" %}
 {% endblock %}
 
 {% block content %}
 {% set active_page = 'indicators' %}
 
-{{ startup_loader_markup|safe }}
+{% include "partials/startup_loader.html" %}
 
 <div class="card">
   <h1>Unified Indicators</h1>
@@ -166,23 +166,39 @@
       <tbody>
         {% if view_rows %}
           {% for row in view_rows %}
+          {% set type_cls = {"ip": "b-ip", "domain": "b-domain", "url": "b-url", "hash": "b-hash", "email": "b-email"}.get(row.itype, "b-other") %}
+          {% set tlp_cls = {"WHITE": "b-white", "GREEN": "b-green", "AMBER": "b-amber", "RED": "b-red"}.get(row.itlp, "b-green") %}
           <tr role="row">
             <td role="cell"><code>{{ row.value }}</code></td>
-            <td role="cell">{{ row.type_badge|safe }}</td>
+            <td role="cell"><span class="badge {{ type_cls }}" aria-label="Type {{ row.itype }}">{{ row.itype }}</span></td>
             <td role="cell">
-              <div class='confbar' role='progressbar' aria-valuenow='{{ row.confidence }}' aria-valuemin='0' aria-valuemax='100' aria-label='Confidence {{ row.confidence }} percent'>
-                <div class='confbar-in' style='width:{{ row.confidence }}%'></div>
+              <div class="confbar" role="progressbar" aria-valuenow="{{ row.confidence }}" aria-valuemin="0" aria-valuemax="100" aria-label="Confidence {{ row.confidence }} percent">
+                <div class="confbar-in" style="width:{{ row.confidence }}%"></div>
               </div>
             </td>
-            <td role="cell">{{ row.tlp_badge|safe }}</td>
+            <td role="cell"><span class="badge {{ tlp_cls }}" aria-label="TLP {{ row.itlp }}">{{ row.itlp }}</span></td>
             <td role="cell">{{ row.source }}</td>
-            <td role="cell">{{ row.exports|safe }}</td>
+            <td role="cell">
+              {% if row.is_misp %}
+                {% for fmt in row.export_formats_misp %}
+                <a href="/misp/event/{{ row.source_id }}/{{ row.itype }}/{{ fmt }}" aria-label="Export MISP event indicator in {{ fmt }} format">{{ fmt|upper }}</a>
+                {% endfor %}
+              {% else %}
+                {% for fmt in row.export_formats_generic %}
+                <a href="/indicators/{{ fmt }}?q={{ row.q_row|urlencode }}" aria-label="Export indicator in {{ fmt }} format">{{ fmt|upper }}</a>
+                {% endfor %}
+              {% endif %}
+            </td>
             <td role="cell">
               {% for tag in row.tags %}
-              <span class='tag' aria-label='Tag {{ tag }}'>{{ tag }}</span>
+              <span class="tag" aria-label="Tag {{ tag }}">{{ tag }}</span>
               {% endfor %}
             </td>
-            <td role="cell">{{ row.misp_link|safe }}</td>
+            <td role="cell">
+              {% if row.is_misp %}
+              <a href="/misp/event/{{ row.source_id }}" aria-label="Open MISP event {{ row.source_id }}">Event {{ row.source_id }}</a>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         {% else %}
@@ -395,7 +411,7 @@
     });
   });
 
-  {{ startup_loader_script|safe }}
+  {% include "partials/startup_loader_js.html" %}
 
   // Table sorting
   (function() {

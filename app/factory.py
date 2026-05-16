@@ -79,7 +79,6 @@ from .services.feed_ops import (
 )
 from .views.legacy_public import render_index as legacy_render_index
 from .views.legacy_public import render_indicators as legacy_render_indicators
-from .views.widgets import ADMIN_FEED_METRICS_WIDGET_HTML, ADMIN_FEED_METRICS_WIDGET_SCRIPT
 from .webui import webui_bp
 
 logger = logging.getLogger(__name__)
@@ -890,8 +889,6 @@ def create_app() -> Flask:
             "SyncJob": SyncJob,
             "DeadLetterJob": DeadLetterJob,
             "_db_circuit_breaker": _db_circuit_breaker,
-            "ADMIN_FEED_METRICS_WIDGET_HTML": ADMIN_FEED_METRICS_WIDGET_HTML,
-            "ADMIN_FEED_METRICS_WIDGET_SCRIPT": ADMIN_FEED_METRICS_WIDGET_SCRIPT,
         },
     )
 

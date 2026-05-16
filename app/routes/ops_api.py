@@ -120,29 +120,14 @@ def register_ops_api_routes(
         finally:
             db.close()
 
-        log_rows = "".join(
-            [
-                (
-                    "<tr>"
-                    f"<td>{_esc(str(item.created_at))}</td>"
-                    f"<td>{_esc(item.level)}</td>"
-                    f"<td>{_esc(item.component)}</td>"
-                    f"<td>{_esc(item.message)}</td>"
-                    f"<td><code>{_esc(json.dumps(item.metadata_ or {}, ensure_ascii=True))}</code></td>"
-                    "</tr>"
-                )
-                for item in logs
-            ]
-        ) or "<tr><td colspan='5'>No logs for this job.</td></tr>"
-
         return render_template(
             "admin/sync_job_details.html",
             job_id=job_id,
             job=job,
-            job_result_json=_esc(json.dumps(job.result_json or {}, ensure_ascii=True)),
-            run_status=_esc(str(getattr(run, "status", "n/a"))),
-            run_fetched=_esc(str(getattr(run, "fetched_count", "n/a"))),
-            log_rows=log_rows,
+            job_result_json=json.dumps(job.result_json or {}, ensure_ascii=True),
+            run_status=str(getattr(run, "status", "n/a")),
+            run_fetched=str(getattr(run, "fetched_count", "n/a")),
+            logs=logs,
         )
 
     @app.post("/admin/sync-jobs/<job_id>/retry")

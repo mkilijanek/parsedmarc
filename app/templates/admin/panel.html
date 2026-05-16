@@ -124,7 +124,22 @@
   <div class="table-container">
     <table>
       <thead><tr><th>Target</th><th>Status</th><th>HTTP</th><th>Latency ms</th><th>Title</th><th>Notes</th></tr></thead>
-      <tbody>{{ proxy_test_rows_html|safe }}</tbody>
+      <tbody>
+        {% if proxy_test_results %}
+          {% for row in proxy_test_results %}
+          <tr>
+            <td>{{ row.target or "" }}</td>
+            <td>{{ row.status or "" }}</td>
+            <td>{{ row.http if row.http is not none else "-" }}</td>
+            <td>{{ row.latency_ms if row.latency_ms is not none else "-" }}</td>
+            <td>{{ row.title or "" }}</td>
+            <td>{{ row.notes or "" }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="6">No proxy test results yet.</td></tr>
+        {% endif %}
+      </tbody>
     </table>
   </div>
   <details style="margin-top:.6rem">
@@ -158,38 +173,214 @@
   </form>
 
   <h3>Feed List</h3>
-  {{ feed_filter_controls|safe }}
-  {{ source_ctrl_html|safe }}
+  <form method="get" action="/admin" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;align-items:end;margin:.7rem 0 1rem">
+    <label>Status
+      <select name="feeds_status">
+        <option value="all" {% if table_params.status == "ALL" %}selected{% endif %}>all</option>
+        <option value="ok" {% if table_params.status == "OK" %}selected{% endif %}>OK</option>
+        <option value="warning" {% if table_params.status == "WARNING" %}selected{% endif %}>WARNING</option>
+        <option value="error" {% if table_params.status == "ERROR" %}selected{% endif %}>ERROR</option>
+        <option value="disabled" {% if table_params.status == "DISABLED" %}selected{% endif %}>DISABLED</option>
+        <option value="not_configured" {% if table_params.status == "NOT_CONFIGURED" %}selected{% endif %}>NOT_CONFIGURED</option>
+      </select>
+    </label>
+    <label>Datasource
+      <select name="feeds_datasource">
+        <option value="all" {% if table_params.datasource in ("", "all") %}selected{% endif %}>all</option>
+        {% for src in datasource_options %}
+        <option value="{{ src }}" {% if table_params.datasource == src %}selected{% endif %}>{{ src }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Configured
+      <select name="feeds_configured">
+        <option value="all" {% if table_params.configured == "all" %}selected{% endif %}>all</option>
+        <option value="configured" {% if table_params.configured == "configured" %}selected{% endif %}>configured</option>
+        <option value="not_configured" {% if table_params.configured == "not_configured" %}selected{% endif %}>not configured</option>
+      </select>
+    </label>
+    <label>Search
+      <input type="text" name="feeds_q" value="{{ table_params.q }}" placeholder="feed name / source id"/>
+    </label>
+    <label>Sort
+      <select name="feeds_sort">
+        <option value="source" {% if table_params.sort == "source" %}selected{% endif %}>source</option>
+        <option value="status" {% if table_params.sort == "status" %}selected{% endif %}>status</option>
+        <option value="last_run_at" {% if table_params.sort == "last_run_at" %}selected{% endif %}>last_run_at</option>
+        <option value="last_error_at" {% if table_params.sort == "last_error_at" %}selected{% endif %}>last_error_at</option>
+        <option value="fetched_count" {% if table_params.sort == "fetched_count" %}selected{% endif %}>fetched_count</option>
+      </select>
+    </label>
+    <label>Order
+      <select name="feeds_order">
+        <option value="asc" {% if table_params.order == "asc" %}selected{% endif %}>asc</option>
+        <option value="desc" {% if table_params.order == "desc" %}selected{% endif %}>desc</option>
+      </select>
+    </label>
+    <label>Per page
+      <select name="feeds_limit">
+        <option value="25" {% if table_params.limit|int == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if table_params.limit|int == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if table_params.limit|int == 100 %}selected{% endif %}>100</option>
+      </select>
+    </label>
+    <label style="display:flex;align-items:center;gap:.5rem">
+      <input type="checkbox" name="feeds_problems_only" value="1" {% if table_params.problems_only %}checked{% endif %}/> Problems only
+    </label>
+    <input type="hidden" name="feeds_offset" value="0"/>
+    <div style="display:flex;gap:.5rem">
+      <button type="submit">Apply filters</button>
+      <a href="/admin">Clear</a>
+    </div>
+  </form>
+  <p><strong>Feeds:</strong> showing {{ page_start }}-{{ page_end }} of {{ total_feeds }} (server-side)</p>
+  <p>
+    {% if has_prev %}<a href="{{ prev_link }}">Previous</a>{% else %}Previous{% endif %} |
+    {% if has_next %}<a href="{{ next_link }}">Next</a>{% else %}Next{% endif %}
+  </p>
+  <div class="table-container">
+    <table>
+      <thead><tr><th>Source ID</th><th>Name</th><th>Type</th><th>Enabled</th><th>Cron</th><th>Status</th><th>Last run</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% if page_feed_items %}
+          {% for item in page_feed_items %}
+          <tr>
+            <td><code>{{ item.source_id }}</code></td>
+            <td>{{ item.display_name }}</td>
+            <td><small>{{ item.source_type }}</small></td>
+            <td>{{ "enabled" if item.enabled else "disabled" }}</td>
+            <td>{{ item.schedule_cron }}</td>
+            <td>{{ "OK" if item.ready else "Incomplete: " + item.missing|join(", ") }}</td>
+            <td>{{ item.last_run_status }} / {{ item.last_run_at or "n/a" }}</td>
+            <td>
+              <form method="post" action="/admin/feed-toggle" style="display:inline">
+                <input type="hidden" name="source" value="{{ item.source_id }}"/>
+                <input type="hidden" name="enabled" value="{{ "0" if item.enabled else "1" }}"/>
+                <button type="submit">{{ "Disable" if item.enabled else "Enable" }}</button>
+              </form>
+              <a href="/admin/feed/{{ item.source_id }}/configure">Configure</a>
+              <form method="post" action="/admin/sync" style="display:inline">
+                <input type="hidden" name="source" value="{{ item.source_id }}"/>
+                <button type="submit" {% if not item.ready %}disabled{% endif %}>Sync now</button>
+              </form>
+              <a href="/logs?feed={{ item.source_id }}">View logs</a>
+              <form method="post" action="/admin/feed/{{ item.source_id }}/delete" style="display:inline" onsubmit="return confirm('Delete feed {{ item.source_id }}?')">
+                <button type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="8">No feeds match current filters.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <div class="admin-card">
   <h2>Feed Statistics</h2>
-  {{ admin_feed_metrics_widget_html|safe }}
-  {{ admin_feed_metrics_widget_script|safe }}
+  {% include "partials/feed_metrics_widget.html" %}
   <div class="table-container">
     <table>
       <thead><tr><th>Source</th><th>ID</th><th>Status</th><th>Last Update</th><th>Error</th></tr></thead>
-      <tbody>{{ feed_rows_html|safe }}</tbody>
+      <tbody>
+        {% if raw_page %}
+          {% for row in raw_page %}
+          <tr>
+            <td>{{ row.source }}</td>
+            <td>{{ row.source_id or "" }}</td>
+            <td>{{ row.last_fetch_status or "" }}</td>
+            <td>{{ row.last_update or "" }}</td>
+            <td>{{ row.last_fetch_error or "" }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="5">No feed statistics yet.</td></tr>
+        {% endif %}
+      </tbody>
     </table>
   </div>
-  {{ raw_pager_html|safe }}
+  <p><strong>Raw stats:</strong> showing {{ raw_start }}-{{ raw_end }} of {{ raw_total }}.
+    {% if raw_has_prev %}<a href="{{ raw_prev_link }}">Previous</a>{% else %}Previous{% endif %} |
+    {% if raw_has_next %}<a href="{{ raw_next_link }}">Next</a>{% else %}Next{% endif %}
+  </p>
 </div>
 
 <div class="admin-card">
   <h2>Recent Sync Jobs</h2>
   <div class="table-container">
     <table>
-      <thead><tr><th>ID</th><th>Source</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-      <tbody>{{ recent_jobs_html|safe }}</tbody>
+      <thead><tr><th>ID</th><th>Source</th><th>Trigger</th><th>Status</th><th>Created</th><th>Started</th><th>Finished</th><th>Retries</th><th>Next attempt</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% if recent_sync_jobs %}
+          {% for j in recent_sync_jobs %}
+          <tr>
+            <td><code>{{ j.job_id }}</code></td>
+            <td>{{ j.feed_source_id }}</td>
+            <td>{{ j.trigger_type }}</td>
+            <td>{{ j.status }}</td>
+            <td>{{ j.created_at or "" }}</td>
+            <td>{{ j.started_at or "" }}</td>
+            <td>{{ j.finished_at or "" }}</td>
+            <td>{{ j.retry_count or 0 }}/{{ j.max_retries or 0 }}</td>
+            <td>{{ j.next_attempt_at or "" }}</td>
+            <td>
+              <a href="/admin/sync-jobs/{{ j.job_id }}">Details</a>
+              {% if j.status|lower in ("failed", "cancelled") %}
+              <form method="post" action="/admin/sync-jobs/{{ j.job_id }}/retry" style="display:inline">
+                <button type="submit">Retry</button>
+              </form>
+              {% endif %}
+              {% if j.status|lower in ("queued", "running", "cancel_requested") %}
+              <form method="post" action="/admin/sync-jobs/{{ j.job_id }}/cancel" style="display:inline">
+                <button type="submit">Cancel</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="10">No sync jobs yet.</td></tr>
+        {% endif %}
+      </tbody>
     </table>
   </div>
 </div>
 
-{{ danger_zone_html|safe }}
+<div class="card">
+  <h2>Danger Zone</h2>
+  <p>High-risk operations. Requires the admin token, confirmation phrase and instance name.</p>
+  <form method="post" action="/admin/danger/wipe">
+    <p><label>Operation
+      <select name="operation">
+        <option value="soft">Soft reset (indicators, runs, logs, stats, jobs, cache)</option>
+        <option value="factory">Factory reset (all dynamic + feeds/settings)</option>
+        <option value="selected">Selected tables</option>
+      </select>
+    </label></p>
+    <fieldset>
+      <legend>Selected tables (used when operation=selected)</legend>
+      <label><input type="checkbox" name="tables" value="indicators"/> indicators</label>
+      <label><input type="checkbox" name="tables" value="feed_stats"/> feed_stats</label>
+      <label><input type="checkbox" name="tables" value="feed_runs"/> feed_runs</label>
+      <label><input type="checkbox" name="tables" value="sync_jobs"/> sync_jobs</label>
+      <label><input type="checkbox" name="tables" value="app_logs"/> app_logs</label>
+      <label><input type="checkbox" name="tables" value="export_jobs"/> export_jobs</label>
+      <label><input type="checkbox" name="tables" value="feeds"/> feeds</label>
+      <label><input type="checkbox" name="tables" value="app_settings"/> app_settings</label>
+    </fieldset>
+    <p><label>Admin token <input type="password" name="admin_token" placeholder="ADMIN_API_TOKEN" required/></label></p>
+    <p><label>Type confirmation <input type="text" name="confirm_phrase" placeholder="WIPE" required/></label></p>
+    <p><label>Instance name <input type="text" name="confirm_instance" placeholder="{{ instance_name }}" required/></label></p>
+    <button type="submit">Execute wipe</button>
+  </form>
+</div>
 
 {% endblock %}
 
 {% block extra_js %}
+{% include partials/feed_metrics_widget_js.html %}
 (function() {
   // Show toast on form success if status message exists
   const statusMsg = document.getElementById('statusMsg');
