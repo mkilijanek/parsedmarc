@@ -1,5 +1,5 @@
 ---
-title: IOC Service — Architecture Overview
+title: IOC Service — Architecture Overview (v1.9.1)
 ---
 C4Context
     title IOC Threat Intelligence Service — Component Architecture
@@ -10,10 +10,19 @@ C4Context
 
     System_Boundary(ioc, "IOC Service") {
         Container(nginx, "Nginx", "Reverse Proxy", "TLS termination, rate limiting, security headers")
-        Container(flask, "Flask App", "Python / Gunicorn", "REST API, Admin UI, Export jobs")
+        Container(flask, "Flask App", "Python / Gunicorn", "REST API, Admin UI, Export jobs, startup splash")
         Container(worker, "Background Worker", "Python", "Scheduler loop, sync jobs, cache warming")
         ContainerDb(postgres, "PostgreSQL 16", "Database", "Indicators, feeds, audit, jobs, settings")
         ContainerDb(redis, "Redis 7", "Cache / Rate Limit", "API response cache, Flask-Limiter counters")
+    }
+
+    System_Boundary(svc, "Service Layer (app/services/)") {
+        Container(query_svc, "query_svc", "Python", "Indicator query engine — FTS, RPN filter, pagination")
+        Container(feed_ops, "feed_ops", "Python", "Feed listing, enqueue_sync_for_source, feed status")
+        Container(audit_svc, "audit_svc", "Python", "Tamper-evident audit log writes and chain verify")
+        Container(scheduler_svc, "scheduler_svc", "Python", "Cron matching, job lifecycle, DLQ, retention")
+        Container(export_svc, "export_svc", "Python", "Async export jobs, artifact TTL, access tokens")
+        Container(feed_config_svc, "feed_config_svc", "Python", "Feed config read/write, secret resolution")
     }
 
     System_Ext(crowdsec, "CrowdSec CTI", "Threat intelligence")
@@ -26,8 +35,15 @@ C4Context
     Rel(admin, nginx, "HTTPS /admin")
     Rel(siem, nginx, "HTTPS /api/v1")
     Rel(nginx, flask, "HTTP proxy")
+    Rel(flask, query_svc, "indicator queries")
+    Rel(flask, feed_ops, "feed list, enqueue")
+    Rel(flask, audit_svc, "audit writes")
+    Rel(flask, export_svc, "export jobs")
+    Rel(flask, feed_config_svc, "config read/write")
     Rel(flask, postgres, "SQLAlchemy ORM")
     Rel(flask, redis, "Cache reads/writes")
+    Rel(worker, scheduler_svc, "job lifecycle")
+    Rel(worker, feed_ops, "enqueue, status")
     Rel(worker, postgres, "Job queue polling")
     Rel(worker, redis, "Cache warming")
     Rel(worker, crowdsec, "HTTPS fetch")

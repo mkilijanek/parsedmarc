@@ -655,3 +655,15 @@ Components: Nginx (TLS/rate-limit), Flask App (API + Admin UI), Background Worke
 External feeds: CrowdSec CTI, MISP, abuse.ch, MWDB. Export target: Microsoft Sentinel.
 
 See also: [`uml/generated/IOC_Service_Component.png`](uml/generated/IOC_Service_Component.png)
+
+### 6. Service Layer Structure (v1.9.1)
+[`diagrams/service-layer.mmd`](diagrams/service-layer.mmd)
+
+New in v1.9.1: the monolithic `factory.py` composition root has been decomposed into dedicated
+service modules in `app/services/`. Each service exposes a `make_*_service()` factory that
+receives its dependencies via injection, keeping `factory.py` as a thin wiring layer.
+
+Key services: `query_svc` (indicator FTS/RPN engine), `feed_ops` (feed listing + enqueue),
+`audit_svc` (tamper-evident audit chain), `app_log_svc` (structured app logs),
+`scheduler_svc` (cron job lifecycle + DLQ), `export_svc` (async export + artifact TTL),
+`feed_config_svc` (config read/write + secret resolution), `settings_svc` (AppSetting CRUD).

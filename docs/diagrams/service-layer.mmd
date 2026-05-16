@@ -1,0 +1,61 @@
+---
+title: IOC Service — Service Layer Structure (v1.9.1)
+---
+classDiagram
+    class query_svc {
+        +make_query_service(db_factory) QueryService
+        +_apply_term(query, term) Query
+        +_rpn_to_filter(tokens) BooleanClause
+        +query_indicators(db, q, ...) List~Indicator~
+        +count_indicators(db, q, ...) int
+    }
+
+    class feed_ops {
+        +make_feed_list_service(db_factory) FeedListService
+        +enqueue_sync_for_source(db, source_id, ...) SyncJob
+        +build_feed_items(db) List~dict~
+        +latest_runs_map(db, source_ids) dict
+    }
+
+    class audit_svc {
+        +make_audit_service(get_ip, get_user_id) AuditService
+        +log(db, event, detail) AuditLog
+        +verify_chain(db, limit) bool
+    }
+
+    class app_log_svc {
+        +make_app_log_service() AppLogService
+        +log(db, level, message, meta) AppLog
+    }
+
+    class scheduler_svc {
+        +execute_sync_job(db, job) FeedRun
+        +enqueue_due_scheduled_jobs(db) int
+        +run_log_retention_if_due(db) None
+        +refresh_job_backlog_metrics(db) None
+        +db_advisory_lock(db, key) bool
+    }
+
+    class export_svc {
+        +run_export_job(db, job) ExportJob
+        +spawn_export_job(db, fmt, ...) ExportJob
+        +persist_export_job(db, job) ExportJob
+        +render_export_body(fmt, rows) bytes
+    }
+
+    class feed_config_svc {
+        +read_feed_config_state(db, feed) dict
+        +write_feed_config_field(db, feed, key, val) None
+        +resolve_secret(db, key) str
+    }
+
+    class settings_svc {
+        +get_setting(db, key, default) str
+        +set_setting(db, key, value) None
+    }
+
+    query_svc ..> feed_ops : used by public routes
+    feed_ops ..> scheduler_svc : enqueue triggers
+    audit_svc ..> app_log_svc : co-registered
+    export_svc ..> feed_ops : feed validation
+    scheduler_svc ..> feed_config_svc : config reads

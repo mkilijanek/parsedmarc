@@ -91,7 +91,8 @@ def test_startup_loader_uses_shorter_min_visible_delay(client, sample_indicators
     response = client.get("/indicators")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "const minVisibleMs = 400;" in html
+    assert "var serverReady = false;" in html
+    assert "var dismissed = false;" in html
 
 
 def test_unified_table_template_has_accessibility_roles_and_badges():

@@ -1,17 +1,22 @@
 ---
-title: IOC Service — Feed Ingestion Data Flow
+title: IOC Service — Feed Ingestion Data Flow (v1.9.1)
 ---
 flowchart TD
     A([External Feed Source\nCrowdSec / MISP / abuse.ch\nMWDB / MalwareBazaar]) -->|HTTP/S| B
 
     subgraph Worker["Background Worker Process"]
-        B[Scheduler Loop\n_enqueue_due_scheduled_jobs] -->|creates| C[SyncJob\nstatus=queued]
-        C -->|dequeued by| D[_execute_sync_job]
-        D -->|loads| E[Feed config + secrets\nfrom AppSetting]
+        B[scheduler_svc\n_enqueue_due_scheduled_jobs] -->|creates| C[SyncJob\nstatus=queued]
+        C -->|dequeued by| D[scheduler_svc\n_execute_sync_job]
+        D -->|loads via| E[feed_config_svc\nread_feed_config_state]
         E -->|injects env| F[Feed Adapter\nabusech / misp / mwdb /\nmalwarebazaar / crowdsec]
         F -->|fetch_batches| G{API Response}
         G -->|error / timeout| H[Retry with backoff\nor DeadLetterJob]
         G -->|success| I[persist_batches\nnormalize + upsert]
+    end
+
+    subgraph SvcLayer["Service Layer"]
+        D -->|enqueue via| FO[feed_ops\nenqueue_sync_for_source]
+        D -->|audit writes| AS[audit_svc]
     end
 
     subgraph DB["PostgreSQL"]
@@ -20,11 +25,12 @@ flowchart TD
         D -->|write| L[(feed_runs\nstatus / fetched_count)]
         D -->|write| M[(sync_jobs\nstatus / result_json)]
         H -->|insert| N[(dead_letter_jobs)]
+        AS -->|write| O[(audit_log)]
     end
 
     subgraph Cache["Redis"]
-        I -->|invalidate| O[Cache keys\nwarm:indicator_type_counts]
-        P[Cache Warming\n_run_cache_warming_if_due] -->|warm| O
+        I -->|invalidate| P[Cache keys\nwarm:indicator_type_counts]
+        Q[Cache Warming\n_run_cache_warming_if_due] -->|warm| P
     end
 
-    J --> P
+    J --> Q
