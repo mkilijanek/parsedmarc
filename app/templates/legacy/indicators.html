@@ -173,7 +173,7 @@
           {% set type_cls = {"ip": "b-ip", "domain": "b-domain", "url": "b-url", "hash": "b-hash", "email": "b-email"}.get(row.itype, "b-other") %}
           {% set tlp_cls = {"WHITE": "b-white", "GREEN": "b-green", "AMBER": "b-amber", "RED": "b-red"}.get(row.itlp, "b-green") %}
           <tr role="row">
-            <td role="cell"><code>{{ row.value }}</code></td>
+            <td role="cell"><code title="{{ row.value }}">{{ row.value }}</code></td>
             <td role="cell"><span class="badge {{ type_cls }}" aria-label="Type {{ row.itype }}">{{ row.itype }}</span></td>
             <td role="cell">
               <div class="confbar" role="progressbar" aria-valuenow="{{ row.confidence }}" aria-valuemin="0" aria-valuemax="100" aria-label="Confidence {{ row.confidence }} percent">

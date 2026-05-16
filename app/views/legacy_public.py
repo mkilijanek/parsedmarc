@@ -8,9 +8,8 @@ from flask import render_template
 from ..models import Indicator
 
 
-
-
-
+_EXPORT_FORMATS_MISP = ("csv", "txt", "json", "fortigate")
+_EXPORT_FORMATS_GENERIC = ("txt", "csv", "json", "fortigate")
 
 
 def render_index(total: int, active: int, feeds: list[Any]) -> str:
@@ -47,9 +46,6 @@ def render_indicators(
         isource = str(ind.source or "")
         isource_id = str(ind.source_id or "")
 
-        export_formats_misp = ("csv", "txt", "json", "fortigate")
-        export_formats_generic = ("txt", "csv", "json", "fortigate")
-
         if isource == "misp" and isource_id:
             q_row = None
         else:
@@ -65,8 +61,8 @@ def render_indicators(
                 "source_id": isource_id,
                 "is_misp": isource == "misp" and bool(isource_id),
                 "q_row": q_row,
-                "export_formats_misp": export_formats_misp,
-                "export_formats_generic": export_formats_generic,
+                "export_formats_misp": _EXPORT_FORMATS_MISP,
+                "export_formats_generic": _EXPORT_FORMATS_GENERIC,
                 "tags": list((ind.tags or [])[:10]),
             }
         )

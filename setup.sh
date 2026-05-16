@@ -176,7 +176,7 @@ set_env_key() {
     info "Backup saved to ${ENV_FILE}.bak"
   fi
 
-  if [[ -f "${ENV_FILE}" ]] && grep -qF "${key}=" "${ENV_FILE}"; then
+  if [[ -f "${ENV_FILE}" ]] && grep -q "^${key}=" "${ENV_FILE}"; then
     local tmpfile
     tmpfile="$(mktemp "${ENV_FILE}.tmp.XXXXXX")" \
       || die "Cannot create a temporary file for .env update."

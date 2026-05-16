@@ -44,7 +44,6 @@ def register_ops_admin_routes(
     _db = deps["_db"]
     _enqueue_sync_job = deps["_enqueue_sync_job"]
     _ensure_default_feeds = deps["_ensure_default_feeds"]
-    _esc = deps["_esc"]
     _feed_secret_key = deps["_feed_secret_key"]
     _feed_value_key = deps["_feed_value_key"]
     _fetch_mwdb_orgs = deps["_fetch_mwdb_orgs"]

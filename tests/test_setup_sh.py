@@ -8,6 +8,8 @@ repo files.
 from __future__ import annotations
 
 import os
+import platform
+import shutil
 import subprocess
 import textwrap
 from pathlib import Path
@@ -15,6 +17,20 @@ from pathlib import Path
 import pytest
 
 SETUP_SH = Path(__file__).resolve().parents[1] / "setup.sh"
+
+def _bash_version() -> int:
+    try:
+        out = subprocess.check_output(
+            ["bash", "-c", "echo ${BASH_VERSINFO[0]}"], text=True, stderr=subprocess.DEVNULL
+        )
+        return int(out.strip())
+    except Exception:
+        return 0
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("bash") is None or _bash_version() < 4 or platform.system() == "Windows",
+    reason="requires bash 4+ on Linux/macOS",
+)
 
 
 def run_setup(tmp_path: Path, env_vars: dict | None = None, extra_args: list | None = None) -> subprocess.CompletedProcess:
