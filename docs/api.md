@@ -24,13 +24,15 @@ Versioning policy:
 ## Authentication
 
 Current access model:
-- `/api/v1/*` remains unauthenticated in the current release line.
+- `/api/v1/*` **read** endpoints (GET indicators, feeds, logs) are unauthenticated.
+- `POST /api/v1/sync`, `POST /api/sync`, `POST /api/sentinel/export` **require admin authentication** via `X-Admin-Token` header.
 - `/api/events` is a public operational SSE surface.
 - `/admin/*` operational endpoints require an authenticated admin session, and state-changing routes also require CSRF validation.
 - `/admin/audit/*` is documented separately because it is a known protection gap tracked in the project backlog.
+- **Token-in-query-string (`?admin_token=`) is not accepted.** Tokens in URLs appear in server access logs, browser history, and `Referer` headers. Use the `X-Admin-Token` header for API clients, or the `admin_token` form field for POST-body submissions.
 
 Operational note:
-- Browser access to admin endpoints should go through the login flow.
+- Browser access to admin endpoints should go through the login flow at `/admin/login`.
 - `curl` examples for admin-session endpoints require authenticated session cookies; they are not anonymous API calls.
 
 For production deployments of public API surfaces, consider:
@@ -77,14 +79,16 @@ Supported query parameters:
 
 Versioned sync queue endpoint. Semantics match the supported sync job enqueue flow.
 
-Request example:
-```json
-{ "source": "abusech" }
+**Authentication required:** Pass the admin token in the `X-Admin-Token` header.
+
+```bash
+curl -X POST https://your-host/api/v1/sync   -H "X-Admin-Token: your-admin-token"   -H "Content-Type: application/json"   -d '{"source": "abusech"}'
 ```
 
 Response:
 - `202 Accepted` with queued/reused job metadata (`job_id`, `feed_source_id`, `created`)
 - `400` for invalid source or incomplete config
+- `401 Unauthorized` if token is missing or incorrect
 
 #### `GET /api/v1/feeds`
 
@@ -195,6 +199,8 @@ Deprecated legacy responses include:
 
 Legacy sync queue endpoint. Prefer `POST /api/v1/sync` for stable integrations.
 
+**Authentication required:** Pass the admin token in the `X-Admin-Token` header (same as `/api/v1/sync`).
+
 Request example:
 ```json
 { "source": "abusech" }
@@ -232,14 +238,23 @@ Result columns shown in Admin UI:
 
 Starts async export job that sends filtered IOC set to Microsoft Graph Threat Intelligence API.
 
+**Authentication required:** Pass the admin token in the `X-Admin-Token` header.
+
+```bash
+curl -X POST "https://your-host/api/sentinel/export?type=ip&tlp=RED&min_conf=70"   -H "X-Admin-Token: your-admin-token"
+```
+
 Query parameters:
 - `q`, `type`, `tlp`, `source`, `min_conf`, `max_conf`, `limit`, `offset` (same as `/indicators`)
-- Optional overrides: `auth_mode=client_secret|certificate`, `tenant_id`, `client_id`, `scope`, `endpoint_url`, `cert_thumbprint`, `chunk_size`
+- `chunk_size` — number of indicators per Graph API batch (default from `AZURE_SENTINEL_CHUNK_SIZE`)
 
 Response:
 - `202 Accepted` + `job_id`, `status_url`, `download_url`
+- `401 Unauthorized` if token is missing or incorrect
 
 Notes:
+- Connection credentials (`tenant_id`, `client_id`, `scope`, `endpoint_url`, `cert_thumbprint`) are read exclusively from server-side app config (`AZURE_SENTINEL_*` env vars) — callers cannot override them.
+- `auth_mode` is set via `AZURE_SENTINEL_AUTH_MODE` env var (`client_secret` or `certificate`).
 - Secrets are read from admin settings (`sentinel.client_secret`, `sentinel.cert_private_key_pem`) and are not returned by API.
 - Job report (`download_url`) contains `sent/failed/skipped/chunks` summary.
 

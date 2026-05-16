@@ -1,6 +1,6 @@
 # Architecture
 
-Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
+Status: updated for `1.8.0` + `compliance-1.0`, post-refactor cleanup (2026-05-16).
 
 ## Overview
 
@@ -61,7 +61,8 @@ The Threat Feed Aggregator follows a **database-first** architecture where Postg
 - `app/factory.py` - App factory, composition root, and wiring only
 - `app/routes/public.py` - Public HTML/export routes
 - `app/routes/auth.py` - Admin authentication and CSRF protection
-- `app/routes/ops_api.py` - Admin sync, DLQ, feeds, and operational API routes
+- `app/routes/ops_admin.py` - Admin panel HTML routes (feeds, config, sync-job details)
+- `app/routes/ops_api.py` - Admin operational API routes (sync, DLQ, cancel, retry)
 - `app/routes/events.py` - SSE live event stream
 - `app/routes/logs.py` - Logs UI and log API routes
 - `app/routes/health.py` - Health/readiness/dependency routes
@@ -72,10 +73,20 @@ The Threat Feed Aggregator follows a **database-first** architecture where Postg
 
 **Characteristics:**
 - Stateless design for horizontal scalability
-- `app/factory.py` contains no endpoint business logic — all routes in `app/routes/*`
+- `app/factory.py` is the composition root — defines 30+ shared helper closures injected as a `deps` dict to each route registrar; no route module imports from another
 - Immutable configuration (frozen dataclass hierarchy)
 - Structured logging with context
 - DBCircuitBreaker opens after 5 consecutive DB failures, enforces cooldown, then allows one half-open probe
+
+**Template Architecture (Jinja2):**
+All HTML is rendered through Jinja2 templates — no HTML is constructed as Python strings in route handlers.
+- `app/templates/layout.html` — base layout; `{% block extra_css %}` is inside `<style>`, `{% block extra_js %}` is inside `<script>` — child blocks inject raw CSS/JS without wrapper tags
+- `app/templates/legacy/` — indicator search and landing pages
+- `app/templates/admin/` — admin panel, feed configure, sync job details
+- `app/templates/partials/` — reusable fragments included via `{% include %}`:
+  - `startup_loader.html` / `startup_loader_css.html` / `startup_loader_js.html`
+  - `feed_metrics_widget.html` / `feed_metrics_widget_js.html`
+- No Python view module constructs HTML strings; `app/views/widgets.py` deleted post-refactor
 
 ### 2. Database Layer (PostgreSQL 16+)
 
@@ -326,12 +337,16 @@ Permissions-Policy: geolocation=(), microphone=(), camera=()
 
 ### Authentication & Authorization
 
-**Current State (1.4.2+):**
+**Current State (1.8.x):**
 - `/admin` surface requires session-based login (`ADMIN_API_TOKEN`), protected with CSRF tokens.
 - Admin sessions carry `admin_authenticated`, `admin_user_id`, and `admin_role`.
-- State-changing admin requests are CSRF-validated.
+- State-changing admin requests are CSRF-validated (token injected by `_inject_admin_csrf` `after_request` hook).
 - Login endpoint is rate-limited; rate limit exceeded returns an HTML operator-facing response.
-- `/api/v1/*` public query surface is unauthenticated, matching the legacy model.
+- `/api/sync`, `/api/v1/sync`, `/api/sentinel/export` require `X-Admin-Token: <token>` header.
+  - Token may also be passed as `admin_token` in a POST form body.
+  - **Query string (`?admin_token=`) is NOT accepted** — tokens in URLs appear in server access logs.
+- `/api/v1/*` public query surface is unauthenticated for read operations (GET indicators, GET feeds).
+- `auth_mode` for Sentinel export is read from `AZURE_SENTINEL_AUTH_MODE` app config — callers cannot override it.
 - Public `/healthz`, `/readyz`, `/api/events` are unauthenticated operational probes.
 
 **Recommended for Production:**

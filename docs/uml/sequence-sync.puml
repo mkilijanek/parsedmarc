@@ -1,82 +1,97 @@
 @startuml IOC_Service_Sync_Sequence
 !theme cerulean-outline
 
-title IOC Service - Feed Synchronization Sequence
+title IOC Service — Feed Synchronization Sequence
 
-actor "Admin/API" as Client
-actor Scheduler
-participant "SyncJob\nTable" as SyncJob
-participant "FeedService" as Service
-participant "External API" as API
+actor "Admin (Browser)" as AdminUser
+actor "API Client" as APIClient
+participant "Flask Routes\n(ops_admin / ops_api)" as Routes
+participant "scheduler_svc\nenqueue_sync_job()" as Scheduler
+participant "SyncJob\n(DB table)" as SyncJob
+participant "Worker Thread\nexecute_sync_job()" as Worker
+participant "Feed Service\n(misp/abusech/etc.)" as Service
+participant "External API" as ExtAPI
 database "PostgreSQL" as DB
 
-== Idempotency Check ==
-Client -> Scheduler : POST /admin/sync or /api/sync
-Scheduler -> SyncJob : enqueue_sync_job(feed_id, trigger)
-activate SyncJob
-SyncJob -> SyncJob : Check existing queued/running
-alt Job already exists
-    SyncJob --> Scheduler : Return existing job
-else New job
-    SyncJob -> SyncJob : Create job record
-    SyncJob --> Scheduler : Return new job
-end
+== Auth Check (required for all sync triggers) ==
+AdminUser -> Routes : POST /admin/sync {source=misp, csrf_token=<csrf>}
+Routes -> Routes : check_admin_auth() — validate session + CSRF
+APIClient -> Routes : POST /api/sync\nX-Admin-Token: <token>
+Routes -> Routes : _admin_token_authorized()\nhmac.compare_digest(token, ADMIN_API_TOKEN)
+note right of Routes
+  Unauthenticated requests
+  receive 401 Unauthorized
+end note
 
+== Idempotency Check ==
+Routes -> Scheduler : enqueue_sync_job(source, trigger_type)
+Scheduler -> SyncJob : SELECT * WHERE source=? AND status IN (queued, running)
+activate SyncJob
+alt Job already queued/running (idempotency)
+    SyncJob --> Scheduler : existing SyncJob record
+    Scheduler --> Routes : {job_id, created=False}
+    Routes --> APIClient : 202 {job_id, created: false}
+else New job
+    SyncJob -> SyncJob : INSERT SyncJob(status=queued)
+    SyncJob --> Scheduler : new SyncJob record
+    Scheduler --> Routes : {job_id, created=True}
+    Routes --> APIClient : 202 {job_id, created: true}
+end
 deactivate SyncJob
 
-== Execute Sync ==
-Scheduler -> Service : execute_sync_job(job)
+== Execute Sync (background thread) ==
+Worker -> SyncJob : UPDATE status=running, started_at=now()
+Worker -> DB : INSERT FeedRun(status=running)
+
+Worker -> Service : update_<source>_indicators(cfg, db)
 activate Service
 
-Service -> SyncJob : mark_running()
-Service -> DB : Create FeedRun record
-
 == Fetch from External API ==
-Service -> API : fetch_indicators(params)
-activate API
-API --> Service : indicators_json
-
-deactivate API
+Service -> ExtAPI : HTTP GET/POST with auth headers + proxy
+activate ExtAPI
+ExtAPI --> Service : JSON/CSV indicators payload
+deactivate ExtAPI
 
 == Process Indicators ==
-loop For each indicator
-    Service -> Service : Parse and normalize
-    Service -> Service : Apply TLP rules
-    Service -> DB : UPSERT indicator
-    activate DB
-    deactivate DB
+loop For each indicator batch
+    Service -> Service : parse() → normalize() → deduplicate()
+    Service -> Service : apply TLP inheritance rules
+    Service -> DB : INSERT ... ON CONFLICT (value, source)\nDO UPDATE SET last_seen, confidence, tags
 end
 
-== Update Stats ==
-Service -> DB : Update feed_stats
-activate DB
-DB --> Service : OK
-deactivate DB
-
-Service -> SyncJob : mark_success(result)
-Service -> DB : Update FeedRun status
-
+Service -> DB : UPDATE feed_stats (total, active, last_fetch_status)
+Service --> Worker : {fetched_count, upserted, deactivated}
 deactivate Service
 
-== Admin Controls ==
-Client -> Scheduler : POST /admin/sync-jobs/{job_id}/cancel
+Worker -> SyncJob : UPDATE status=success, finished_at=now()
+Worker -> DB : UPDATE FeedRun(status=success, fetched_count)
+Worker -> DB : INSERT AppLog(level=INFO, message=sync_complete)
+
+== Cancel Flow ==
+AdminUser -> Routes : POST /admin/sync-jobs/{job_id}/cancel
+Routes -> SyncJob : SELECT status
 alt status=queued
-  Scheduler -> SyncJob : set status=cancelled
-  Scheduler -> DB : update FeedRun(cancelled)
+    Routes -> SyncJob : UPDATE status=cancelled
+    Routes -> DB : UPDATE FeedRun(status=cancelled)
 else status=running
-  Scheduler -> SyncJob : set status=cancel_requested
-  Scheduler -> DB : mark run with cancel_requested note
+    Routes -> SyncJob : UPDATE status=cancel_requested
+    Worker -> Worker : poll cancel_requested flag
+    Worker -> SyncJob : UPDATE status=cancelled (on next check)
 end
 
-Client -> Scheduler : POST /admin/sync-jobs/{job_id}/retry
-Scheduler -> SyncJob : create new job(trigger=retry)
-Scheduler --> Client : redirect with new job_id
+== Retry Flow ==
+AdminUser -> Routes : POST /admin/sync-jobs/{job_id}/retry
+Routes -> Scheduler : enqueue_sync_job(source, trigger_type=retry)
+Routes --> AdminUser : 302 → /admin/sync-jobs/{new_job_id}
 
 == Error Handling ==
-alt Fetch fails
-    Service ->x API : Timeout/Error
-    Service -> SyncJob : mark_failed(error)
-    Service -> DB : Log error in FeedRun
+alt External API unreachable
+    Service ->x ExtAPI : Timeout / ConnectionError
+    Service --> Worker : raises exception
+    Worker -> SyncJob : UPDATE status=failed, error=<msg>
+    Worker -> DB : UPDATE FeedRun(status=failed)
+    Worker -> DB : INSERT AppLog(level=ERROR)
+    Worker -> DB : INSERT DeadLetterJob
 end
 
 @enduml

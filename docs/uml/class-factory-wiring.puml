@@ -1,0 +1,130 @@
+@startuml IOC_Service_Factory_Wiring
+!theme cerulean-outline
+skinparam classAttributeIconSize 0
+
+title IOC Service — Factory Wiring & Route Registrar Pattern
+
+class "create_app()" as Factory {
+    +<<creates>> Flask app
+    +<<wires>> all dependencies
+    +<<registers>> all routes
+    --
+    cfg: Config
+    db: SessionLocal
+    redis: Redis
+    --
+    -_admin_token_authorized()
+    -_audit()
+    -_cache_key()
+    -_count_indicators()
+    -_db()
+    -_esc()
+    -_query_indicators()
+    ...30+ shared helpers...
+}
+
+class "register_public_routes(app, cfg, logger, deps)" as PublicRoutes {
+    +GET /
+    +GET /indicators
+    +GET /indicators/<fmt>
+    +POST /api/sentinel/export
+    +GET /api/export/<job_id>/status
+    +GET /api/export/<job_id>/download
+    +GET /metrics
+    --
+    deps: _admin_token_authorized
+    deps: _query_indicators
+    deps: _render_indicators
+    deps: _spawn_export_job
+    deps: validate_search_query
+}
+
+class "register_api_v1_routes(app, cfg, logger, deps)" as ApiV1Routes {
+    +GET /api/v1/indicators
+    +POST /api/v1/sync
+    +GET /api/v1/feeds
+    +GET /api/v1/runs/current
+    +GET /api/v1/logs
+    --
+    deps: _admin_token_authorized
+    deps: _query_indicators
+    deps: _read_feed_config_state
+}
+
+class "register_ops_routes(app, cfg, logger, scheduler_state, deps)" as OpsRoutes {
+    delegates to:
+    - register_ops_admin_routes()
+    - register_ops_api_routes()
+}
+
+class "register_ops_admin_routes(app, cfg, logger, deps)" as OpsAdminRoutes {
+    +GET /admin
+    +POST /admin/sync
+    +POST /admin/global-config
+    +GET /admin/feed/<id>/configure
+    +POST /admin/feed/<id>/configure
+    +POST /admin/feed/<id>/enable
+    +POST /admin/feed/<id>/delete
+    +POST /admin/feed/add
+    +GET /admin/sync-jobs/<id>
+    +POST /admin/sync-jobs/<id>/retry
+    +POST /admin/sync-jobs/<id>/cancel
+    --
+    deps: _esc, _audit, _db
+    deps: _build_feed_items
+    deps: SyncJob, Feed, AppLog
+}
+
+class "register_ops_api_routes(app, cfg, logger, deps)" as OpsApiRoutes {
+    +POST /api/sync
+    +GET /api/logs
+    +GET /api/v1/health
+    +GET /api/dep-status
+    +GET /admin/sync-jobs/<id>
+    +DELETE /api/dlq/<id>
+    --
+    deps: _admin_token_authorized
+    deps: _app_log, _audit
+    deps: SyncJob, FeedRun
+}
+
+class "register_auth_routes(app, cfg, logger, deps)" as AuthRoutes {
+    +GET /admin/login
+    +POST /admin/login
+    +POST /admin/logout
+    +@before_request check_admin_auth()
+    +@after_request _inject_admin_csrf()
+    --
+    deps: _audit, _app_log
+}
+
+class "register_events_routes(app, cfg, logger, deps)" as EventsRoutes {
+    +GET /api/events
+    --
+    deps: _db, _dep_status, Indicator, FeedRun
+}
+
+note right of Factory
+  Composition root — all 30+ shared
+  helper closures defined here and
+  passed as a deps dict to each
+  route registrar. No route module
+  imports from another route module.
+end note
+
+note right of OpsRoutes
+  Thin delegation layer only —
+  no routes defined directly.
+  Passes all deps through to
+  ops_admin and ops_api.
+end note
+
+Factory --> PublicRoutes : register_public_routes(deps)
+Factory --> ApiV1Routes : register_api_v1_routes(deps)
+Factory --> OpsRoutes : register_ops_routes(deps)
+Factory --> AuthRoutes : register_auth_routes(deps)
+Factory --> EventsRoutes : register_events_routes(deps)
+OpsRoutes --> OpsAdminRoutes : delegates
+OpsRoutes --> OpsApiRoutes : delegates
+
+@enduml

@@ -1,6 +1,6 @@
 # Access Control Baseline
 
-Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
+Status: updated for `1.8.0` + `compliance-1.0`, post-refactor cleanup (2026-05-16).
 
 This document defines the minimum access-control model currently enforced by IOC Service for the admin surface and the supported versioned API surface.
 
@@ -28,18 +28,23 @@ This document defines the minimum access-control model currently enforced by IOC
 | `/api/v1/feeds/metrics` | public read | telemetry surface matching current public API posture |
 | `/api/v1/runs/current` | public read | scheduler/job state view |
 | `/api/v1/logs` | public read | structured logs API, same visibility model as legacy API |
-| `/api/v1/sync` | public write | queue trigger path preserved additively from legacy `/api/sync` |
+| `/api/v1/sync` | **admin token required** | `X-Admin-Token` header; 401 without valid token |
 | `/api/events` | public read | SSE stream: heartbeat, indicator count, sync status, feed health |
+| `/api/sync` | **admin token required** | legacy; prefer `/api/v1/sync` |
+| `/api/sentinel/export` | **admin token required** | `X-Admin-Token` header; 401 without valid token |
 | `/admin/*` | authenticated session + CSRF for writes | protected operator/admin plane |
 | `/admin/api/dead-letter-jobs` | authenticated session | DLQ inventory and manual requeue |
 | `/admin/api/db-circuit` | authenticated session | DBCircuitBreaker state query |
 | `/admin/audit/*` | no authentication enforced (gap SEC-1) | audit verify/report; should be admin-only |
 
-Rationale for `1.8.0`:
+Rationale for `1.8.0` (updated 2026-05-16):
 - admin surface is fully session-protected (since 1.4.2), with CSRF tokens on all state-changing flows,
-- `/api/v1/*` remains publicly readable, matching the legacy API posture,
+- `/api/v1/*` read surfaces remain publicly readable, matching the legacy API posture,
+- **`POST /api/v1/sync`, `POST /api/sync`, `POST /api/sentinel/export`** now require `X-Admin-Token` header; these are write/trigger operations — unauthenticated access was a security gap,
+- **Admin token is not accepted via query string** (`?admin_token=`); tokens in URLs appear in access logs, browser history, and `Referer` headers,
+- `auth_mode` for Sentinel export is read from server config (`AZURE_SENTINEL_AUTH_MODE`), not from caller parameters,
 - `/api/events` SSE stream is publicly readable (operational transparency). In `1.8.1` it is bounded by explicit duration/capacity limits and rejected on sync workers by default,
-- machine-client auth for `/api/v1/*` remains a future milestone,
+- machine-client auth for `/api/v1/*` read routes remains a future milestone,
 - known gap: `/admin/audit/*` endpoints not covered by admin auth middleware (SEC-1).
 
 ## Active Roles

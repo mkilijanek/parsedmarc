@@ -1,0 +1,87 @@
+@startuml IOC_Service_Auth_Sequence
+!theme cerulean-outline
+
+title IOC Service — Authentication & Authorization Flows
+
+actor "Browser User" as User
+actor "API Client" as API
+participant "Nginx" as Nginx
+participant "Flask App" as App
+participant "auth.py" as Auth
+participant "factory.py\n_admin_token_authorized()" as TokenAuth
+database "Session Store\n(Redis/cookie)" as Session
+
+== Admin Web Login ==
+User -> Nginx : GET /admin/login
+Nginx -> App : forward
+App -> Auth : render login form
+Auth --> User : 200 login.html
+
+User -> Nginx : POST /admin/login {admin_token=<token>}
+Nginx -> App : forward
+App -> Auth : verify token
+Auth -> Auth : hmac.compare_digest(token, ADMIN_API_TOKEN)
+alt Token valid
+    Auth -> Session : set admin_authenticated=True, admin_role, admin_csrf_token
+    Auth --> User : 302 → /admin
+else Token invalid
+    Auth --> User : 401 Unauthorized
+end
+
+== Admin Panel Request (session-based) ==
+User -> Nginx : GET /admin
+Nginx -> App : forward (with session cookie)
+App -> Auth : @before_request check_admin_auth()
+Auth -> Session : read admin_authenticated
+alt Authenticated
+    App -> App : render panel.html
+    App -> Auth : @after_request _inject_admin_csrf()
+    Auth -> Auth : inject <script>window.__adminCsrfToken=...</script>
+    Auth --> User : 200 panel.html + CSRF token injected
+else Not authenticated
+    Auth --> User : 302 → /admin/login
+end
+
+== Admin POST Action (CSRF protected) ==
+User -> Nginx : POST /admin/sync {source=misp, csrf_token=<csrf>}
+Nginx -> App : forward
+App -> Auth : @before_request check_admin_auth()
+Auth -> Auth : validate CSRF token from form vs session
+alt CSRF valid + session valid
+    App -> App : execute action
+    App --> User : 302 redirect with msg
+else CSRF invalid
+    Auth --> User : 400 CSRF validation failed
+end
+
+== API Token Auth (machine-to-machine) ==
+API -> Nginx : POST /api/sync\nX-Admin-Token: <token>
+Nginx -> App : forward
+App -> TokenAuth : _admin_token_authorized()
+TokenAuth -> TokenAuth : check headers[X-Admin-Token]
+TokenAuth -> TokenAuth : hmac.compare_digest(token, ADMIN_API_TOKEN)
+alt Token valid
+    App -> App : process request
+    App --> API : 202 Accepted {job_id}
+else No/invalid token
+    App --> API : 401 Unauthorized
+end
+
+note right of TokenAuth
+  Token accepted from:
+  - X-Admin-Token header (API clients)
+  - admin_token form field (POST body)
+  
+  Query string (?admin_token=) NOT accepted
+  — tokens in URLs appear in server access
+  logs, browser history, and Referer headers.
+end note
+
+note right of Auth
+  CSRF protection applies to all
+  POST/PUT/DELETE on /admin/* paths.
+  Token injected into every GET response
+  via after_request hook.
+end note
+
+@enduml

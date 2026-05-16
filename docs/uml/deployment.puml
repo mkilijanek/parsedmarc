@@ -1,110 +1,105 @@
 @startuml IOC_Service_Deployment
 !theme cerulean-outline
-skinparam componentStyle rectangle
-skinparam linetype ortho
 
-title IOC Threat Intelligence Service - Deployment Diagram
+title IOC Service — Deployment Topology
 
-node "Docker Host" as DockerHost {
-    
-    node "Nginx Edge" as Nginx <<container>> {
-        [TLS 1.2+/HTTP2\nRate Limiting\nSecurity Headers] as TLSEdge
+node "Host Machine" as Host {
+    node "Docker Network: ioc-net" as DockerNet {
+        
+        node "nginx container\n(optional reverse proxy)" as Nginx {
+            component "TLS 1.2/1.3 termination" as TLS
+            component "Rate limiting\n(limit_req_zone)" as RateLimit
+            component "Security headers\n(HSTS, CSP, X-Frame)" as SecHeaders
+            component "HTTP→HTTPS redirect\n(EDGE_HTTPS_ENABLED)" as HttpsRedir
+        }
+        
+        node "app container\n(Gunicorn + Flask)" as App {
+            component "Flask routes\n(public / ops / auth / events)" as Routes
+            component "Background Scheduler\n(schedule library, cron-based)" as Sched
+            component "Export Worker Pool\n(ThreadPoolExecutor)" as Workers
+            component "Circuit Breaker\n(DB + external)" as CB
+        }
+        
+        node "migrate container\n(one-shot, exits 0)" as Migrate {
+            component "Alembic migrations" as Alembic
+        }
+        
+        node "postgres container\n(PostgreSQL 16)" as Postgres {
+            database "ioc_db" as DB {
+                storage "indicators (JSONB, GIN index)" as Ind
+                storage "sync_jobs, feed_runs" as Jobs
+                storage "audit_log (HMAC chain)" as Audit
+                storage "export_jobs" as Exports
+                storage "app_settings (encrypted)" as Settings
+                storage "app_logs" as Logs
+            }
+        }
+        
+        node "redis container\n(Redis 7)" as Redis {
+            storage "Response cache (TTL)" as Cache
+            storage "Rate limit counters\n(flask-limiter)" as RLCounters
+            storage "Session store\n(optional)" as Sessions
+        }
     }
     
-    node "Flask App" as App <<container>> {
-        [Gunicorn WSGI] as Gunicorn
-        [Flask App + Admin UI] as Flask
-        [Sync Job Control\n(retry/cancel/details)] as JobCtrl
-        [Proxy Test Action] as ProxyTest
-        [Sentinel Graph Export Job] as SentinelJob
-        [Prometheus Metrics] as Metrics
-    }
-    
-    node "Background Worker" as Worker <<container>> {
-        [Schedule Service] as Scheduler
-        [Sync Queue Processor] as Processor
-        [Dep Health Refresh] as DepRefresh
-        [Correlation Snapshot Refresh] as CorrRefresh
-    }
-    
-    database "PostgreSQL 16" as Postgres <<container>> {
-        [Indicators DB] as IndicatorsDB
-        [pg_trgm extension] as Trgm
-        [JSONB columns] as JSONB
-    }
-    
-    storage "Redis 7" as Redis <<container>> {
-        [Rate Limit Cache] as RateLimit
-        [Query Cache] as QueryCache
-        [Export Cache] as ExportCache
-    }
-    
-    node "Migrate Service" as Migrate <<container>> {
-        [Alembic Migrations] as Alembic
-    }
+    storage "Host filesystem\n./artifacts/" as Artifacts
+    storage "Host filesystem\n./nginx/conf.d/" as NginxConf
+    storage "Host filesystem\n./ssl/" as SSL
 }
 
-cloud "External APIs" as External {
-    [CrowdSec API] as CrowdSec
-    [MISP Instance] as MISP
-    [MalwareBazaar] as Bazaar
-    [MWDB] as MWDB
-    [abuse.ch\nThreatFox, URLhaus, etc.] as AbuseCh
-    [Microsoft Graph\nThreat Intelligence API] as GraphAPI
+cloud "Internet / Corp Network" as Internet {
+    node "MISP Instance" as MISP
+    node "abuse.ch APIs\n(ThreatFox, URLhaus, etc.)" as AbuseCh
+    node "MalwareBazaar API" as MBazaar
+    node "MWDB Instance" as MWDB
+    node "CrowdSec Console API" as CrowdSec
+    node "Microsoft Graph API\n(Sentinel export)" as Graph
 }
 
-' Connections
-Nginx --> App : HTTP/HTTPS
-App --> Postgres : SQLAlchemy
-App --> Redis : redis-py
-ProxyTest --> External : HTTPS checks
-SentinelJob --> GraphAPI : HTTPS/JSON
-Worker --> Postgres : SQLAlchemy
-Worker --> Redis : redis-py
-Worker --> External : HTTPS/JSON
-Migrate --> Postgres : DDL/DML
+actor "Admin / API Client" as Admin
+actor "SIEM / Firewall\n(consumer)" as SIEM
 
-' Notes
+' External connections
+Admin --> Nginx : HTTPS :{HTTPS_PORT}\nor HTTP :{APP_HOST_PORT}
+SIEM --> Nginx : HTTPS (export endpoints)
+Admin -[dashed]-> App : direct HTTP :{APP_HOST_PORT}\n(no-nginx mode)
+
+' Internal Docker network
+Nginx --> App : http://app:{APP_PORT}\n(proxy_pass)
+App --> Postgres : postgresql://postgres:{POSTGRES_PORT}/ioc_db
+App --> Redis : redis://redis:{REDIS_PORT}
+Migrate --> Postgres : runs Alembic HEAD
+
+' External feed connections (outbound)
+App --> MISP : HTTPS (configurable proxy)
+App --> AbuseCh : HTTPS
+App --> MBazaar : HTTPS
+App --> MWDB : HTTPS
+App --> CrowdSec : HTTPS
+App --> Graph : HTTPS (OAuth2 / cert auth)
+
+' Filesystem mounts
+App --> Artifacts : write export files
+Nginx --> NginxConf : read conf.d/
+Nginx --> SSL : read cert.pem / key.pem
+
+note right of App
+  Key env vars:
+  - ADMIN_API_TOKEN (required)
+  - ADMIN_DANGEROUS_OPS
+  - EDGE_HTTPS_ENABLED (Secure cookie)
+  - DATABASE_URL
+  - REDIS_URL
+  - AZURE_SENTINEL_AUTH_MODE
+  - AZURE_SENTINEL_TENANT_ID
+  - REQUESTS_CA_BUNDLE
+  - FEED_PROXY_URL_<SOURCE>
+end note
+
 note right of Nginx
-  * TLS 1.2+
-  * HTTP/2
-  * Security Headers
-  * Rate Limiting
+  Generated by setup.sh via
+  --nginx-dir flag.
+  Backed up before overwrite.
 end note
-
-note right of Postgres
-  * JSONB for metadata
-  * pg_trgm for search
-  * Connection pooling
-end note
-
-note right of Worker
-  * Scheduled sync jobs
-  * Per-feed idempotency
-  * Retry with backoff
-  * cancel_requested support
-  * periodic dependency refresh
-  * proxy bootstrap from DB settings
-end note
-
-note bottom of App
-  Docker Compose exposes service
-  on host port 7003 -> container 8080
-  Outbound proxy controls:
-  HTTP(S)_PROXY, NO_PROXY,
-  REQUESTS_CA_BUNDLE,
-  REQUESTS_SKIP_TLS_VERIFY
-  (also configurable from Admin DB settings:
-   proxy.ca_bundle_path / proxy.skip_tls_verify)
-  per-feed overrides:
-  FEED_PROXY_URL_<SOURCE>
-end note
-
-legend right
-  |= Color |= Meaning |
-  | <#LightBlue> | Container |
-  | <#LightGreen> | External Service |
-  | <#LightYellow> | Database |
-endlegend
 
 @enduml
