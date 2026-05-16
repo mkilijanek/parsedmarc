@@ -40,6 +40,7 @@ def register_public_routes(
     _render_indicators = deps["_render_indicators"]
     _spawn_export_job = deps["_spawn_export_job"]
     get_redis = deps["get_redis"]
+    _admin_token_authorized = deps["_admin_token_authorized"]
     validate_search_query = deps["validate_search_query"]
     Indicator = deps["Indicator"]
     FeedStats = deps["FeedStats"]
@@ -375,6 +376,8 @@ def register_public_routes(
     @app.post("/api/sentinel/export")
     @limiter.limit("20 per minute")
     def sentinel_graph_export():
+        if not _admin_token_authorized():
+            return jsonify({"error": "Unauthorized", "hint": "Pass admin token in X-Admin-Token header"}), 401
         q = request.args.get("q", "").strip() or None
         type_filter = (request.args.get("type") or "all").lower()
         tlp = (request.args.get("tlp") or "all").upper()
@@ -400,11 +403,6 @@ def register_public_routes(
             "limit": limit,
             "offset": offset,
             "auth_mode": auth_mode or None,
-            "tenant_id": (request.args.get("tenant_id") or "").strip() or None,
-            "client_id": (request.args.get("client_id") or "").strip() or None,
-            "scope": (request.args.get("scope") or "").strip() or None,
-            "endpoint_url": (request.args.get("endpoint_url") or "").strip() or None,
-            "cert_thumbprint": (request.args.get("cert_thumbprint") or "").strip() or None,
             "chunk_size": request.args.get("chunk_size", type=int),
         }
         _persist_export_job(job_id, "sentinel_graph", params)

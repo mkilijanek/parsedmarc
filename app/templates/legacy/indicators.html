@@ -18,6 +18,10 @@
   .pager { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin: .75rem 0; }
   .pager a, .pager span { padding:.35rem .6rem; border:1px solid var(--line); border-radius:8px; text-decoration: none; }
   .status-live { min-height: 1.2rem; }
+  .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  th:nth-child(1), td:nth-child(1) { min-width: 160px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  th:nth-child(6), td:nth-child(6) { white-space: nowrap; min-width: 130px; }
+  th:nth-child(7), td:nth-child(7) { min-width: 90px; }
   @media (prefers-reduced-motion: reduce) {
     * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
   }

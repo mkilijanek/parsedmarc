@@ -48,6 +48,7 @@ def register_api_v1_routes(
     _percentile = deps["_percentile"]
     _query_indicators = deps["_query_indicators"]
     _read_feed_config_state = deps["_read_feed_config_state"]
+    _admin_token_authorized = deps["_admin_token_authorized"]
     _read_feed_rows = deps["_read_feed_rows"]
     _resolve_metrics_window_hours = deps["_resolve_metrics_window_hours"]
     validate_search_query = deps["validate_search_query"]
@@ -215,6 +216,8 @@ def register_api_v1_routes(
     @app.post("/api/v1/sync")
     @limiter.limit("10 per minute")
     def api_v1_sync():
+        if not _admin_token_authorized():
+            return jsonify({"error": "Unauthorized", "hint": "Pass admin token in X-Admin-Token header"}), 401
         payload = request.get_json(silent=True) or {}
         source_name = str(payload.get("source") or request.args.get("source") or "").strip().lower()
         if not source_name:

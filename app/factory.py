@@ -758,6 +758,7 @@ def create_app() -> Flask:
         cfg=cfg,
         logger=logger,
         deps={
+            "_admin_token_authorized": _admin_token_authorized,
             "_audit": _audit,
             "_cache_key": _cache_key,
             "_count_indicators": _count_indicators,
@@ -822,6 +823,7 @@ def create_app() -> Flask:
         logger=logger,
         scheduler_state=scheduler_state,
         deps={
+            "_admin_token_authorized": _admin_token_authorized,
             "_apply_feed_filters_and_sort": apply_feed_filters_and_sort,
             "_build_feed_items": _build_feed_items,
             "_count_indicators": _count_indicators,

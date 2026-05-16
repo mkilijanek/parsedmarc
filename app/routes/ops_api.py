@@ -18,6 +18,7 @@ def register_ops_api_routes(
     scheduler_state: Dict[str, Any],
     deps: Dict[str, Any],
 ) -> None:
+    _admin_token_authorized = deps["_admin_token_authorized"]
     _app_log = deps["_app_log"]
     _apply_feed_filters_and_sort = deps["_apply_feed_filters_and_sort"]
     _audit = deps["_audit"]
@@ -230,6 +231,8 @@ def register_ops_api_routes(
     @app.post("/api/sync")
     @limiter.limit("10 per minute", key_func=_admin_rate_limit_key)
     def api_sync():
+        if not _admin_token_authorized():
+            return jsonify({"error": "Unauthorized", "hint": "Pass admin token in X-Admin-Token header"}), 401
         payload = request.get_json(silent=True) or {}
         source_name = str(payload.get("source") or request.args.get("source") or "").strip().lower()
         if not source_name:
