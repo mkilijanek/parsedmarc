@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 64" role="img" aria-label="Threat Feed Aggregator">
+  
+  <circle class="accent" cx="22" cy="28" r="6"></circle>
+  <circle cx="22" cy="28" r="11" fill="none" stroke="#0ea5e9" stroke-opacity="0.45" stroke-width="1.5"></circle>
+  <circle cx="22" cy="28" r="16" fill="none" stroke="#0ea5e9" stroke-opacity="0.20" stroke-width="1.5"></circle>
+  <text class="wm" x="48" y="26">Threat Feed Aggregator</text>
+  <text class="tag" x="48" y="48">ioc-service</text>
+</svg>

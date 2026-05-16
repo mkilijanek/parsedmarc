@@ -9,6 +9,8 @@
    light/dark themes driven by `data-theme` on `<body>`.
    ============================================================ */
 
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
 /* ---------- 1. Raw palette (Tailwind-slate + sky + status) ---------- */
 :root {
   /* neutrals -- slate */
@@ -43,11 +45,11 @@
   --error-500:   #ef4444;  --error-400:   #f87171;
   --info-500:    #3b82f6;  --info-400:    #60a5fa;
 
-  /* TLP -- straight from app.css */
-  --tlp-white-bg: #e2e8f0; --tlp-white-fg: #475569;
-  --tlp-green-bg: #dcfce7; --tlp-green-fg: #166534;
-  --tlp-amber-bg: #fef9c3; --tlp-amber-fg: #854d0e;
-  --tlp-red-bg:   #fee2e2; --tlp-red-fg:   #991b1b;
+  /* TLP — saturation-leaning chips with explicit border-line tokens */
+  --tlp-white-bg: #e2e8f0; --tlp-white-fg: #1e293b; --tlp-white-line: #94a3b8;
+  --tlp-green-bg: #bbf7d0; --tlp-green-fg: #14532d; --tlp-green-line: #22c55e;
+  --tlp-amber-bg: #fde68a; --tlp-amber-fg: #78350f; --tlp-amber-line: #f59e0b;
+  --tlp-red-bg:   #fecaca; --tlp-red-fg:   #7f1d1d; --tlp-red-line:   #ef4444;
 
   /* IOC type pills */
   --type-ip-bg:     #dbeafe; --type-ip-fg:     #1e40af;
@@ -62,10 +64,10 @@
   --neon-deep:  #05131d;
 
   /* ---------- 2. Type system ---------- */
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu,
-               Cantarell, "Noto Sans", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-               "Liberation Mono", monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI",
+               Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+               Monaco, Consolas, "Liberation Mono", monospace;
 
   /* type ramp (rems, base 16) */
   --fs-xs:   0.75rem;   /* 12 -- table cells, hints, badges       */
@@ -197,6 +199,9 @@ body {
   background: var(--bg);
   color: var(--fg);
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
 }
 
 a { color: var(--link); text-decoration: none; }

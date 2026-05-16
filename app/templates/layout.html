@@ -9,12 +9,7 @@
   <style>
     body { min-height: 100vh; }
     .container { max-width: 1400px; margin: 0 auto; padding: 0 var(--space-6); }
-    .topbar { position: sticky; top: 0; z-index: 100; background: var(--card); border-bottom: 1px solid var(--line); padding: 0.75rem 0; backdrop-filter: blur(8px); }
-    .topbar-inner { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); }
-    .topbar nav { display: flex; gap: var(--space-1); }
-    .topbar nav a { padding: var(--space-2) 0.75rem; border-radius: var(--radius-md); text-decoration: none; color: var(--fg); font-weight: var(--fw-medium); transition: all var(--motion-fast); }
-    .topbar nav a:hover { background: var(--bg); }
-    .topbar nav a.active { background: var(--primary); color: var(--on-primary); }
+    /* topbar styles live in app.css — .topbar, .topbar-inner, .brand, .nav */
     main { padding: var(--space-6) 0; }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-xl); padding: var(--space-5); margin-bottom: var(--space-4); box-shadow: var(--shadow-card); transition: box-shadow var(--motion-fast); }
     .card:hover { box-shadow: var(--shadow-card-hover); }
@@ -173,21 +168,26 @@
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <header class="topbar">
-    <div class="container topbar-inner">
+    <div class="topbar-inner">
+      <a href="/" class="brand">
+        <span class="target"><span class="dot"></span></span>
+        <div style="display:flex;flex-direction:column;line-height:1.1">
+          <span>Threat Feed Aggregator</span>
+          <small>ioc-service</small>
+        </div>
+      </a>
       <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu" aria-expanded="false">
         <span></span>
         <span></span>
         <span></span>
       </button>
-      <nav class="nav-menu" id="navMenu">
+      <nav class="nav nav-menu" id="navMenu">
         <a href="/" class="{% if active_page == 'home' %}active{% endif %}">Overview</a>
         <a href="/indicators" class="{% if active_page == 'indicators' %}active{% endif %}">Indicators</a>
         <a href="/admin" class="{% if active_page == 'admin' %}active{% endif %}">Admin</a>
         <a href="/logs" class="{% if active_page == 'logs' %}active{% endif %}">Logs</a>
       </nav>
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <button type="button" class="btn btn-sm" id="themeToggle">🌓</button>
-      </div>
+      <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">🌓</button>
     </div>
   </header>
 
