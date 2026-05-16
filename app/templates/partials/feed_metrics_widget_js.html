@@ -87,55 +87,90 @@
   function renderChart() {
     const svg = document.getElementById('feedMetricsChart');
     if (!svg) return;
-    const points = (state.timeseries || []).map(function (x) { return num(x.fetched_total, 0); });
+    const ts = state.timeseries || [];
+    const points = ts.map(function (x) { return num(x.fetched_total, 0); });
     if (!points.length) {
-      svg.innerHTML = '<text x=\"8\" y=\"20\" font-size=\"12\">No data for selected window.</text>';
+      svg.innerHTML = '<text x="8" y="20" font-size="12" fill="currentColor">No data for selected window.</text>';
       return;
     }
     let maxV = 1;
-    for (let i = 0; i < points.length; i += 1) {
-      if (points[i] > maxV) maxV = points[i];
+    for (let i = 0; i < points.length; i++) { if (points[i] > maxV) maxV = points[i]; }
+    const w = 800; const h = 120; const pad = 24;
+    if (points.length === 1) {
+      svg.innerHTML = '<circle cx="400" cy="60" r="5" fill="#0ea5e9"/>'
+        + '<text x="8" y="16" font-size="11" fill="currentColor">Fetched trend (window)</text>'
+        + '<text x="412" y="64" font-size="11" fill="#0ea5e9">' + esc(String(points[0])) + '</text>'
+        + '<text x="8" y="112" font-size="10" fill="#9ca3af">Only 1 bucket — more data after next runs</text>';
+      return;
     }
-    const w = 800;
-    const h = 120;
-    const pad = 8;
-    const dx = points.length > 1 ? (w - 2 * pad) / (points.length - 1) : 0;
-    const coords = points.map(function (v, i) {
-      const x = pad + (i * dx);
-      const y = h - pad - ((v / maxV) * (h - 2 * pad));
-      return x.toFixed(2) + ',' + y.toFixed(2);
-    }).join(' ');
-    svg.innerHTML = '<polyline fill=\"none\" stroke=\"#0ea5e9\" stroke-width=\"2\" points=\"' + coords + '\" />'
-      + '<text x=\"8\" y=\"16\" font-size=\"11\">Fetched trend (window)</text>'
-      + '<text x=\"8\" y=\"112\" font-size=\"11\">0</text>'
-      + '<text x=\"760\" y=\"16\" font-size=\"11\">' + esc(String(maxV)) + '</text>';
+    const dx = (w - 2 * pad) / (points.length - 1);
+    const xy = points.map(function (v, i) {
+      return { x: pad + i * dx, y: h - pad - (v / maxV) * (h - 2 * pad) };
+    });
+    const lineCoords = xy.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+    const areaCoords = lineCoords
+      + ' ' + xy[xy.length-1].x.toFixed(1) + ',' + (h - pad)
+      + ' ' + xy[0].x.toFixed(1) + ',' + (h - pad);
+    const labelStep = Math.ceil(xy.length / 6);
+    const labelHtml = xy.map(function (p, i) {
+      if (i % labelStep !== 0 && i !== xy.length - 1) return '';
+      const lbl = String((ts[i] || {}).ts || '').slice(5, 10);
+      return '<text x="' + p.x.toFixed(1) + '" y="' + (h - 4) + '" font-size="9" text-anchor="middle" fill="#9ca3af">' + esc(lbl) + '</text>';
+    }).join('');
+    svg.innerHTML = '<polygon points="' + areaCoords + '" fill="#0ea5e9" fill-opacity="0.12"/>'
+      + '<polyline fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linejoin="round" points="' + lineCoords + '"/>'
+      + labelHtml
+      + '<text x="8" y="14" font-size="11" fill="currentColor">Fetched trend (window)</text>'
+      + '<text x="8" y="' + (h - pad + 12) + '" font-size="10" fill="#9ca3af">0</text>'
+      + '<text x="' + (w - pad) + '" y="14" font-size="10" text-anchor="end" fill="#9ca3af">' + esc(String(maxV)) + '</text>';
   }
   function renderAvailabilityChart() {
     const svg = document.getElementById('feedAvailabilityChart');
     if (!svg) return;
-    const points = (state.timeseries || []).map(function (x) {
+    const ts = state.timeseries || [];
+    const points = ts.map(function (x) {
       const runs = num(x.runs, 0);
       const ok = num(x.success_runs, 0);
-      if (runs <= 0) return 0;
+      if (runs <= 0) return null;
       return (ok / runs) * 100.0;
     });
-    if (!points.length) {
-      svg.innerHTML = '<text x=\"8\" y=\"20\" font-size=\"12\">No availability data for selected window.</text>';
+    const validPoints = points.filter(function (v) { return v !== null; });
+    if (!validPoints.length) {
+      svg.innerHTML = '<text x="8" y="20" font-size="12" fill="currentColor">No availability data for selected window.</text>';
       return;
     }
-    const w = 800;
-    const h = 120;
-    const pad = 8;
-    const dx = points.length > 1 ? (w - 2 * pad) / (points.length - 1) : 0;
-    const coords = points.map(function (v, i) {
-      const x = pad + (i * dx);
-      const y = h - pad - ((v / 100.0) * (h - 2 * pad));
-      return x.toFixed(2) + ',' + y.toFixed(2);
-    }).join(' ');
-    svg.innerHTML = '<polyline fill=\"none\" stroke=\"#22c55e\" stroke-width=\"2\" points=\"' + coords + '\" />'
-      + '<text x=\"8\" y=\"16\" font-size=\"11\">Availability trend (%)</text>'
-      + '<text x=\"8\" y=\"112\" font-size=\"11\">0%</text>'
-      + '<text x=\"752\" y=\"16\" font-size=\"11\">100%</text>';
+    const w = 800; const h = 120; const pad = 24;
+    if (validPoints.length === 1) {
+      const pct = validPoints[0];
+      const cy = h - pad - (pct / 100.0) * (h - 2 * pad);
+      const color = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+      svg.innerHTML = '<circle cx="400" cy="' + cy.toFixed(1) + '" r="5" fill="' + color + '"/>'
+        + '<text x="8" y="16" font-size="11" fill="currentColor">Availability trend (%)</text>'
+        + '<text x="412" y="' + (cy + 4).toFixed(1) + '" font-size="11" fill="' + color + '">' + pct.toFixed(1) + '%</text>'
+        + '<text x="8" y="112" font-size="10" fill="#9ca3af">Only 1 bucket — more data after next runs</text>';
+      return;
+    }
+    const dx = (w - 2 * pad) / (points.length - 1);
+    const xy = points.map(function (v, i) {
+      const val = v === null ? 0 : v;
+      return { x: pad + i * dx, y: h - pad - (val / 100.0) * (h - 2 * pad), valid: v !== null };
+    });
+    const lineCoords = xy.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+    const areaCoords = lineCoords
+      + ' ' + xy[xy.length-1].x.toFixed(1) + ',' + (h - pad)
+      + ' ' + xy[0].x.toFixed(1) + ',' + (h - pad);
+    const labelStep = Math.ceil(xy.length / 6);
+    const labelHtml = xy.map(function (p, i) {
+      if (i % labelStep !== 0 && i !== xy.length - 1) return '';
+      const lbl = String((ts[i] || {}).ts || '').slice(5, 10);
+      return '<text x="' + p.x.toFixed(1) + '" y="' + (h - 4) + '" font-size="9" text-anchor="middle" fill="#9ca3af">' + esc(lbl) + '</text>';
+    }).join('');
+    svg.innerHTML = '<polygon points="' + areaCoords + '" fill="#22c55e" fill-opacity="0.12"/>'
+      + '<polyline fill="none" stroke="#22c55e" stroke-width="2" stroke-linejoin="round" points="' + lineCoords + '"/>'
+      + labelHtml
+      + '<text x="8" y="14" font-size="11" fill="currentColor">Availability trend (%)</text>'
+      + '<text x="8" y="' + (h - pad + 12) + '" font-size="10" fill="#9ca3af">0%</text>'
+      + '<text x="' + (w - pad) + '" y="14" font-size="10" text-anchor="end" fill="#9ca3af">100%</text>';
   }
 
   function visibleRows() {
