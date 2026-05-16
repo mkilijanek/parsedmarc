@@ -706,7 +706,6 @@ def create_app() -> Flask:
         token = (
             (request.headers.get("X-Admin-Token") or "").strip()
             or (request.form.get("admin_token") or "").strip()
-            or (request.args.get("admin_token") or "").strip()
         )
         return bool(token) and hmac.compare_digest(token, expected)
 

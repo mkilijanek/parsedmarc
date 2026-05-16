@@ -388,10 +388,6 @@ def register_public_routes(
         if limit is None or offset is None:
             return jsonify({"error": "limit/offset must be integers"}), 400
 
-        auth_mode = (request.args.get("auth_mode") or "").strip().lower()
-        if auth_mode and auth_mode not in {"client_secret", "certificate"}:
-            return jsonify({"error": "auth_mode must be client_secret or certificate"}), 400
-
         job_id = uuid.uuid4().hex
         params = {
             "q": q,
@@ -402,7 +398,6 @@ def register_public_routes(
             "max_conf": max_conf,
             "limit": limit,
             "offset": offset,
-            "auth_mode": auth_mode or None,
             "chunk_size": request.args.get("chunk_size", type=int),
         }
         _persist_export_job(job_id, "sentinel_graph", params)
