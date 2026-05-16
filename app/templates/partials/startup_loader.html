@@ -1,9 +1,70 @@
-<div id="startupLoader" class="startup-loader" aria-live="polite" aria-label="Application startup in progress">
-  <div class="startup-loader-card">
-    <div class="startup-loader-grid" aria-hidden="true"></div>
-    <div class="startup-loader-scan" aria-hidden="true"></div>
-    <h2>IOC Service</h2>
-    <p>Booting modules, validating feeds, preparing data plane...</p>
-    <div class="startup-loader-progress"><span id="startupLoaderBar"></span></div>
+<div id="startupLoader" class="startup-loader" aria-live="polite" aria-label="Application starting">
+  <div class="sl-grid" aria-hidden="true"></div>
+  <div class="sl-card">
+    <div class="sl-card-body">
+      <span class="sl-corner tl" aria-hidden="true"></span>
+      <span class="sl-corner tr" aria-hidden="true"></span>
+      <span class="sl-corner bl" aria-hidden="true"></span>
+      <span class="sl-corner br" aria-hidden="true"></span>
+
+      <div class="sl-header">
+        <div class="sl-scope" aria-hidden="true">
+          <svg viewBox="0 0 38 38">
+            <circle cx="19" cy="19" r="3.5" fill="#37dcff"/>
+            <circle cx="19" cy="19" r="8"  fill="none" stroke="rgba(55,220,255,.55)" stroke-width="1.2"/>
+            <g class="sl-ring">
+              <circle cx="19" cy="19" r="14" fill="none" stroke="rgba(55,220,255,.35)" stroke-width="1.2"
+                      stroke-dasharray="6 4 12 4 8 4"/>
+            </g>
+            <line x1="19" y1="0"  x2="19" y2="5"  stroke="rgba(55,220,255,.45)" stroke-width="1"/>
+            <line x1="19" y1="33" x2="19" y2="38" stroke="rgba(55,220,255,.45)" stroke-width="1"/>
+            <line x1="0"  y1="19" x2="5"  y2="19" stroke="rgba(55,220,255,.45)" stroke-width="1"/>
+            <line x1="33" y1="19" x2="38" y2="19" stroke="rgba(55,220,255,.45)" stroke-width="1"/>
+          </svg>
+        </div>
+        <div class="sl-titles">
+          <p class="sl-eyebrow">
+            <span class="sl-lozenge" id="slVersion">v1.9.0</span>
+            <span>boot · cold-start</span>
+          </p>
+          <h2 class="sl-title">Threat&nbsp;Feed&nbsp;Aggregator<span class="sl-cursor" aria-hidden="true"></span></h2>
+        </div>
+        <span class="sl-status-chip" role="status" id="slStatusChip">
+          <span class="sl-pulse" aria-hidden="true"></span>
+          <span id="slStatusText">Initialising</span>
+        </span>
+      </div>
+
+      <ul class="sl-steps" aria-label="Startup steps" id="slSteps">
+        <li class="sl-done" id="slStep0"><span class="sl-mark" aria-hidden="true">✓</span>Database circuit closed</li>
+        <li class="sl-done" id="slStep1"><span class="sl-mark" aria-hidden="true">✓</span>Redis cache primed</li>
+        <li class="sl-doing" id="slStep2"><span class="sl-mark" aria-hidden="true">⟳</span>Migrations · alembic@head</li>
+        <li class="sl-wait" id="slStep3"><span class="sl-mark" aria-hidden="true">·</span>Feed adapters loading</li>
+        <li class="sl-wait" id="slStep4"><span class="sl-mark" aria-hidden="true">·</span>Audit chain verify</li>
+        <li class="sl-wait" id="slStep5"><span class="sl-mark" aria-hidden="true">·</span>SSE event stream</li>
+      </ul>
+
+      <div class="sl-progress-row">
+        <span class="sl-pct"><span id="slPctNum">0</span><span class="sl-unit">%</span></span>
+        <div style="flex:1;min-width:0">
+          <div class="sl-bar">
+            <span class="sl-bar-fill" id="startupLoaderBar"></span>
+            <div class="sl-ticks" aria-hidden="true">
+              <span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="sl-progress-meta" id="slProgressMeta">Preparing data plane&hellip;</div>
+        </div>
+      </div>
+
+      <div class="sl-tele" aria-hidden="true">
+        <span class="sl-kv">db<b id="slTeleDb">…</b></span>
+        <span class="sl-kv">redis<b id="slTeleRedis">…</b></span>
+        <span class="sl-kv">queue<b id="slTeleQueue">0/64</b></span>
+        <span class="sl-grow"></span>
+        <span class="sl-kv" style="color:var(--sl-neon-cyan)">eta<b id="slTeleEta">…</b></span>
+      </div>
+    </div>
   </div>
 </div>

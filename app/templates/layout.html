@@ -163,8 +163,10 @@
     .tour-step .tour-btns .tour-skip { background:transparent;opacity:.6; }
     .tour-highlight { outline:3px solid var(--primary)!important;outline-offset:3px;border-radius:var(--radius-xs); }
   </style>
+  <style>{% include "partials/startup_loader_css.html" %}</style>
 </head>
 <body>
+  {% include "partials/startup_loader.html" %}
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <header class="topbar">
@@ -442,5 +444,6 @@
       });
     })();
   </script>
+  <script>{% include "partials/startup_loader_js.html" %}</script>
 </body>
 </html>
