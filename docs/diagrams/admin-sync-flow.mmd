@@ -1,0 +1,40 @@
+---
+title: IOC Service — Admin Manual Sync Flow
+---
+sequenceDiagram
+    participant Admin as Admin Browser
+    participant Flask as Flask App
+    participant AuthCheck as Session Auth\n+ CSRF Check
+    participant FeedOps as enqueue_sync_for_source\n(feed_ops.py)
+    participant DB as PostgreSQL\n(sync_jobs)
+    participant Worker as Background Worker
+    participant Adapter as Feed Adapter
+    participant ExtAPI as External Feed API
+
+    Admin->>Flask: POST /admin/sync\n{source: "misp"}
+    Flask->>AuthCheck: Validate session + CSRF token
+    AuthCheck-->>Flask: 400 CSRF Fail / 403 Forbidden
+    Flask->>FeedOps: enqueue_sync_for_source("misp", feed_rows, …)
+    FeedOps->>DB: SELECT feed WHERE source_id=misp
+    FeedOps->>DB: SELECT SyncJob WHERE status IN (queued,running)
+    alt Already queued/running
+        FeedOps-->>Flask: {reused: [job_id]}
+    else Feed incomplete config
+        FeedOps-->>Flask: {blocked: ["misp"]}
+    else Ready
+        FeedOps->>DB: INSERT INTO sync_jobs (status=queued)
+        FeedOps-->>Flask: {queued: [job_id]}
+    end
+    Flask-->>Admin: 302 Redirect /admin?msg=Sync queued
+
+    Note over Worker: Scheduler loop wakes (20s interval)
+    Worker->>DB: SELECT SyncJob WHERE status=queued FOR UPDATE SKIP LOCKED
+    Worker->>DB: UPDATE sync_jobs SET status=running
+    Worker->>DB: INSERT INTO feed_runs (status=running)
+    Worker->>Adapter: execute() with env overrides
+    Adapter->>ExtAPI: HTTP GET fetch_batches()
+    ExtAPI-->>Adapter: Indicators JSON
+    Adapter->>DB: Upsert indicators
+    Worker->>DB: UPDATE feed_runs SET status=success, fetched_count=N
+    Worker->>DB: UPDATE sync_jobs SET status=success, result_json={…}
+    Worker->>DB: INSERT INTO app_logs (feed_sync_completed)

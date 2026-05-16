@@ -1,0 +1,31 @@
+---
+title: IOC Service — API v1 Request Lifecycle
+---
+sequenceDiagram
+    participant Client
+    participant Nginx as Nginx\n(TLS + Rate Limit)
+    participant Flask as Flask App\n(Gunicorn)
+    participant Auth as Auth Layer\n(_admin_token_authorized)
+    participant Limiter as Flask-Limiter\n(Redis backend)
+    participant Parser as QueryParser\n(q, type_filter, tlp…)
+    participant Cache as Redis Cache
+    participant DB as PostgreSQL
+    participant Formatter as Response Formatter\n(JSON / CSV / STIX)
+
+    Client->>Nginx: GET /api/v1/indicators?q=…&tlp=GREEN
+    Nginx->>Flask: Proxy (X-Forwarded-Proto, X-Real-IP)
+    Flask->>Auth: Validate X-Api-Token header
+    Auth-->>Flask: 401 Unauthorized (if missing/invalid)
+    Flask->>Limiter: Check rate limit (per API key)
+    Limiter-->>Flask: 429 Too Many Requests (if exceeded)
+    Flask->>Parser: Parse query params
+    Parser-->>Flask: FilterSet (q, types, tlp, conf range, limit, offset)
+    Flask->>Cache: Lookup cache key
+    Cache-->>Flask: Cache HIT → return cached JSON
+    Flask->>DB: SELECT indicators WHERE … LIMIT … OFFSET …
+    DB-->>Flask: Result rows (Indicator objects)
+    Flask->>Formatter: Format rows → JSON/CSV/STIX
+    Formatter-->>Flask: Response body + Content-Type
+    Flask->>Cache: Store result (TTL = CACHE_TTL)
+    Flask-->>Nginx: 200 OK + body
+    Nginx-->>Client: Response (gzip, security headers)

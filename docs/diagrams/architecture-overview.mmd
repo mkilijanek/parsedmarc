@@ -1,0 +1,37 @@
+---
+title: IOC Service — Architecture Overview
+---
+C4Context
+    title IOC Threat Intelligence Service — Component Architecture
+
+    Person(analyst, "Security Analyst", "Searches indicators, exports feeds")
+    Person(admin, "Administrator", "Configures feeds, triggers syncs")
+    Person(siem, "SIEM / SOAR", "Pulls indicators via API")
+
+    System_Boundary(ioc, "IOC Service") {
+        Container(nginx, "Nginx", "Reverse Proxy", "TLS termination, rate limiting, security headers")
+        Container(flask, "Flask App", "Python / Gunicorn", "REST API, Admin UI, Export jobs")
+        Container(worker, "Background Worker", "Python", "Scheduler loop, sync jobs, cache warming")
+        ContainerDb(postgres, "PostgreSQL 16", "Database", "Indicators, feeds, audit, jobs, settings")
+        ContainerDb(redis, "Redis 7", "Cache / Rate Limit", "API response cache, Flask-Limiter counters")
+    }
+
+    System_Ext(crowdsec, "CrowdSec CTI", "Threat intelligence")
+    System_Ext(misp, "MISP Instance", "Threat sharing platform")
+    System_Ext(abusech, "abuse.ch", "MalwareBazaar / ThreatFox")
+    System_Ext(mwdb, "MWDB", "Malware database")
+    System_Ext(sentinel, "MS Sentinel", "SIEM / TI graph upload")
+
+    Rel(analyst, nginx, "HTTPS")
+    Rel(admin, nginx, "HTTPS /admin")
+    Rel(siem, nginx, "HTTPS /api/v1")
+    Rel(nginx, flask, "HTTP proxy")
+    Rel(flask, postgres, "SQLAlchemy ORM")
+    Rel(flask, redis, "Cache reads/writes")
+    Rel(worker, postgres, "Job queue polling")
+    Rel(worker, redis, "Cache warming")
+    Rel(worker, crowdsec, "HTTPS fetch")
+    Rel(worker, misp, "HTTPS fetch")
+    Rel(worker, abusech, "HTTPS fetch")
+    Rel(worker, mwdb, "HTTPS fetch")
+    Rel(flask, sentinel, "HTTPS push (export)")

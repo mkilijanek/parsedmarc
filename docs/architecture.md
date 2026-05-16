@@ -609,3 +609,49 @@ when the project migrates from Flask to an ASGI framework.
 - [Database Schema](database.md) - Database design
 - [Configuration](configuration.md) - Environment variables
 - [SECURITY_AUDIT_REPORT.md](../SECURITY_AUDIT_REPORT.md) - Security analysis
+
+---
+
+## Architecture Diagrams
+
+Five formal diagrams document the system structure and data flows for v1.9.0.
+Mermaid source files are in [`docs/diagrams/`](diagrams/README.md).
+PlantUML source files (with pre-rendered PNG/SVG) are in [`docs/uml/`](uml/README.md).
+
+### 1. Core Domain Model (Class Diagram)
+[`diagrams/class-domain.mmd`](diagrams/class-domain.mmd)
+
+Key entities: `Indicator`, `Feed`, `FeedRun`, `SyncJob`, `ExportJob`, `AppSetting`, `AppLog`, `AuditLog`, `DeadLetterJob`.
+Relationships: Feed → FeedRun (produces), Feed → SyncJob (drives), SyncJob → DeadLetterJob (on permanent failure).
+
+See also: [`uml/generated/IOC_Service_Domain_Model.png`](uml/generated/IOC_Service_Domain_Model.png)
+
+### 2. Feed Ingestion Data Flow
+[`diagrams/data-flow.mmd`](diagrams/data-flow.mmd)
+
+Pipeline: External Feed API → Feed Adapter → `persist_batches` → PostgreSQL → Redis cache invalidation.
+Worker loop enqueues jobs via cron matching, dequeues with `FOR UPDATE SKIP LOCKED`, and writes `FeedRun` records.
+
+See also: [`uml/generated/IOC_Service_Ingestion_Activity.png`](uml/generated/IOC_Service_Ingestion_Activity.png)
+
+### 3. API v1 Request Lifecycle (Sequence Diagram)
+[`diagrams/request-flow.mmd`](diagrams/request-flow.mmd)
+
+Full request path: Nginx TLS → Auth token check → Flask-Limiter → QueryParser → Redis cache → PostgreSQL → Response Formatter → cache store.
+
+See also: [`uml/generated/IOC_Service_Auth_Sequence.png`](uml/generated/IOC_Service_Auth_Sequence.png)
+
+### 4. Admin Manual Sync Flow (Sequence Diagram)
+[`diagrams/admin-sync-flow.mmd`](diagrams/admin-sync-flow.mmd)
+
+POST `/admin/sync` → CSRF validation → `enqueue_sync_for_source` → `SyncJob(queued)` → Worker dequeues → Feed Adapter → External API → `FeedRun(success)`.
+
+See also: [`uml/generated/IOC_Service_Sync_Sequence.png`](uml/generated/IOC_Service_Sync_Sequence.png)
+
+### 5. Architecture Overview (C4 Context)
+[`diagrams/architecture-overview.mmd`](diagrams/architecture-overview.mmd)
+
+Components: Nginx (TLS/rate-limit), Flask App (API + Admin UI), Background Worker (scheduler), PostgreSQL (primary DB), Redis (cache + rate-limit).
+External feeds: CrowdSec CTI, MISP, abuse.ch, MWDB. Export target: Microsoft Sentinel.
+
+See also: [`uml/generated/IOC_Service_Component.png`](uml/generated/IOC_Service_Component.png)
