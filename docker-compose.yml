@@ -143,6 +143,7 @@ services:
       ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
       ADMIN_ROLE: ${ADMIN_ROLE:-admin}
       ADMIN_DANGEROUS_OPS: ${ADMIN_DANGEROUS_OPS:-false}
+      EDGE_HTTPS_ENABLED: ${EDGE_HTTPS_ENABLED:-false}
     ports:
       - "${APP_HOST_BIND:-127.0.0.1}:${APP_HOST_PORT:-7005}:${APP_PORT:-8080}"
     depends_on:
