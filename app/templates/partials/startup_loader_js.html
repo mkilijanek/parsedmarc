@@ -10,8 +10,9 @@
   if (!loader || !bar) { return; }
 
   var startedAt = Date.now();
-  var done = false;
-  var pct  = 8;
+  var dismissed = false;
+  var serverReady = false;
+  var pct = 8;
 
   var PHASES = [
     { at: 20, stepDone: 2, stepDoing: 3, label: 'Loading feed adapters' },
@@ -27,18 +28,37 @@
     el.className = cls;
     var mark = el.querySelector('.sl-mark');
     if (!mark) { return; }
-    if (cls === 'sl-done')  { mark.textContent = '✓'; }
-    if (cls === 'sl-doing') { mark.textContent = '⟳'; }
-    if (cls === 'sl-wait')  { mark.textContent = '·'; }
+    if (cls === 'sl-done')  { mark.textContent = '\u2713'; }
+    if (cls === 'sl-doing') { mark.textContent = '\u27f3'; }
+    if (cls === 'sl-wait')  { mark.textContent = '\u00b7'; }
+  }
+
+  function dismiss() {
+    if (dismissed) { return; }
+    dismissed = true;
+    window.clearInterval(tick);
+    bar.style.width = '100%';
+    if (pctNum)   { pctNum.textContent = '100'; }
+    if (statusTx) { statusTx.textContent = 'Ready'; }
+    if (meta)     { meta.textContent = 'Application ready'; }
+    for (var i = 0; i <= 5; i++) { setStep(i, 'sl-done'); }
+    window.setTimeout(function () {
+      loader.classList.add('done');
+      window.setTimeout(function () { loader.remove(); }, 450);
+    }, 300);
   }
 
   var tick = window.setInterval(function () {
-    if (done) { return; }
-    pct = Math.min(92, pct + Math.random() * 5 + 1.5);
+    if (dismissed) { return; }
+
+    var speed = serverReady ? (Math.random() * 8 + 4) : (Math.random() * 5 + 1.5);
+    var cap   = serverReady ? 100 : 92;
+    pct = Math.min(cap, pct + speed);
+
     bar.style.width = pct.toFixed(1) + '%';
     if (pctNum) { pctNum.textContent = Math.round(pct); }
 
-    var elapsed = ((Date.now() - startedAt) / 1000);
+    var elapsed = (Date.now() - startedAt) / 1000;
     var etaS = Math.max(0, 3.5 - elapsed).toFixed(1);
     if (teleEta) { teleEta.textContent = '~' + etaS + 's'; }
 
@@ -46,8 +66,12 @@
       var ph = PHASES[phaseIdx];
       setStep(ph.stepDone, 'sl-done');
       if (ph.stepDoing >= 0) { setStep(ph.stepDoing, 'sl-doing'); }
-      if (meta) { meta.textContent = ph.label + '…'; }
+      if (meta) { meta.textContent = ph.label + '\u2026'; }
       phaseIdx++;
+    }
+
+    if (serverReady && pct >= 100) {
+      window.setTimeout(dismiss, 200);
     }
   }, 120);
 
@@ -63,22 +87,7 @@
   pollHealth();
 
   function finish() {
-    if (done) { return; }
-    done = true;
-    var minMs = 2800;
-    var remaining = Math.max(0, minMs - (Date.now() - startedAt));
-    window.setTimeout(function () {
-      bar.style.width = '100%';
-      if (pctNum)   { pctNum.textContent = '100'; }
-      if (statusTx) { statusTx.textContent = 'Ready'; }
-      if (meta)     { meta.textContent = 'Application ready'; }
-      for (var i = 0; i <= 5; i++) { setStep(i, 'sl-done'); }
-      window.clearInterval(tick);
-      window.setTimeout(function () {
-        loader.classList.add('done');
-        window.setTimeout(function () { loader.remove(); }, 450);
-      }, 250);
-    }, remaining);
+    serverReady = true;
   }
 
   var timeout = window.setTimeout(finish, 4000);
