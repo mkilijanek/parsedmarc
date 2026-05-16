@@ -249,3 +249,330 @@ class TestKeyHelpers:
     def test_field_input_name(self):
         svc = _make_service()
         assert svc.field_input_name("proxy.http_url") == "proxy__http_url"
+
+
+# ---------------------------------------------------------------------------
+# _mask_secret_fn (via read_feed_config_state secret field)
+# ---------------------------------------------------------------------------
+
+class TestMaskSecretFn:
+    def _get_masked(self, value):
+        from app.services.feed_config_svc import make_feed_config_service
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        def get_setting(db, key, default="", secret=False):
+            return value if secret else default
+
+        svc = make_feed_config_service(
+            cfg=SimpleNamespace(ABUSECH_AUTH_KEY=""),
+            get_setting_fn=get_setting,
+            set_setting_fn=MagicMock(),
+            secret_decrypt_fn=MagicMock(return_value=value),
+        )
+        f = MagicMock()
+        f.source_type = "misp"
+        f.source_id = "misp"
+        f.base_url = "http://misp.example.com"
+        f.enabled = True
+        f.display_name = "MISP"
+        db = MagicMock()
+        state = svc.read_feed_config_state(db, f)
+        for field in state["fields"]:
+            if field["secret"]:
+                return field["current_masked"]
+        return None
+
+    def test_empty_secret_gives_empty_mask(self):
+        assert self._get_masked("") == ""
+
+    def test_long_value_shows_tail(self):
+        masked = self._get_masked("supersecretapikey1234")
+        assert masked is not None
+        assert masked.endswith("1234")
+        assert "*" in masked
+
+    def test_short_value_all_masked(self):
+        masked = self._get_masked("ab")
+        assert masked is not None
+        assert "*" in masked
+
+
+# ---------------------------------------------------------------------------
+# _read_feed_enabled
+# ---------------------------------------------------------------------------
+
+def _make_feed_config_svc_with_setting(setting_value):
+    from app.services.feed_config_svc import make_feed_config_service
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    return make_feed_config_service(
+        cfg=SimpleNamespace(ABUSECH_AUTH_KEY=""),
+        get_setting_fn=MagicMock(return_value=setting_value),
+        set_setting_fn=MagicMock(),
+        secret_decrypt_fn=MagicMock(return_value=setting_value),
+    )
+
+
+class TestReadFeedEnabled:
+    def _noop_db(self):
+        from unittest.mock import MagicMock
+        m = MagicMock()
+        m.scalar.return_value = None
+        return m
+
+    def test_returns_true_for_1(self):
+        svc = _make_feed_config_svc_with_setting("1")
+        assert svc.read_feed_enabled(self._noop_db(), "misp") is True
+
+    def test_returns_false_for_0(self):
+        svc = _make_feed_config_svc_with_setting("0")
+        assert svc.read_feed_enabled(self._noop_db(), "misp") is False
+
+    def test_returns_true_for_yes(self):
+        svc = _make_feed_config_svc_with_setting("yes")
+        assert svc.read_feed_enabled(self._noop_db(), "misp") is True
+
+    def test_returns_false_for_off(self):
+        svc = _make_feed_config_svc_with_setting("off")
+        assert svc.read_feed_enabled(self._noop_db(), "misp") is False
+
+
+# ---------------------------------------------------------------------------
+# _read_feed_config_state
+# ---------------------------------------------------------------------------
+
+class TestReadFeedConfigState:
+    def _svc(self, setting_value="", abusech_key=""):
+        from app.services.feed_config_svc import make_feed_config_service
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        return make_feed_config_service(
+            cfg=SimpleNamespace(ABUSECH_AUTH_KEY=abusech_key),
+            get_setting_fn=MagicMock(return_value=setting_value),
+            set_setting_fn=MagicMock(),
+            secret_decrypt_fn=MagicMock(return_value=setting_value),
+        )
+
+    def _mock_feed(self, source_type, source_id, base_url=""):
+        from unittest.mock import MagicMock
+        f = MagicMock()
+        f.source_type = source_type
+        f.source_id = source_id
+        f.base_url = base_url
+        f.enabled = True
+        f.display_name = source_type.title()
+        return f
+
+    def _noop_db(self):
+        from unittest.mock import MagicMock
+        m = MagicMock()
+        m.scalar.return_value = None
+        return m
+
+    def test_unknown_source_type_returns_not_ready(self):
+        svc = self._svc()
+        f = self._mock_feed("unknown_type", "x")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert state["ready"] is False
+        assert "unknown source type" in state["missing"]
+
+    def test_misp_with_base_url_has_fields(self):
+        svc = self._svc(setting_value="token123")
+        f = self._mock_feed("misp", "misp", base_url="http://misp.example.com")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert isinstance(state.get("fields"), list)
+        assert state["source_id"] == "misp"
+
+    def test_misp_missing_base_url_not_ready(self):
+        svc = self._svc(setting_value="")
+        f = self._mock_feed("misp", "misp")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert state["ready"] is False
+
+    def test_malwarebazaar_missing_key_reported(self):
+        svc = self._svc(setting_value="", abusech_key="")
+        f = self._mock_feed("malwarebazaar", "malwarebazaar")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert any("abuse.ch" in m for m in state["missing"])
+
+    def test_malwarebazaar_with_abusech_env_key_not_missing(self):
+        svc = self._svc(setting_value="", abusech_key="env-key")
+        f = self._mock_feed("malwarebazaar", "malwarebazaar")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert not any("abuse.ch" in m for m in state["missing"])
+
+    def test_crowdsec_returns_fields_list(self):
+        svc = self._svc(setting_value="somekey")
+        f = self._mock_feed("crowdsec", "crowdsec")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert isinstance(state.get("fields"), list)
+
+    def test_abusech_returns_fields_list(self):
+        svc = self._svc(setting_value="somekey")
+        f = self._mock_feed("abusech", "abusech")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert isinstance(state.get("fields"), list)
+
+    def test_mwdb_returns_fields_list(self):
+        svc = self._svc(setting_value="somekey")
+        f = self._mock_feed("mwdb", "mwdb", base_url="http://mwdb.example.com")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert isinstance(state.get("fields"), list)
+
+    def test_state_includes_enabled_flag(self):
+        svc = self._svc(setting_value="k")
+        f = self._mock_feed("crowdsec", "crowdsec")
+        f.enabled = False
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        assert state["enabled"] is False
+
+    def test_checkbox_field_checked_value(self):
+        def get_setting(db, key, default="", secret=False):
+            if "verify_ssl" in key:
+                return "1"
+            return ""
+
+        from app.services.feed_config_svc import make_feed_config_service
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        svc = make_feed_config_service(
+            cfg=SimpleNamespace(ABUSECH_AUTH_KEY=""),
+            get_setting_fn=get_setting,
+            set_setting_fn=MagicMock(),
+            secret_decrypt_fn=MagicMock(return_value="1"),
+        )
+        f = self._mock_feed("misp", "misp", base_url="http://misp.example.com")
+        state = svc.read_feed_config_state(self._noop_db(), f)
+        cb_fields = [x for x in state["fields"] if x["type"] == "checkbox"]
+        if cb_fields:
+            assert cb_fields[0]["checked"] is True
+
+
+# ---------------------------------------------------------------------------
+# _get_feed_field_value
+# ---------------------------------------------------------------------------
+
+class TestGetFeedFieldValue:
+    def _svc(self, stored="stored-value"):
+        from app.services.feed_config_svc import make_feed_config_service
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        return make_feed_config_service(
+            cfg=SimpleNamespace(ABUSECH_AUTH_KEY=""),
+            get_setting_fn=MagicMock(return_value=stored),
+            set_setting_fn=MagicMock(),
+            secret_decrypt_fn=MagicMock(return_value=stored),
+        )
+
+    def _noop_db(self):
+        from unittest.mock import MagicMock
+        m = MagicMock()
+        m.scalar.return_value = None
+        return m
+
+    def _feed(self, source_type="misp", base_url=""):
+        from unittest.mock import MagicMock
+        f = MagicMock()
+        f.source_type = source_type
+        f.source_id = source_type
+        f.base_url = base_url
+        return f
+
+    def test_base_url_from_form(self):
+        svc = self._svc()
+        f = self._feed(base_url="http://old.example.com")
+        field = {"key": "base_url", "input_name": "base_url", "type": "text", "secret": False}
+        val = svc.get_feed_field_value(self._noop_db(), f, field, {"base_url": "http://new.example.com"})
+        assert val == "http://new.example.com"
+
+    def test_base_url_falls_back_to_feed_attr(self):
+        svc = self._svc()
+        f = self._feed(base_url="http://feed.example.com")
+        field = {"key": "base_url", "input_name": "base_url", "type": "text", "secret": False}
+        val = svc.get_feed_field_value(self._noop_db(), f, field, {"base_url": ""})
+        assert val == "http://feed.example.com"
+
+    def test_non_secret_returns_form_value(self):
+        svc = self._svc()
+        f = self._feed()
+        field = {"key": "api_key", "input_name": "api_key", "type": "text", "secret": False}
+        val = svc.get_feed_field_value(self._noop_db(), f, field, {"api_key": "form-value"})
+        assert val == "form-value"
+
+    def test_secret_empty_form_returns_stored(self):
+        svc = self._svc(stored="stored-secret")
+        f = self._feed()
+        field = {"key": "api_key", "input_name": "api_key", "type": "password", "secret": True}
+        val = svc.get_feed_field_value(self._noop_db(), f, field, {"api_key": ""})
+        assert val == "stored-secret"
+
+    def test_checkbox_on_returns_1(self):
+        svc = self._svc()
+        f = self._feed()
+        field = {"key": "verify_ssl", "input_name": "verify_ssl", "type": "checkbox", "secret": False}
+        val = svc.get_feed_field_value(self._noop_db(), f, field, {"verify_ssl": "on"})
+        assert val == "1"
+
+    def test_checkbox_empty_returns_0(self):
+        svc = self._svc()
+        f = self._feed()
+        field = {"key": "verify_ssl", "input_name": "verify_ssl", "type": "checkbox", "secret": False}
+        val = svc.get_feed_field_value(self._noop_db(), f, field, {"verify_ssl": ""})
+        assert val == "0"
+
+    def test_no_form_data_returns_stored(self):
+        svc = self._svc(stored="stored-value")
+        f = self._feed()
+        field = {"key": "api_key", "input_name": "api_key", "type": "text", "secret": False}
+        val = svc.get_feed_field_value(self._noop_db(), f, field, None)
+        assert val == "stored-value"
+
+    def test_secret_with_form_value_returns_form(self):
+        svc = self._svc(stored="old-secret")
+        f = self._feed()
+        field = {"key": "api_key", "input_name": "api_key", "type": "password", "secret": True}
+        val = svc.get_feed_field_value(self._noop_db(), f, field, {"api_key": "new-secret"})
+        assert val == "new-secret"
+
+
+# ---------------------------------------------------------------------------
+# _ensure_default_feeds
+# ---------------------------------------------------------------------------
+
+class TestEnsureDefaultFeeds:
+    def test_creates_defaults_when_no_feeds(self):
+        from app.services.feed_config_svc import make_feed_config_service
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        svc = make_feed_config_service(
+            cfg=SimpleNamespace(ABUSECH_AUTH_KEY=""),
+            get_setting_fn=MagicMock(return_value=""),
+            set_setting_fn=MagicMock(),
+            secret_decrypt_fn=MagicMock(return_value=""),
+        )
+        mock_db = MagicMock()
+        mock_db.scalars.return_value.all.return_value = []
+        svc.ensure_default_feeds(mock_db)
+        assert mock_db.add.call_count == 5
+        mock_db.commit.assert_called_once()
+
+    def test_skips_when_feeds_exist(self):
+        from app.services.feed_config_svc import make_feed_config_service
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        svc = make_feed_config_service(
+            cfg=SimpleNamespace(ABUSECH_AUTH_KEY=""),
+            get_setting_fn=MagicMock(return_value=""),
+            set_setting_fn=MagicMock(),
+            secret_decrypt_fn=MagicMock(return_value=""),
+        )
+        mock_db = MagicMock()
+        mock_db.scalars.return_value.all.return_value = [MagicMock()]
+        svc.ensure_default_feeds(mock_db)
+        mock_db.add.assert_not_called()
