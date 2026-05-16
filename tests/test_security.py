@@ -479,8 +479,9 @@ class TestRateLimiting:
         """Admin API rate limit violations are returned as JSON and written to audit log."""
         if not client.application.limiter.enabled:
             pytest.skip("rate limiting is disabled for this environment")
+        headers = {"X-Admin-Token": "test-admin-token"}
         statuses = [
-            client.post("/api/sync", json={"source": "does-not-exist"}).status_code
+            client.post("/api/sync", json={"source": "does-not-exist"}, headers=headers).status_code
             for _ in range(11)
         ]
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 from flask import render_template
 
@@ -60,7 +60,7 @@ def render_indicators(
                 "source": isource,
                 "source_id": isource_id,
                 "is_misp": isource == "misp" and bool(isource_id),
-                "q_row": q_row,
+                "q_row": quote(q_row, safe="") if q_row else None,
                 "export_formats_misp": _EXPORT_FORMATS_MISP,
                 "export_formats_generic": _EXPORT_FORMATS_GENERIC,
                 "tags": list((ind.tags or [])[:10]),

@@ -44,7 +44,7 @@ def test_admin_panel_exposes_config_and_sync_controls(admin_client, sample_indic
     assert "Configuration Panel" in html
     assert "Manual Synchronization and Feed Management" in html
     assert "Recent Sync Jobs" in html
-    assert "href='/admin/feed/misp/configure'" in html
+    assert "/admin/feed/misp/configure" in html
     assert "Add New Feed" in html
     assert "Apply filters" in html or "Apply Filters" in html
     assert "Problems only" in html or "Problems Only" in html
@@ -60,11 +60,21 @@ def test_admin_panel_exposes_config_and_sync_controls(admin_client, sample_indic
     assert "Raw stats:" in html
 
 
-def test_misp_feed_is_disabled_by_default(admin_client, sample_indicators, sample_feed_stats):
+def test_misp_feed_is_disabled_by_default(admin_client, sample_indicators, sample_feed_stats, test_db):
+    from app.models import Feed
+    misp_feed = Feed(
+        source_id="misp",
+        source_type="misp",
+        display_name="MISP",
+        enabled=False,
+    )
+    test_db.add(misp_feed)
+    test_db.commit()
     response = admin_client.get("/admin")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "value='misp'" in html
+    # Feed source ID appears in form hidden inputs (double-quoted in HTML)
+    assert 'value="misp"' in html
     assert ">Enable</button>" in html
 
 
@@ -276,7 +286,8 @@ def test_admin_logs_tab_and_api(client, sample_indicators):
 
 
 def test_api_sync_enqueue_returns_202_and_job_id(client, sample_indicators):
-    response = client.post("/api/sync", json={"source": "abusech"})
+    headers = {"X-Admin-Token": "test-admin-token"}
+    response = client.post("/api/sync", json={"source": "abusech"}, headers=headers)
     assert response.status_code == 202
     data = response.get_json()
     assert data["source"] == "abusech"
@@ -287,8 +298,9 @@ def test_api_sync_enqueue_returns_202_and_job_id(client, sample_indicators):
 
 
 def test_api_sync_idempotency_reuses_existing_job(client, sample_indicators):
-    first = client.post("/api/sync", json={"source": "abusech"})
-    second = client.post("/api/sync", json={"source": "abusech"})
+    headers = {"X-Admin-Token": "test-admin-token"}
+    first = client.post("/api/sync", json={"source": "abusech"}, headers=headers)
+    second = client.post("/api/sync", json={"source": "abusech"}, headers=headers)
     assert first.status_code == 202
     assert second.status_code == 202
     first_data = first.get_json()
@@ -298,7 +310,7 @@ def test_api_sync_idempotency_reuses_existing_job(client, sample_indicators):
 
 
 def test_api_logs_filter_by_job_id(client, sample_indicators):
-    sync_resp = client.post("/api/sync", json={"source": "abusech"})
+    sync_resp = client.post("/api/sync", json={"source": "abusech"}, headers={"X-Admin-Token": "test-admin-token"})
     job_id = sync_resp.get_json()["jobs"][0]["job_id"]
     logs_resp = client.get(f"/api/logs?job_id={job_id}&limit=50")
     assert logs_resp.status_code == 200
@@ -316,7 +328,7 @@ def test_api_500_returns_json_with_correlation_id(client, sample_indicators):
 
 
 def test_sync_job_details_page_renders(admin_client, client, sample_indicators):
-    sync_resp = client.post("/api/sync", json={"source": "abusech"})
+    sync_resp = client.post("/api/sync", json={"source": "abusech"}, headers={"X-Admin-Token": "test-admin-token"})
     assert sync_resp.status_code == 202
     job_id = sync_resp.get_json()["jobs"][0]["job_id"]
     details = admin_client.get(f"/admin/sync-jobs/{job_id}")

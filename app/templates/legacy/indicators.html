@@ -189,7 +189,7 @@
                 {% endfor %}
               {% else %}
                 {% for fmt in row.export_formats_generic %}
-                <a href="/indicators/{{ fmt }}?q={{ row.q_row|urlencode }}" aria-label="Export indicator in {{ fmt }} format">{{ fmt|upper }}</a>
+                <a href="/indicators/{{ fmt }}?q={{ row.q_row }}" aria-label="Export indicator in {{ fmt }} format">{{ fmt|upper }}</a>
                 {% endfor %}
               {% endif %}
             </td>

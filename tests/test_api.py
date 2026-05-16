@@ -1152,11 +1152,11 @@ class TestApiV1Coverage:
         assert isinstance(body, (dict, list))
 
     def test_api_v1_sync_missing_source(self, client):
-        resp = client.post("/api/v1/sync", json={})
+        resp = client.post("/api/v1/sync", json={}, headers={"X-Admin-Token": "test-admin-token"})
         assert resp.status_code == 400
 
     def test_api_v1_sync_invalid_source(self, client):
-        resp = client.post("/api/v1/sync", json={"source": "nonexistent_source_xyz"})
+        resp = client.post("/api/v1/sync", json={"source": "nonexistent_source_xyz"}, headers={"X-Admin-Token": "test-admin-token"})
         assert resp.status_code in (400, 202)
 
     def test_api_v1_runs_current(self, client):
