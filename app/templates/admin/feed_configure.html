@@ -3,11 +3,9 @@
 {% block title %}Configure {{ source_id }}{% endblock %}
 
 {% block extra_css %}
-<style>
   .configure-card { border:1px solid var(--line); border-radius:12px; padding:1rem; background:var(--card); }
   fieldset { border:1px solid var(--line); border-radius:10px; margin:.8rem 0; padding:.6rem; }
   .mwdb-orgs label { display:block; margin:.25rem 0; }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -88,7 +86,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
 (function() {
   const form = document.getElementById('feedConfigForm');
   const saveBtn = document.getElementById('saveBtn');
@@ -123,5 +120,4 @@
     }
   }
 })();
-</script>
 {% endblock %}

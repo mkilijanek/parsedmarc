@@ -3,7 +3,6 @@
 {% block title %}Admin Controls{% endblock %}
 
 {% block extra_css %}
-<style>
   .admin-card { border: 1px solid var(--line); border-radius: 16px; padding: 1rem; margin-bottom: 1rem; background: var(--card); }
   .admin-card h3 { margin-top: 0; }
   table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
@@ -24,7 +23,6 @@
   .mini-chart-wrap svg { width:100%; height:120px; display:block; }
   .admin-status-msg { border:1px solid var(--line); border-radius:10px; padding:.75rem 1rem; margin:.5rem 0 1rem; background:var(--card); }
   .admin-status-msg:empty { display: none; }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -192,7 +190,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
 (function() {
   // Show toast on form success if status message exists
   const statusMsg = document.getElementById('statusMsg');
@@ -223,5 +220,4 @@
     showToast('Adding new feed...', 'info', 2000);
   });
 })();
-</script>
 {% endblock %}

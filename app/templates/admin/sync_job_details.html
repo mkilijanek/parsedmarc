@@ -30,7 +30,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
 (function() {
   // Show toast for job status
   const status = '{{ job.status }}';
@@ -42,5 +41,4 @@
     showToast('Job is running...', 'info', 3000);
   }
 })();
-</script>
 {% endblock %}
