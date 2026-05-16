@@ -49,13 +49,11 @@
   th.sort-desc::after { content: ' ↓'; opacity: 1; color: var(--primary); }
   th[aria-sort="ascending"]::after { content: ' ↑'; }
   th[aria-sort="descending"]::after { content: ' ↓'; }
-  {% include "partials/startup_loader_css.html" %}
 {% endblock %}
 
 {% block content %}
 {% set active_page = 'indicators' %}
 
-{% include "partials/startup_loader.html" %}
 
 <div class="card">
   <h1>Unified Indicators</h1>
@@ -415,7 +413,6 @@
     });
   });
 
-  {% include "partials/startup_loader_js.html" %}
 
   // Table sorting
   (function() {

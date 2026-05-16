@@ -95,5 +95,9 @@
     .then(function () { finish(); })
     .catch(function () { finish(); })
     .finally(function () { window.clearTimeout(timeout); });
-  window.addEventListener('load', finish, { once: true });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', finish, { once: true });
+  } else {
+    finish();
+  }
 })();
