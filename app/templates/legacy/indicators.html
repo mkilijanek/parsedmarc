@@ -3,7 +3,6 @@
 {% block title %}Indicators{% endblock %}
 
 {% block extra_css %}
-<style>
   .toolbar { display: grid; grid-template-columns: 1fr; gap: .75rem; margin-bottom: 1rem; }
   .filter-summary { position: sticky; top: 0; z-index: 2; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: .75rem; }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
@@ -47,7 +46,6 @@
   th[aria-sort="ascending"]::after { content: ' ↑'; }
   th[aria-sort="descending"]::after { content: ' ↓'; }
   {{ startup_loader_style|safe }}
-</style>
 {% endblock %}
 
 {% block content %}
@@ -203,7 +201,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
 (function() {
   const searchBox = document.getElementById('searchBox');
   const dropdown = document.getElementById('autocomplete-list');
@@ -480,5 +477,4 @@
     }
   })();
 })();
-</script>
 {% endblock %}
