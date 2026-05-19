@@ -37,6 +37,70 @@ _SINCE_OPTIONS = [
 ]
 
 
+def _query_escape(value: str) -> str:
+    return (value or "").replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _build_view_row(ind: Indicator) -> dict[str, Any]:
+    isource = str(ind.source or "")
+    isource_id = str(ind.source_id or "")
+    if isource == "misp" and isource_id:
+        q_row = None
+    else:
+        q_row = f'value:"{_query_escape(str(ind.value or ""))}" AND source:"{_query_escape(isource)}"'
+    return {
+        "value": str(ind.value or ""),
+        "itype": str(ind.type or ""),
+        "confidence": int(ind.confidence or 0),
+        "itlp": str(ind.tlp or ""),
+        "source": isource,
+        "source_id": isource_id,
+        "is_misp": isource == "misp" and bool(isource_id),
+        "q_row": quote(q_row, safe="") if q_row else None,
+        "export_formats_misp": _EXPORT_FORMATS_MISP,
+        "export_formats_generic": _EXPORT_FORMATS_GENERIC,
+        "tags": list((ind.tags or [])[:10]),
+    }
+
+
+def _build_active_query(
+    *,
+    q: str | None,
+    type_filter: str,
+    tlp: str,
+    source: str,
+    min_conf: int | None,
+    max_conf: int | None,
+    since: str | None,
+    date_from_str: str | None,
+    date_to_str: str | None,
+    limit: int,
+    offset: int,
+) -> dict[str, str]:
+    aq: dict[str, str] = {}
+    if q:
+        aq["q"] = q
+    if type_filter and type_filter != "all":
+        aq["type"] = type_filter
+    if tlp and tlp not in ("ALL", "all"):
+        aq["tlp"] = tlp
+    if source and source != "all":
+        aq["source"] = source
+    if min_conf is not None:
+        aq["min_conf"] = str(min_conf)
+    if max_conf is not None:
+        aq["max_conf"] = str(max_conf)
+    if since and since != "all":
+        aq["since"] = since
+    if date_from_str:
+        aq["date_from"] = date_from_str
+    if date_to_str:
+        aq["date_to"] = date_to_str
+    aq["limit"] = str(limit)
+    aq["offset"] = str(offset)
+    return aq
+
+
 def render_indicators(
     rows: list[Indicator],
     *,
@@ -54,59 +118,15 @@ def render_indicators(
     date_from_str: str | None = None,
     date_to_str: str | None = None,
 ) -> str:
-    def _query_escape(value: str) -> str:
-        return (value or "").replace("\\", "\\\\").replace('"', '\\"')
+    view_rows = [_build_view_row(ind) for ind in rows]
 
-    view_rows: list[dict[str, Any]] = []
-    for ind in rows:
-        conf = int(ind.confidence or 0)
-        itype = str(ind.type or "")
-        itlp = str(ind.tlp or "")
-        isource = str(ind.source or "")
-        isource_id = str(ind.source_id or "")
+    active_query = _build_active_query(
+        q=q, type_filter=type_filter, tlp=tlp, source=source,
+        min_conf=min_conf, max_conf=max_conf, since=since,
+        date_from_str=date_from_str, date_to_str=date_to_str,
+        limit=limit, offset=offset,
+    )
 
-        if isource == "misp" and isource_id:
-            q_row = None
-        else:
-            q_row = f'value:"{_query_escape(str(ind.value or ""))}" AND source:"{_query_escape(isource)}"'
-
-        view_rows.append(
-            {
-                "value": str(ind.value or ""),
-                "itype": itype,
-                "confidence": conf,
-                "itlp": itlp,
-                "source": isource,
-                "source_id": isource_id,
-                "is_misp": isource == "misp" and bool(isource_id),
-                "q_row": quote(q_row, safe="") if q_row else None,
-                "export_formats_misp": _EXPORT_FORMATS_MISP,
-                "export_formats_generic": _EXPORT_FORMATS_GENERIC,
-                "tags": list((ind.tags or [])[:10]),
-            }
-        )
-
-    active_query: dict[str, str] = {}
-    if q:
-        active_query["q"] = q
-    if type_filter and type_filter != "all":
-        active_query["type"] = type_filter
-    if tlp and tlp != "ALL" and tlp != "all":
-        active_query["tlp"] = tlp
-    if source and source != "all":
-        active_query["source"] = source
-    if min_conf is not None:
-        active_query["min_conf"] = str(min_conf)
-    if max_conf is not None:
-        active_query["max_conf"] = str(max_conf)
-    if since and since != "all":
-        active_query["since"] = since
-    if date_from_str:
-        active_query["date_from"] = date_from_str
-    if date_to_str:
-        active_query["date_to"] = date_to_str
-    active_query["limit"] = str(limit)
-    active_query["offset"] = str(offset)
     filter_qs = urlencode(active_query)
     filter_suffix = f"?{filter_qs}" if filter_qs else ""
     has_filters = any(k in active_query for k in ("q", "type", "tlp", "source", "min_conf", "max_conf", "since", "date_from", "date_to"))
@@ -120,8 +140,6 @@ def render_indicators(
         qv["offset"] = str(target_offset)
         return "/indicators?" + urlencode(qv)
 
-    prev_link = _page_link(prev_offset)
-    next_link = _page_link(next_offset)
     min_conf_options = [{"value": "", "label": "", "match_value": None}] + [
         {"value": str(n), "label": str(n), "match_value": n} for n in [0, 25, 50, 60, 70, 80, 90]
     ]
@@ -152,8 +170,8 @@ def render_indicators(
         page=page,
         total_pages=total_pages,
         next_offset=next_offset,
-        prev_link=prev_link,
-        next_link=next_link,
+        prev_link=_page_link(prev_offset),
+        next_link=_page_link(next_offset),
         filter_suffix=filter_suffix,
         view_rows=view_rows,
     )
