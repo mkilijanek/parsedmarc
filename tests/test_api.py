@@ -1257,3 +1257,18 @@ class TestDocsRoutes:
     def test_docs_index_contains_sidebar(self, client):
         resp = client.get("/docs")
         assert b"docs-sidebar" in resp.data or b"Introduction" in resp.data
+
+    def test_docs_dynamic_slug_returns_200(self, client):
+        # access-control.md exists in docs/ but is not in the sidebar
+        resp = client.get("/docs/access-control")
+        assert resp.status_code == 200
+
+    def test_docs_dynamic_slug_path_traversal_rejected(self, client):
+        resp = client.get("/docs/../../etc/passwd")
+        assert resp.status_code in (404, 400, 308)
+
+    def test_docs_md_links_rewritten(self, client):
+        resp = client.get("/docs")
+        # raw .md hrefs must not appear; should be rewritten to /docs/...
+        assert b'href="configuration.md"' not in resp.data
+        assert b'href="api.md"' not in resp.data

@@ -1,5 +1,12 @@
 2026-05-19
 
+[fix: docs — rewrite .md links to /docs/<slug>, dynamic page loading]
+- Rendered markdown contained raw href="*.md" links that 404'd in the browser.
+- Added _rewrite_md_links() post-processor: rewrites href="foo.md" → href="/docs/foo" and href="foo.md#anchor" → href="/docs/foo#anchor" using a filename→slug map for special cases (README.md→"", api-v1-migration.md→"api-migration"), stem-as-slug for the rest.
+- Parent-relative (../X.md) and subdir (uml/X.md) links are intentionally unchanged (no app route for them).
+- docs_page() now falls back to loading any docs/{slug}.md dynamically (slug validated against /^[a-z0-9][a-z0-9-]*$/ to prevent traversal), so pages like /docs/access-control, /docs/runbook, /docs/compliance work without being in the sidebar.
+- 3 new tests: dynamic slug 200, path-traversal rejected, no raw .md hrefs in output.
+
 [fix: #246 docs delivery — missing content, Swagger validator badge, Mermaid CSP]
 - .dockerignore had docs/ excluded — container had no markdown/mmd/svg files. Removed exclusion.
 - Dockerfile: added COPY docs/ ./docs/ so all content reaches the container.

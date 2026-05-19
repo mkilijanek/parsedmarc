@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,15 @@ _UML_DIR    = _DOCS_ROOT / "uml" / "generated"
 _MMD_DIR    = _DOCS_ROOT / "diagrams"
 
 _md = MarkdownIt("commonmark", {"html": False}).enable("table")
+
+# slug must be lowercase letters, digits, hyphens — no path traversal possible
+_SAFE_SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+
+# filename → slug overrides for files whose stem != sidebar slug
+_FILENAME_TO_SLUG: dict[str, str] = {
+    "README.md":          "",
+    "api-v1-migration.md": "api-migration",
+}
 
 DOCS_SIDEBAR: list[dict[str, Any]] = [
     {"section": None, "pages": [
@@ -85,12 +95,38 @@ _UML_SVGS = [
 _SAFE_SVG_NAMES = frozenset(fname for fname, _ in _UML_SVGS)
 
 
+def _md_link_to_docs(href: str) -> str | None:
+    """Convert a relative .md href to /docs/<slug>[#anchor]. Returns None to leave unchanged."""
+    anchor = ""
+    if "#" in href:
+        href, anchor = href.split("#", 1)
+        anchor = "#" + anchor
+    if not href.endswith(".md"):
+        return None
+    # parent-relative: only ../README.md → /docs/
+    if href.startswith("../"):
+        return "/docs/" + anchor if href == "../README.md" else None
+    # reject subdirectory links (e.g. uml/README.md, diagrams/README.md)
+    if "/" in href:
+        return None
+    slug = _FILENAME_TO_SLUG.get(href, Path(href).stem)
+    return f"/docs/{slug}{anchor}"
+
+
+def _rewrite_md_links(html: str) -> str:
+    """Rewrite href="*.md" links in rendered HTML to /docs/<slug> URLs."""
+    def repl(m: re.Match) -> str:
+        url = _md_link_to_docs(m.group(1))
+        return f'href="{url}"' if url is not None else m.group(0)
+    return re.sub(r'href="([^"]*\.md(?:#[^"]*)?)"', repl, html)
+
+
 def _render_md(rel: str) -> str:
     try:
         text = (_DOCS_ROOT / rel).read_text(encoding="utf-8")
     except (FileNotFoundError, OSError):
         return "<p><em>Documentation file not found.</em></p>"
-    return _md.render(text)
+    return _rewrite_md_links(_md.render(text))
 
 
 def register_docs_routes(app, *, limiter) -> None:
@@ -112,8 +148,6 @@ def register_docs_routes(app, *, limiter) -> None:
     @limiter.limit("60 per minute")
     def docs_page(slug: str):
         slug = slug.lower().strip("/")
-        if slug not in _PAGE_FILES:
-            abort(404)
 
         if slug == "api":
             return make_response(render_template(
@@ -156,13 +190,24 @@ def register_docs_routes(app, *, limiter) -> None:
                 svgs=svgs,
             ))
 
+        # Explicit mapping takes priority; fall back to any docs/{slug}.md
+        if slug in _PAGE_FILES:
+            md_rel = _PAGE_FILES[slug]
+        else:
+            if not _SAFE_SLUG_RE.match(slug):
+                abort(404)
+            candidate = _DOCS_ROOT / f"{slug}.md"
+            if not candidate.exists():
+                abort(404)
+            md_rel = f"{slug}.md"
+
         return make_response(render_template(
             "docs/page.html",
             active_page="docs",
             docs_slug=slug,
             docs_sidebar=DOCS_SIDEBAR,
             docs_title=_PAGE_TITLES.get(slug, slug.replace("-", " ").title()),
-            content_html=_render_md(_PAGE_FILES[slug]),
+            content_html=_render_md(md_rel),
         ))
 
     @app.get("/docs/_uml/<filename>")
