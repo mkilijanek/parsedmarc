@@ -131,6 +131,7 @@ def register_api_v1_routes(
         url: "/api/v1/openapi.yaml",
         dom_id: "#swagger-ui",
         deepLinking: true,
+        validatorUrl: null,
         presets: [
           SwaggerUIBundle.presets.apis,
           SwaggerUIStandalonePreset

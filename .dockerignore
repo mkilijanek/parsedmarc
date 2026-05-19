@@ -16,7 +16,6 @@ __pycache__/
 artifacts/
 ref/
 Confluence/
-docs/
 tests/
 monitoring/
 # Keep nginx assets in build context for the TLS edge image.

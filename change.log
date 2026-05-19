@@ -1,5 +1,12 @@
 2026-05-19
 
+[fix: #246 docs delivery — missing content, Swagger validator badge, Mermaid CSP]
+- .dockerignore had docs/ excluded — container had no markdown/mmd/svg files. Removed exclusion.
+- Dockerfile: added COPY docs/ ./docs/ so all content reaches the container.
+- Swagger: added validatorUrl: null to SwaggerUIBundle config — removes external badge blocked by CSP img-src 'self'.
+- Mermaid: changed architecture.html from CDN URL to /static/vendor/mermaid.min.js (self-hosted, 3.3MB) — CDN was blocked by script-src 'self'. No CSP changes needed.
+- All docs pages now render correctly.
+
 [feat: #246 — /docs section with API reference, UML diagrams, and sidebar navigation]
 - What changed: Added a full /docs section to the app with sidebar navigation, markdown page rendering, Swagger UI embed, Mermaid architecture diagrams, and a PlantUML SVG gallery with lightbox.
 - Why: Analysts and operators need in-app access to architecture docs, API reference, and diagram library without leaving the UI.
