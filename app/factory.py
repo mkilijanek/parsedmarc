@@ -149,7 +149,10 @@ def create_app() -> Flask:
             "Use ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION=true only for isolated lab/test scenarios."
         )
 
+    from . import __version__ as _app_version
+
     app = Flask(__name__)
+    app.jinja_env.globals["app_version"] = _app_version
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
     app.config["GUNICORN_WORKER_CLASS"] = str(get_runtime_env("GUNICORN_WORKER_CLASS", "") or "")
     register_db_circuit_observers(
