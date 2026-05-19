@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ioc-service"
-version = "1.9.4"
+version = "1.9.5"
 description = "Threat Intelligence Feed Aggregator and Export Service"
 readme = "README.md"
 requires-python = ">=3.11"

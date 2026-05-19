@@ -85,7 +85,7 @@ from .views.legacy_public import render_indicators as legacy_render_indicators
 from .webui import webui_bp
 
 logger = logging.getLogger(__name__)
-_SECURITY_WARNINGS_ONCE_FILE = "/tmp/ioc-service-security-warnings.once"
+_SECURITY_WARNINGS_ONCE_FILE = "/tmp/ioc-service-security-warnings.once"  # nosec B108 — intentional: flag file, recreated each boot
 
 SUPPORTED_FIELDS = {"value","type","confidence","tlp","tags","source"}
 # Database-native export formats (formats supported by ti.export_indicators SQL function)

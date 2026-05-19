@@ -90,7 +90,7 @@ def _compile_tags_contains_sqlite(element, compiler, **kw):
     tags_sql = compiler.process(tags_expr, **kw)
     value_sql = compiler.process(value_expr, **kw)
     return (
-        f"EXISTS (SELECT 1 FROM json_each({tags_sql}) "
+        f"EXISTS (SELECT 1 FROM json_each({tags_sql}) "  # nosec B608 — SQLAlchemy compiled column refs, not user input
         f"WHERE json_each.value = {value_sql})"
     )
 

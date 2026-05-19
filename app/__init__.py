@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "1.9.4"
+__version__ = "1.9.5"
 
 
 def create_app(*args: Any, **kwargs: Any):

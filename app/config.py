@@ -57,7 +57,7 @@ class RuntimeConfig:
     FEED_HTTP_TIMEOUT_S: int = field(default_factory=lambda: _env_int("FEED_HTTP_TIMEOUT_S", 30))
     FEED_RETRY_ATTEMPTS: int = field(default_factory=lambda: _env_int("FEED_RETRY_ATTEMPTS", 4))
     FEED_RETRY_BASE_DELAY_S: int = field(default_factory=lambda: _env_int("FEED_RETRY_BASE_DELAY_S", 1))
-    EXPORT_JOB_DIR: str = field(default_factory=lambda: _env_str("EXPORT_JOB_DIR", "/tmp/ioc-export-jobs"))
+    EXPORT_JOB_DIR: str = field(default_factory=lambda: _env_str("EXPORT_JOB_DIR", "/tmp/ioc-export-jobs"))  # nosec B108 — configurable via EXPORT_JOB_DIR env var
     EXPORT_ASYNC_THRESHOLD: int = field(default_factory=lambda: _env_int("EXPORT_ASYNC_THRESHOLD", 5000))
     LOG_RETENTION_DAYS: int = field(default_factory=lambda: _env_int("LOG_RETENTION_DAYS", 90))
     DLQ_RETENTION_DAYS: int = field(default_factory=lambda: _env_int("DLQ_RETENTION_DAYS", 90))
@@ -167,7 +167,7 @@ class WorkerConfig:
     ENABLE_BACKGROUND_JOBS: bool = field(default_factory=lambda: _env_bool("ENABLE_BACKGROUND_JOBS", True))
     UPDATE_INTERVAL: int = field(default_factory=lambda: _env_int("UPDATE_INTERVAL", 600))
     DEP_HEALTH_INTERVAL_S: int = field(default_factory=lambda: _env_int("DEP_HEALTH_INTERVAL_S", 60))
-    WORKER_HEALTH_HOST: str = field(default_factory=lambda: _env_str("WORKER_HEALTH_HOST", "0.0.0.0"))
+    WORKER_HEALTH_HOST: str = field(default_factory=lambda: _env_str("WORKER_HEALTH_HOST", "0.0.0.0"))  # nosec B104 — internal health server, overridable via WORKER_HEALTH_HOST
     WORKER_HEALTH_PORT: int = field(default_factory=lambda: _env_int("WORKER_HEALTH_PORT", 8091))
     WORKER_HEALTH_MAX_LOOP_AGE_S: int = field(default_factory=lambda: _env_int("WORKER_HEALTH_MAX_LOOP_AGE_S", 120))
     WORKER_SHUTDOWN_GRACE_S: int = field(default_factory=lambda: _env_int("WORKER_SHUTDOWN_GRACE_S", 30))

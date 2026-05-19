@@ -128,7 +128,7 @@ def graph_access_token(
             raise RuntimeError("client_secret mode requires client secret")
         payload["client_secret"] = secret
 
-    resp = requests.post(token_url, data=payload, timeout=max(1, timeout_s))
+    resp = requests.post(token_url, data=payload, timeout=max(1, timeout_s))  # nosec B113 — timeout is present
     resp.raise_for_status()
     data = resp.json() if resp.content else {}
     token = str(data.get("access_token") or "")
@@ -184,7 +184,7 @@ def push_indicators_to_graph(
         batch = mapped[i : i + step]
         chunks += 1
         try:
-            resp = requests.post(endpoint_url, headers=headers, json={"value": batch}, timeout=max(1, timeout_s))
+            resp = requests.post(endpoint_url, headers=headers, json={"value": batch}, timeout=max(1, timeout_s))  # nosec B113 — timeout is present
             resp.raise_for_status()
             sent += len(batch)
         except Exception as exc:
