@@ -10,12 +10,12 @@ import yaml
 def build_openapi_spec() -> dict[str, Any]:
     spec: OrderedDict[str, Any] = OrderedDict(
         [
-            ("openapi", "3.1.0"),
+            ("openapi", "3.0.3"),
             (
                 "info",
                 {
                     "title": "IOC Service API",
-                    "version": "1.6.0",
+                    "version": "1.9.2",
                     "description": "Supported versioned API surface for IOC Service.",
                 },
             ),
@@ -24,7 +24,7 @@ def build_openapi_spec() -> dict[str, Any]:
                 "externalDocs",
                 {
                     "description": "Human-readable API and migration documentation",
-                    "url": "/docs/api.md",
+                    "url": "/docs/api",
                 },
             ),
             (
@@ -37,14 +37,17 @@ def build_openapi_spec() -> dict[str, Any]:
                                 "get": {
                                     "summary": "List indicators as JSON",
                                     "parameters": [
-                                        {"in": "query", "name": "q", "schema": {"type": "string"}},
-                                        {"in": "query", "name": "type", "schema": {"type": "string", "default": "all"}},
-                                        {"in": "query", "name": "tlp", "schema": {"type": "string", "default": "all"}},
-                                        {"in": "query", "name": "source", "schema": {"type": "string", "default": "all"}},
-                                        {"in": "query", "name": "min_conf", "schema": {"type": "integer", "minimum": 0, "maximum": 100}},
-                                        {"in": "query", "name": "max_conf", "schema": {"type": "integer", "minimum": 0, "maximum": 100}},
-                                        {"in": "query", "name": "limit", "schema": {"type": "integer", "minimum": 1}},
-                                        {"in": "query", "name": "offset", "schema": {"type": "integer", "minimum": 0}},
+                                        {"in": "query", "name": "q", "schema": {"type": "string"}, "description": "Kibana-style search query (e.g. type:ip AND confidence:>70)"},
+                                        {"in": "query", "name": "type", "schema": {"type": "string", "default": "all"}, "description": "IOC type filter (ip, domain, url, hash, email, all)"},
+                                        {"in": "query", "name": "tlp", "schema": {"type": "string", "default": "all"}, "description": "TLP classification filter"},
+                                        {"in": "query", "name": "source", "schema": {"type": "string", "default": "all"}, "description": "Feed source filter"},
+                                        {"in": "query", "name": "min_conf", "schema": {"type": "integer", "minimum": 0, "maximum": 100}, "description": "Minimum confidence score"},
+                                        {"in": "query", "name": "max_conf", "schema": {"type": "integer", "minimum": 0, "maximum": 100}, "description": "Maximum confidence score"},
+                                        {"in": "query", "name": "since", "schema": {"type": "string", "enum": ["30m","1h","6h","12h","24h","7d","30d","2m","3m","6m","1y","all"], "default": "all"}, "description": "Relative time window — filters on last_seen >= now - period"},
+                                        {"in": "query", "name": "date_from", "schema": {"type": "string", "format": "date"}, "description": "Absolute start date for last_seen filter (YYYY-MM-DD)"},
+                                        {"in": "query", "name": "date_to", "schema": {"type": "string", "format": "date"}, "description": "Absolute end date for last_seen filter (YYYY-MM-DD)"},
+                                        {"in": "query", "name": "limit", "schema": {"type": "integer", "minimum": 1}, "description": "Page size"},
+                                        {"in": "query", "name": "offset", "schema": {"type": "integer", "minimum": 0}, "description": "Page offset"},
                                     ],
                                     "responses": {
                                         "200": {

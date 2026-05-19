@@ -228,14 +228,14 @@ class TestApiV1Endpoints:
         assert yaml_response.status_code == 200
         assert "application/yaml" in yaml_response.content_type
         yaml_text = yaml_response.get_data(as_text=True)
-        assert "openapi: 3.1.0" in yaml_text
+        assert "openapi: 3.0.3" in yaml_text
         assert "/api/v1/indicators:" in yaml_text
         assert "/api/v1/sync:" in yaml_text
 
         json_response = client.get("/api/v1/openapi.json")
         assert json_response.status_code == 200
         payload = json_response.get_json()
-        assert payload["openapi"] == "3.1.0"
+        assert payload["openapi"] == "3.0.3"
         assert "/api/v1/feeds" in payload["paths"]
         assert payload["paths"]["/api/v1/indicators"]["get"]["summary"] == "List indicators as JSON"
 
