@@ -21,6 +21,22 @@ def render_index(total: int, active: int, feeds: list[Any]) -> str:
     )
 
 
+_SINCE_OPTIONS = [
+    ("all", "All time"),
+    ("30m", "Last 30 min"),
+    ("1h",  "Last 1 hour"),
+    ("6h",  "Last 6 hours"),
+    ("12h", "Last 12 hours"),
+    ("24h", "Last 24 hours"),
+    ("7d",  "Last 7 days"),
+    ("30d", "Last 30 days"),
+    ("2m",  "Last 2 months"),
+    ("3m",  "Last 3 months"),
+    ("6m",  "Last 6 months"),
+    ("1y",  "Last 1 year"),
+]
+
+
 def render_indicators(
     rows: list[Indicator],
     *,
@@ -34,6 +50,9 @@ def render_indicators(
     offset: int,
     total_count: int,
     source_options: list[str],
+    since: str | None = None,
+    date_from_str: str | None = None,
+    date_to_str: str | None = None,
 ) -> str:
     def _query_escape(value: str) -> str:
         return (value or "").replace("\\", "\\\\").replace('"', '\\"')
@@ -80,11 +99,17 @@ def render_indicators(
         active_query["min_conf"] = str(min_conf)
     if max_conf is not None:
         active_query["max_conf"] = str(max_conf)
+    if since and since != "all":
+        active_query["since"] = since
+    if date_from_str:
+        active_query["date_from"] = date_from_str
+    if date_to_str:
+        active_query["date_to"] = date_to_str
     active_query["limit"] = str(limit)
     active_query["offset"] = str(offset)
     filter_qs = urlencode(active_query)
     filter_suffix = f"?{filter_qs}" if filter_qs else ""
-    has_filters = any(k in active_query for k in ("q", "type", "tlp", "source", "min_conf", "max_conf"))
+    has_filters = any(k in active_query for k in ("q", "type", "tlp", "source", "min_conf", "max_conf", "since", "date_from", "date_to"))
     page = (offset // max(1, limit)) + 1
     total_pages = max(1, (total_count + max(1, limit) - 1) // max(1, limit))
     prev_offset = max(0, offset - limit)
@@ -111,6 +136,9 @@ def render_indicators(
         source=source,
         min_conf=min_conf,
         max_conf=max_conf,
+        since=since or "all",
+        date_from_str=date_from_str or "",
+        date_to_str=date_to_str or "",
         limit=limit,
         offset=offset,
         total_count=total_count,
@@ -119,6 +147,7 @@ def render_indicators(
         tlp_options=["all", "WHITE", "GREEN", "AMBER", "RED"],
         min_conf_options=min_conf_options,
         max_conf_options=max_conf_options,
+        since_options=_SINCE_OPTIONS,
         has_filters=has_filters,
         page=page,
         total_pages=total_pages,

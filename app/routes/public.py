@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
-from datetime import timezone
+from datetime import date as _date, datetime, timezone
 from flask import Response, jsonify, make_response, redirect, request, send_file, stream_with_context, url_for
 from sqlalchemy import func, select
 
@@ -48,6 +48,7 @@ def register_public_routes(
     ExportJob = deps["ExportJob"]
     FORMATTERS = deps["FORMATTERS"]
     DB_SUPPORTED_FORMATS = deps["DB_SUPPORTED_FORMATS"]
+    TIME_PERIODS = deps["TIME_PERIODS"]
     query_correlations = deps["query_correlations"]
     active_indicators = deps["active_indicators"]
     generate_latest = deps["generate_latest"]
@@ -106,6 +107,29 @@ def register_public_routes(
                 raise ValueError("max_conf")
         except ValueError:
             return jsonify({"error": "min_conf/max_conf must be integers"}), 400
+        since_raw = (request.args.get("since") or "all").lower()
+        if since_raw not in ("all", "") and since_raw not in TIME_PERIODS:
+            return jsonify({"error": "Invalid since value"}), 400
+        since_cutoff: datetime | None = None
+        if since_raw and since_raw not in ("all", ""):
+            since_cutoff = datetime.now(timezone.utc) - TIME_PERIODS[since_raw]
+
+        date_from_str = request.args.get("date_from", "").strip() or None
+        date_to_str   = request.args.get("date_to",   "").strip() or None
+        date_from: datetime | None = None
+        date_to:   datetime | None = None
+        try:
+            if date_from_str:
+                d = _date.fromisoformat(date_from_str)
+                date_from = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
+            if date_to_str:
+                d = _date.fromisoformat(date_to_str)
+                date_to = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+        except ValueError:
+            return jsonify({"error": "date_from/date_to must be YYYY-MM-DD"}), 400
+        if date_from and date_to and date_from > date_to:
+            return jsonify({"error": "date_from must not be after date_to"}), 400
+
         limit, offset = _parse_limit_offset(default_limit=1000, max_limit=max(1, cfg.QUERY_RESULT_LIMIT_MAX))
         if limit is None or offset is None:
             return jsonify({"error": "limit/offset must be integers"}), 400
@@ -118,6 +142,9 @@ def register_public_routes(
             source=source,
             min=min_conf,
             max=max_conf,
+            since=since_raw,
+            df=date_from_str or "",
+            dt=date_to_str or "",
             limit=limit,
             offset=offset,
         )
@@ -142,8 +169,8 @@ def register_public_routes(
         db = _db(read_only=True)
         try:
             with db_query_duration_seconds.labels(endpoint="indicators_view").time():
-                rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=limit, offset=offset)
-                total_count = _count_indicators(db, q, type_filter, tlp, source, min_conf, max_conf)
+                rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=limit, offset=offset, since=since_cutoff, date_from=date_from, date_to=date_to)
+                total_count = _count_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, since=since_cutoff, date_from=date_from, date_to=date_to)
             available_sources = db.scalars(select(Indicator.source).distinct().order_by(Indicator.source.asc())).all()
             source_options.extend([str(s) for s in available_sources if s and str(s) != "all"])
             if source not in source_options:
@@ -157,7 +184,7 @@ def register_public_routes(
             except Exception:
                 pass
 
-        _audit("query", "indicator", None, {"q": q, "type": type_filter, "tlp": tlp, "source": source})
+        _audit("query", "indicator", None, {"q": q, "type": type_filter, "tlp": tlp, "source": source, "since": since_raw})
 
         html = _render_indicators(
             rows,
@@ -171,6 +198,9 @@ def register_public_routes(
             offset=offset,
             total_count=total_count,
             source_options=source_options,
+            since=since_raw if since_cutoff else None,
+            date_from_str=date_from_str,
+            date_to_str=date_to_str,
         )
         if r is not None:
             try:
@@ -267,6 +297,27 @@ def register_public_routes(
         type_filter = (request.args.get("type") or "all").lower()
         tlp = (request.args.get("tlp") or "all").upper()
         source = (request.args.get("source") or "all").lower()
+        since_raw = (request.args.get("since") or "all").lower()
+        if since_raw not in ("all", "") and since_raw not in TIME_PERIODS:
+            return jsonify({"error": "Invalid since value"}), 400
+        since_cutoff: datetime | None = None
+        if since_raw and since_raw not in ("all", ""):
+            since_cutoff = datetime.now(timezone.utc) - TIME_PERIODS[since_raw]
+        _exp_date_from_str = request.args.get("date_from", "").strip() or None
+        _exp_date_to_str   = request.args.get("date_to",   "").strip() or None
+        _exp_date_from: datetime | None = None
+        _exp_date_to:   datetime | None = None
+        try:
+            if _exp_date_from_str:
+                d = _date.fromisoformat(_exp_date_from_str)
+                _exp_date_from = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
+            if _exp_date_to_str:
+                d = _date.fromisoformat(_exp_date_to_str)
+                _exp_date_to = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+        except ValueError:
+            return jsonify({"error": "date_from/date_to must be YYYY-MM-DD"}), 400
+        if _exp_date_from and _exp_date_to and _exp_date_from > _exp_date_to:
+            return jsonify({"error": "date_from must not be after date_to"}), 400
         stream = (request.args.get("stream") or "").strip().lower() in {"1", "true", "yes"}
         async_export = (request.args.get("async") or "").strip().lower() in {"1", "true", "yes"}
         limit, offset = _parse_limit_offset(default_limit=100000, max_limit=max(1, cfg.EXPORT_RESULT_LIMIT_MAX))
@@ -280,6 +331,7 @@ def register_public_routes(
             type=type_filter,
             tlp=tlp,
             source=source,
+            since=since_raw,
             limit=limit,
             offset=offset,
         )
@@ -293,6 +345,9 @@ def register_public_routes(
                 "source": source,
                 "limit": limit,
                 "offset": offset,
+                "since_cutoff": since_cutoff.isoformat() if since_cutoff else None,
+                "date_from_cutoff": _exp_date_from.isoformat() if _exp_date_from else None,
+                "date_to_cutoff": _exp_date_to.isoformat() if _exp_date_to else None,
             }
             _persist_export_job(job_id, fmt, params)
             _spawn_export_job(job_id)
@@ -333,7 +388,7 @@ def register_public_routes(
         db = _db(read_only=True)
         try:
             with db_query_duration_seconds.labels(endpoint=f"export_{fmt}").time():
-                rows = _query_indicators(db, q, type_filter, tlp, source, None, None, limit=limit, offset=offset)
+                rows = _query_indicators(db, q, type_filter, tlp, source, None, None, limit=limit, offset=offset, since=since_cutoff, date_from=_exp_date_from, date_to=_exp_date_to)
         except Exception:
             db.close()
             logger.exception("export_query_failed")

@@ -7,7 +7,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Lock, Thread
 from typing import Any, Dict, List
 from flask import Flask, Response, jsonify, make_response, render_template, request, session
@@ -16,6 +16,8 @@ from flask_limiter.util import get_remote_address
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 from werkzeug.exceptions import HTTPException
+
+from dateutil.relativedelta import relativedelta
 
 from .audit_integrity import signed_audit_hash, verify_audit_chain
 from .cache import get_redis
@@ -87,6 +89,21 @@ _SECURITY_WARNINGS_ONCE_FILE = "/tmp/ioc-service-security-warnings.once"
 SUPPORTED_FIELDS = {"value","type","confidence","tlp","tags","source"}
 # Database-native export formats (formats supported by ti.export_indicators SQL function)
 DB_SUPPORTED_FORMATS = {"txt", "csv", "json"}
+
+# Month/year periods use relativedelta for calendar-accurate subtraction; day/hour/minute periods use timedelta.
+TIME_PERIODS: dict[str, timedelta | relativedelta] = {
+    "30m": timedelta(minutes=30),
+    "1h":  timedelta(hours=1),
+    "6h":  timedelta(hours=6),
+    "12h": timedelta(hours=12),
+    "24h": timedelta(hours=24),
+    "7d":  timedelta(days=7),
+    "30d": timedelta(days=30),
+    "2m":  relativedelta(months=2),
+    "3m":  relativedelta(months=3),
+    "6m":  relativedelta(months=6),
+    "1y":  relativedelta(years=1),
+}
 
 @dataclass(frozen=True)
 class SyncJobRef:
@@ -536,6 +553,9 @@ def create_app() -> Flask:
         max_conf: int | None,
         limit: int = 1000,
         offset: int = 0,
+        since: datetime | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> List[Indicator]:
         stmt = select(Indicator).where(Indicator.is_active == True)  # noqa: E712
         if q:
@@ -551,6 +571,12 @@ def create_app() -> Flask:
             stmt = stmt.where(Indicator.confidence >= min_conf)
         if max_conf is not None:
             stmt = stmt.where(Indicator.confidence <= max_conf)
+        if since is not None:
+            stmt = stmt.where(Indicator.last_seen >= since)
+        if date_from is not None:
+            stmt = stmt.where(Indicator.last_seen >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(Indicator.last_seen <= date_to)
         stmt = stmt.order_by(Indicator.last_seen.desc()).limit(limit).offset(offset)
         return list(db.scalars(stmt).all())
 
@@ -562,6 +588,9 @@ def create_app() -> Flask:
         source: str | None,
         min_conf: int | None,
         max_conf: int | None,
+        since: datetime | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> int:
         stmt = select(func.count()).select_from(Indicator).where(Indicator.is_active == True)  # noqa: E712
         if q:
@@ -577,6 +606,12 @@ def create_app() -> Flask:
             stmt = stmt.where(Indicator.confidence >= min_conf)
         if max_conf is not None:
             stmt = stmt.where(Indicator.confidence <= max_conf)
+        if since is not None:
+            stmt = stmt.where(Indicator.last_seen >= since)
+        if date_from is not None:
+            stmt = stmt.where(Indicator.last_seen >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(Indicator.last_seen <= date_to)
         return int(db.scalar(stmt) or 0)
 
     def _app_log(
@@ -777,6 +812,7 @@ def create_app() -> Flask:
             "ExportJob": ExportJob,
             "FORMATTERS": FORMATTERS,
             "DB_SUPPORTED_FORMATS": DB_SUPPORTED_FORMATS,
+            "TIME_PERIODS": TIME_PERIODS,
             "query_correlations": query_correlations,
             "request_count": request_count,
             "request_duration": request_duration,
@@ -836,6 +872,7 @@ def create_app() -> Flask:
             "_read_feed_config_state": _read_feed_config_state,
             "_read_feed_rows": _read_feed_rows,
             "_resolve_metrics_window_hours": resolve_metrics_window_hours,
+            "TIME_PERIODS": TIME_PERIODS,
             "validate_search_query": validate_search_query,
             "AppLog": AppLog,
             "Feed": Feed,
@@ -918,6 +955,9 @@ def _render_indicators(
     offset: int,
     total_count: int,
     source_options: List[str],
+    since: str | None = None,
+    date_from_str: str | None = None,
+    date_to_str: str | None = None,
 ) -> str:
     return legacy_render_indicators(
         rows,
@@ -931,4 +971,7 @@ def _render_indicators(
         offset=offset,
         total_count=total_count,
         source_options=source_options,
+        since=since,
+        date_from_str=date_from_str,
+        date_to_str=date_to_str,
     )

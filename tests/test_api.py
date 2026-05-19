@@ -432,6 +432,58 @@ class TestIndicatorsViewEndpoint:
         data = response.get_json()
         assert "error" in data
 
+    def test_indicators_view_since_all_returns_200(self, client, sample_indicators):
+        """since=all (default) applies no time restriction."""
+        response = client.get("/indicators?since=all")
+        assert response.status_code == 200
+        assert "text/html" in response.content_type
+
+    def test_indicators_view_since_omitted_returns_200(self, client, sample_indicators):
+        """Omitting since returns all results (no time restriction)."""
+        response = client.get("/indicators")
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize("period", ["30m", "1h", "6h", "12h", "24h", "7d", "30d", "2m", "3m", "6m", "1y"])
+    def test_indicators_view_since_valid_period_returns_200(self, client, sample_indicators, period):
+        """Every valid time-period value is accepted."""
+        response = client.get(f"/indicators?since={period}")
+        assert response.status_code == 200
+
+    def test_indicators_view_since_invalid_returns_400(self, client):
+        """Unknown since value is rejected with 400."""
+        response = client.get("/indicators?since=99x")
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "error" in data
+
+    def test_indicators_view_since_appears_in_url(self, client, sample_indicators):
+        """since param is preserved in pagination links / filter_suffix."""
+        response = client.get("/indicators?since=7d")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert "since=7d" in html
+
+    def test_api_v1_indicators_since_valid(self, client, sample_indicators):
+        """API v1 accepts since param and echoes it in filters."""
+        response = client.get("/api/v1/indicators?since=24h")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["filters"]["since"] == "24h"
+
+    def test_api_v1_indicators_since_all_no_restriction(self, client, sample_indicators):
+        """since=all → no filter applied; filters.since is None."""
+        response = client.get("/api/v1/indicators?since=all")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["filters"]["since"] is None
+
+    def test_api_v1_indicators_since_invalid_returns_400(self, client):
+        """API v1 rejects unknown since value."""
+        response = client.get("/api/v1/indicators?since=bad_value")
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "error" in data
+
 
 # ============================================================================
 # Sources Redirect Endpoint

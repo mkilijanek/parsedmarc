@@ -1,3 +1,23 @@
+2026-05-19
+
+[fix: #245 — confidence bar tooltip on hover]
+- Added `title="{{ row.confidence }}%"` to the `.confbar` element in indicators table.
+- No JS needed; native browser tooltip, value matches aria-valuenow.
+
+[feat: #244 — time-window filter for IoC search]
+- What changed: Added `since` query parameter (30m/1h/6h/12h/24h/7d/30d/2m/3m/6m/1y/all) to IoC search.
+- Why: Threat-intel triage is time-sensitive; analysts need to scope results to recently-seen indicators.
+- Files modified:
+  - app/factory.py: added `TIME_PERIODS` constant (timedelta for minutes/hours/days, relativedelta for months/year), added `since: datetime | None` param to `_query_indicators`/`_count_indicators`, updated `_render_indicators` wrapper, added `TIME_PERIODS` to both deps dicts.
+  - app/routes/public.py: parse/validate `since` in `indicators_view` and `export_indicators`; store cutoff as ISO string in async export params.
+  - app/routes/api_v1.py: parse/validate `since`; echo in filters response.
+  - app/services/export_svc.py: read `since_cutoff` ISO string from job params and pass to query function.
+  - app/views/legacy_public.py: added `since` param, `_SINCE_OPTIONS` list, propagate to active_query/has_filters, pass to template.
+  - app/templates/legacy/indicators.html: added "Time window" dropdown.
+  - tests/test_api.py: 18 new tests covering all valid periods, unknown period → 400, all → no filter, URL bookmarkability.
+- Decision: relativedelta used for month/year periods (calendar-accurate); timedelta for the rest.
+- Result: 206/206 tests passing.
+
 2026-04-06
 
 [context]

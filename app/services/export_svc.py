@@ -70,6 +70,12 @@ def make_export_service(*, cfg, db_fn, app_log_fn, count_indicators_fn, query_in
             db.commit()
             params = dict(job.query_json or {})
             fmt = str(job.fmt)
+            _since_cutoff_raw = params.get("since_cutoff")
+            _since_cutoff: datetime | None = datetime.fromisoformat(_since_cutoff_raw) if _since_cutoff_raw else None
+            _df_raw = params.get("date_from_cutoff")
+            _dt_raw = params.get("date_to_cutoff")
+            _date_from: datetime | None = datetime.fromisoformat(_df_raw) if _df_raw else None
+            _date_to:   datetime | None = datetime.fromisoformat(_dt_raw) if _dt_raw else None
             rows = query_indicators_fn(
                 db,
                 params.get("q"),
@@ -80,6 +86,9 @@ def make_export_service(*, cfg, db_fn, app_log_fn, count_indicators_fn, query_in
                 int(params.get("max_conf")) if params.get("max_conf") is not None else None,
                 limit=int(params.get("limit", 100000)),
                 offset=int(params.get("offset", 0)),
+                since=_since_cutoff,
+                date_from=_date_from,
+                date_to=_date_to,
             )
             out_path: Path
             if fmt == "sentinel_graph":

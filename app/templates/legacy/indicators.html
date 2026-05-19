@@ -7,7 +7,9 @@
   .filter-summary { position: sticky; top: 0; z-index: 2; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: .75rem; }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
   input[type=text] { width: 100%; padding: .6rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); box-sizing: border-box; }
+  input[type=date] { padding: .5rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
   select { padding: .5rem; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  .row-divider { border-top: 1px solid var(--line); margin-top: .5rem; padding-top: .5rem; }
   button:focus, a:focus, input:focus, select:focus { outline: 3px solid #000; outline-offset: 2px; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
   .tag { display: inline-block; padding: .1rem .45rem; border-radius: 999px; border: 1px solid var(--line); font-size: .8rem; margin-right: .25rem; margin-bottom: .15rem; }
@@ -119,8 +121,31 @@
         {% endfor %}
       </select>
 
+      <label for="sinceSel">Time window</label>
+      <select id="sinceSel" name="since" aria-label="Filter by time window (preset periods)">
+        {% for value, label in since_options %}
+        <option value="{{ value }}" {% if since == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+
       <button type="submit" class="btn btn-primary" aria-label="Apply search and filters">Apply</button>
       <a href="/indicators" class="btn" aria-label="Clear search and filters">Clear</a>
+    </div>
+
+    <div class="row row-divider">
+      <label for="dateFrom">From</label>
+      <input type="date" id="dateFrom" name="date_from" value="{{ date_from_str }}"
+             aria-label="Filter: last seen on or after this date"
+             title="last_seen ≥ this date"
+             max="{{ date_to_str or '' }}" />
+
+      <label for="dateTo">To</label>
+      <input type="date" id="dateTo" name="date_to" value="{{ date_to_str }}"
+             aria-label="Filter: last seen on or before this date"
+             title="last_seen ≤ this date (end of day)"
+             min="{{ date_from_str or '' }}" />
+
+      <span class="subtle" style="font-size:.82rem; align-self:center;">Custom date range — filters on <code>last_seen</code></span>
     </div>
   </form>
 
@@ -135,6 +160,20 @@
     </ul>
     <p><strong>Available fields:</strong> value, type, confidence, tlp, tags, source</p>
     <p><strong>Operators:</strong> AND, OR, NOT, :, &gt;, &lt;, &gt;=, &lt;=, *, ?</p>
+
+    <details style="margin-top:.5rem;">
+      <summary style="cursor:pointer; font-weight:600;">Time window filter (since #244)</summary>
+      <div style="margin-top:.4rem;">
+        <p>Use the <strong>Time window</strong> dropdown for preset periods, or type <code>since:</code> in the search box for quick selection:</p>
+        <ul style="column-count:2; column-gap:1.5rem;">
+          {% for value, label in since_options %}{% if value != 'all' %}
+          <li><code>since:{{ value }}</code> — {{ label }}</li>
+          {% endif %}{% endfor %}
+        </ul>
+        <p>Use the <strong>From / To</strong> date pickers for a custom <code>last_seen</code> range. Both preset and custom range filters apply simultaneously when set.</p>
+        <p>URL examples: <code>?since=7d</code> &nbsp;|&nbsp; <code>?date_from=2026-01-01&amp;date_to=2026-05-01</code></p>
+      </div>
+    </details>
   </div>
 
   <p>Quick exports:
@@ -174,7 +213,7 @@
             <td role="cell"><code title="{{ row.value }}">{{ row.value }}</code></td>
             <td role="cell"><span class="badge {{ type_cls }}" aria-label="Type {{ row.itype }}">{{ row.itype }}</span></td>
             <td role="cell">
-              <div class="confbar" role="progressbar" aria-valuenow="{{ row.confidence }}" aria-valuemin="0" aria-valuemax="100" aria-label="Confidence {{ row.confidence }} percent">
+              <div class="confbar" role="progressbar" aria-valuenow="{{ row.confidence }}" aria-valuemin="0" aria-valuemax="100" aria-label="Confidence {{ row.confidence }} percent" title="{{ row.confidence }}%">
                 <div class="confbar-in" style="width:{{ row.confidence }}%"></div>
               </div>
             </td>
@@ -266,6 +305,21 @@
     { text: 'source:misp', desc: 'From MISP source' }
   ];
 
+  // Time-window shortcuts — selecting one sets the since dropdown and submits
+  const sincePatterns = [
+    { sinceValue: '30m', text: 'since:30m', desc: 'Last 30 minutes' },
+    { sinceValue: '1h',  text: 'since:1h',  desc: 'Last 1 hour' },
+    { sinceValue: '6h',  text: 'since:6h',  desc: 'Last 6 hours' },
+    { sinceValue: '12h', text: 'since:12h', desc: 'Last 12 hours' },
+    { sinceValue: '24h', text: 'since:24h', desc: 'Last 24 hours' },
+    { sinceValue: '7d',  text: 'since:7d',  desc: 'Last 7 days' },
+    { sinceValue: '30d', text: 'since:30d', desc: 'Last 30 days' },
+    { sinceValue: '2m',  text: 'since:2m',  desc: 'Last 2 months' },
+    { sinceValue: '3m',  text: 'since:3m',  desc: 'Last 3 months' },
+    { sinceValue: '6m',  text: 'since:6m',  desc: 'Last 6 months' },
+    { sinceValue: '1y',  text: 'since:1y',  desc: 'Last 1 year' },
+  ];
+
   let selectedIndex = -1;
   let suggestions = [];
 
@@ -283,9 +337,12 @@
   function renderSuggestions(filterText) {
     if (!dropdown) return;
     const recent = getRecentSearches();
+    const lf = filterText.toLowerCase();
     const filteredPatterns = commonPatterns.filter(p =>
-      p.text.toLowerCase().includes(filterText.toLowerCase()) ||
-      p.desc.toLowerCase().includes(filterText.toLowerCase())
+      p.text.toLowerCase().includes(lf) || p.desc.toLowerCase().includes(lf)
+    );
+    const filteredSince = sincePatterns.filter(p =>
+      p.text.toLowerCase().includes(lf) || p.desc.toLowerCase().includes(lf) || 'since'.includes(lf) || 'time'.includes(lf)
     );
 
     let html = '';
@@ -293,8 +350,8 @@
 
     if (recent.length > 0) {
       html += '<div class="autocomplete-category">Recent searches</div>';
-      recent.forEach((text, i) => {
-        if (filterText && !text.toLowerCase().includes(filterText.toLowerCase())) return;
+      recent.forEach((text) => {
+        if (filterText && !text.toLowerCase().includes(lf)) return;
         const highlighted = highlightMatch(text, filterText);
         html += `<div class="autocomplete-item" role="option" data-index="${suggestions.length}" data-type="recent">${highlighted}</div>`;
         suggestions.push({ text, type: 'recent' });
@@ -303,10 +360,19 @@
 
     if (filteredPatterns.length > 0) {
       html += '<div class="autocomplete-category">Suggestions</div>';
-      filteredPatterns.forEach((pattern, i) => {
+      filteredPatterns.forEach((pattern) => {
         const highlighted = highlightMatch(pattern.text, filterText);
         html += `<div class="autocomplete-item" role="option" data-index="${suggestions.length}" data-type="pattern"><span class="autocomplete-match">${highlighted}</span> <span style="color: var(--muted); font-size: 0.875rem;">${pattern.desc}</span></div>`;
         suggestions.push({ text: pattern.text, type: 'pattern' });
+      });
+    }
+
+    if (filteredSince.length > 0) {
+      html += '<div class="autocomplete-category">Time window (sets dropdown)</div>';
+      filteredSince.forEach((p) => {
+        const highlighted = highlightMatch(p.text, filterText);
+        html += `<div class="autocomplete-item" role="option" data-index="${suggestions.length}" data-type="since"><span class="autocomplete-match">${highlighted}</span> <span style="color: var(--muted); font-size: 0.875rem;">${p.desc}</span></div>`;
+        suggestions.push({ text: p.text, type: 'since', sinceValue: p.sinceValue });
       });
     }
 
@@ -321,8 +387,16 @@
     dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
       item.addEventListener('click', () => {
         const idx = parseInt(item.dataset.index);
-        if (suggestions[idx]) {
-          searchBox.value = suggestions[idx].text;
+        const s = suggestions[idx];
+        if (!s) return;
+        if (s.type === 'since') {
+          // Set the since dropdown and clear search box, then submit
+          const sel = document.getElementById('sinceSel');
+          if (sel) sel.value = s.sinceValue;
+          hideDropdown();
+          document.getElementById('searchForm')?.submit();
+        } else {
+          searchBox.value = s.text;
           hideDropdown();
           document.getElementById('searchForm')?.submit();
         }
@@ -394,6 +468,14 @@
       hideDropdown();
     }
   });
+
+  // Keep date pickers in sync (From max = To value, To min = From value)
+  const dateFrom = document.getElementById('dateFrom');
+  const dateTo   = document.getElementById('dateTo');
+  if (dateFrom && dateTo) {
+    dateFrom.addEventListener('change', () => { dateTo.min = dateFrom.value || ''; });
+    dateTo.addEventListener('change',   () => { dateFrom.max = dateTo.value || ''; });
+  }
 
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date as _date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -51,6 +51,7 @@ def register_api_v1_routes(
     _admin_token_authorized = deps["_admin_token_authorized"]
     _read_feed_rows = deps["_read_feed_rows"]
     _resolve_metrics_window_hours = deps["_resolve_metrics_window_hours"]
+    TIME_PERIODS = deps["TIME_PERIODS"]
     validate_search_query = deps["validate_search_query"]
     AppLog = deps["AppLog"]
     FeedRun = deps["FeedRun"]
@@ -167,14 +168,37 @@ def register_api_v1_routes(
                 raise ValueError("max_conf")
         except ValueError:
             return jsonify({"error": "min_conf/max_conf must be integers"}), 400
+        since_raw = (request.args.get("since") or "all").lower()
+        if since_raw not in ("all", "") and since_raw not in TIME_PERIODS:
+            return jsonify({"error": "Invalid since value"}), 400
+        since_cutoff: datetime | None = None
+        if since_raw and since_raw not in ("all", ""):
+            since_cutoff = datetime.now(timezone.utc) - TIME_PERIODS[since_raw]
+
+        _api_date_from_str = request.args.get("date_from", "").strip() or None
+        _api_date_to_str   = request.args.get("date_to",   "").strip() or None
+        api_date_from: datetime | None = None
+        api_date_to:   datetime | None = None
+        try:
+            if _api_date_from_str:
+                d = _date.fromisoformat(_api_date_from_str)
+                api_date_from = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
+            if _api_date_to_str:
+                d = _date.fromisoformat(_api_date_to_str)
+                api_date_to = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+        except ValueError:
+            return jsonify({"error": "date_from/date_to must be YYYY-MM-DD"}), 400
+        if api_date_from and api_date_to and api_date_from > api_date_to:
+            return jsonify({"error": "date_from must not be after date_to"}), 400
+
         limit, offset = _parse_limit_offset(default_limit=100, max_limit=max(1, cfg.QUERY_RESULT_LIMIT_MAX))
         if limit is None or offset is None:
             return jsonify({"error": "limit/offset must be integers"}), 400
 
         db = _db(read_only=True)
         try:
-            rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=limit, offset=offset)
-            total_count = _count_indicators(db, q, type_filter, tlp, source, min_conf, max_conf)
+            rows = _query_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, limit=limit, offset=offset, since=since_cutoff, date_from=api_date_from, date_to=api_date_to)
+            total_count = _count_indicators(db, q, type_filter, tlp, source, min_conf, max_conf, since=since_cutoff, date_from=api_date_from, date_to=api_date_to)
         finally:
             db.close()
 
@@ -191,6 +215,9 @@ def register_api_v1_routes(
                     "source": source,
                     "min_conf": min_conf,
                     "max_conf": max_conf,
+                    "since": since_raw if since_cutoff else None,
+                    "date_from": _api_date_from_str,
+                    "date_to": _api_date_to_str,
                 },
                 "items": [
                     {
