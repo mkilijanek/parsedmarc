@@ -16,9 +16,15 @@
     background: var(--bg);
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--space-3);
   }
   .mermaid-section-header h3 { margin: 0; font-size: var(--fs-md); }
+  .mermaid-section-header .zoom-hint {
+    font-size: var(--fs-xs);
+    color: var(--muted);
+    white-space: nowrap;
+  }
   .mermaid-wrap {
     padding: var(--space-5);
     overflow-x: auto;
@@ -26,6 +32,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: zoom-in;
   }
   .mermaid-wrap .mermaid { max-width: 100%; }
   .mermaid-loading {
@@ -40,14 +47,67 @@
     color: var(--error);
     font-size: var(--fs-sm);
   }
+  /* Lightbox */
+  .mmd-lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: rgba(0,0,0,.82);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-6);
+  }
+  .mmd-lightbox.open { display: flex; }
+  .mmd-lightbox-inner {
+    position: relative;
+    max-width: 95vw;
+    max-height: 92vh;
+    background: #fff;
+    border-radius: var(--radius-xl);
+    overflow: auto;
+    box-shadow: 0 32px 80px rgba(0,0,0,.5);
+    padding: var(--space-5);
+  }
+  .mmd-lightbox-inner svg { display: block; width: 100%; height: auto; min-width: 600px; }
+  .mmd-lightbox-close {
+    position: fixed;
+    top: var(--space-5);
+    right: var(--space-5);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-card);
+    z-index: 9001;
+  }
+  .mmd-lightbox-title {
+    position: fixed;
+    top: var(--space-5);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: .35rem var(--space-4);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    z-index: 9001;
+    white-space: nowrap;
+  }
 {% endblock %}
 
 {% block docs_content %}
 <div class="card">
   <div class="docs-prose">
     <h1>Architecture Overview</h1>
-    <p>The diagrams below are rendered from Mermaid source files in <code>docs/diagrams/</code>.
-    They represent the v1.9.x architecture across multiple views: C4 context, domain model, service layer, data flow, and request/admin sequences.</p>
+    <p>Mermaid diagrams rendered from <code>docs/diagrams/</code>. Click any diagram to open it full-size.</p>
   </div>
 </div>
 
@@ -60,28 +120,80 @@
   <div class="mermaid-section">
     <div class="mermaid-section-header">
       <h3>{{ d.title }}</h3>
+      <span class="zoom-hint">click to zoom</span>
     </div>
-    <div class="mermaid-wrap">
-      <pre class="mermaid" data-diagram-title="{{ d.title }}">{{ d.source }}</pre>
+    <div class="mermaid-wrap" role="button" tabindex="0"
+         aria-label="Zoom {{ d.title }}"
+         data-diagram-title="{{ d.title }}">
+      <pre class="mermaid">{{ d.source }}</pre>
     </div>
   </div>
   {% endfor %}
 {% endif %}
+
+<!-- Lightbox -->
+<div class="mmd-lightbox" id="mmdLightbox" role="dialog" aria-modal="true" aria-label="Diagram viewer">
+  <span class="mmd-lightbox-title" id="mmdLightboxTitle"></span>
+  <button class="mmd-lightbox-close" id="mmdLightboxClose" aria-label="Close diagram viewer">✕</button>
+  <div class="mmd-lightbox-inner" id="mmdLightboxBody"></div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
   {{ super() }}
   (function() {
+    var lightbox = document.getElementById('mmdLightbox');
+    var lbBody   = document.getElementById('mmdLightboxBody');
+    var lbTitle  = document.getElementById('mmdLightboxTitle');
+    var lbClose  = document.getElementById('mmdLightboxClose');
+
+    function openLightbox(wrap) {
+      var svg = wrap.querySelector('svg');
+      if (!svg) return;
+      var title = wrap.dataset.diagramTitle || '';
+      var clone = svg.cloneNode(true);
+      clone.removeAttribute('width');
+      clone.removeAttribute('height');
+      clone.style.cssText = 'display:block;width:100%;height:auto;';
+      lbBody.innerHTML = '';
+      lbBody.appendChild(clone);
+      lbTitle.textContent = title;
+      lightbox.classList.add('open');
+      lbClose.focus();
+    }
+    function closeLightbox() {
+      lightbox.classList.remove('open');
+      lbBody.innerHTML = '';
+    }
+
+    function attachWrapHandlers() {
+      document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+        wrap.addEventListener('click', function() { openLightbox(wrap); });
+        wrap.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(wrap); }
+        });
+      });
+    }
+
     function initMermaid() {
-      const dark = document.body.getAttribute('data-theme') === 'dark';
+      var dark = document.body.getAttribute('data-theme') === 'dark';
       mermaid.initialize({
         startOnLoad: false,
         theme: dark ? 'dark' : 'default',
         securityLevel: 'loose',
         fontFamily: 'var(--font-sans, system-ui, sans-serif)',
       });
-      mermaid.run({ querySelector: '.mermaid' });
+      var p = mermaid.run({ querySelector: '.mermaid' });
+      if (p && typeof p.then === 'function') {
+        p.then(attachWrapHandlers);
+      } else {
+        setTimeout(attachWrapHandlers, 800);
+      }
     }
+
+    lbClose.addEventListener('click', closeLightbox);
+    lightbox.addEventListener('click', function(e) { if (e.target === lightbox) closeLightbox(); });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
 
     var s = document.createElement('script');
     s.src = '/static/vendor/mermaid.min.js';
@@ -94,14 +206,14 @@
     };
     document.head.appendChild(s);
 
-    // Re-render when theme is toggled
     document.getElementById('themeToggle')?.addEventListener('click', function() {
       if (typeof mermaid === 'undefined') return;
       setTimeout(function() {
-        const nowDark = document.body.getAttribute('data-theme') === 'dark';
+        var nowDark = document.body.getAttribute('data-theme') === 'dark';
         mermaid.initialize({ startOnLoad: false, theme: nowDark ? 'dark' : 'default', securityLevel: 'loose' });
         document.querySelectorAll('.mermaid').forEach(function(el) { el.removeAttribute('data-processed'); });
-        mermaid.run({ querySelector: '.mermaid' });
+        var p = mermaid.run({ querySelector: '.mermaid' });
+        if (p && typeof p.then === 'function') { p.then(attachWrapHandlers); } else { setTimeout(attachWrapHandlers, 800); }
       }, 60);
     });
   })();

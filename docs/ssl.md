@@ -1,6 +1,6 @@
 # SSL/TLS Documentation
 
-Status: updated for 1.1.x (2026-02-26).
+Status: updated for 1.9.x (2026-05-19).
 
 ## Overview
 
@@ -117,4 +117,4 @@ Self-signed certificates trigger warnings:
 ## See Also
 
 - [Configuration](configuration.md) - SSL variables
-- [DEPLOYMENT.md](../DEPLOYMENT.md) - Production setup
+- [Runbook](runbook.md) - Production deployment notes

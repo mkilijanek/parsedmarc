@@ -182,7 +182,6 @@ dmesg | grep -i "oom\|killed" | tail -20
 
 ## See also
 
-- [DEPLOYMENT.md](../../DEPLOYMENT.md) — production deployment guide
-- [docs/runbook.md](../runbook.md) — operational runbook
-- [docs/api.md](../api.md) — `/healthz`, `/readyz`, `/deps` endpoint reference
+- [Runbook](../runbook.md) — operational runbook
+- [API Reference](../api.md) — `/healthz`, `/readyz`, `/deps` endpoint reference
 - GitHub issue #68

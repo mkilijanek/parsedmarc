@@ -18,9 +18,11 @@ _md = MarkdownIt("commonmark", {"html": False}).enable("table")
 _SAFE_SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9.-]*$')
 
 # filename → slug overrides for files whose stem != sidebar slug
+# Subdir paths (e.g. troubleshooting/502-bad-gateway.md) must be listed here.
 _FILENAME_TO_SLUG: dict[str, str] = {
-    "README.md":           "",
-    "api-v1-migration.md": "api-migration",
+    "README.md":                       "",
+    "api-v1-migration.md":             "api-migration",
+    "troubleshooting/502-bad-gateway.md": "troubleshooting",
 }
 
 DOCS_SIDEBAR: list[dict[str, Any]] = [
@@ -123,10 +125,18 @@ def _md_link_to_docs(href: str) -> str | None:
         anchor = "#" + anchor
     if not href.endswith(".md"):
         return None
-    # parent-relative: only ../README.md → /docs/
+    # Explicit map first — handles subdir paths (troubleshooting/502-bad-gateway.md)
+    if href in _FILENAME_TO_SLUG:
+        return f"/docs/{_FILENAME_TO_SLUG[href]}{anchor}"
+    # parent-relative: ../foo.md
+    # Rewrite only lowercase filenames (repo-root docs are UPPERCASE: DEPLOYMENT.md etc.)
     if href.startswith("../"):
-        return "/docs/" + anchor if href == "../README.md" else None
-    # reject subdirectory links (e.g. uml/README.md, diagrams/README.md)
+        inner = href[3:]
+        if "/" in inner or not inner or not inner[0].islower():
+            return None
+        slug = _FILENAME_TO_SLUG.get(inner, Path(inner).stem)
+        return f"/docs/{slug}{anchor}"
+    # Reject remaining subdir links (uml/README.md, diagrams/README.md, etc.)
     if "/" in href:
         return None
     slug = _FILENAME_TO_SLUG.get(href, Path(href).stem)

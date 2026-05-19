@@ -1,163 +1,124 @@
 # Web UI Documentation
 
-Status: updated for `1.4.1` (2026-04-06).
+Status: updated for `1.9.x` (2026-05-19).
 
 ## Overview
 
-The Web UI provides a browser-based interface for searching and viewing IOCs with WCAG 2.1 AA accessibility compliance.
+The Web UI provides a browser-based interface for viewing and searching IOCs, managing feeds, monitoring operations, and browsing documentation.
 
 ---
 
-## Endpoints
+## Pages
 
-### Dashboard: `/`
+### Dashboard — `/`
 
 System overview with statistics and quick links.
 
-**Features:**
-- Total/active indicator counts
-- Feed statistics table
-- Quick links to exports
-- Shared dark/light theme toggle with persisted preference
+- Total / active indicator counts
+- Feed statistics table with per-source health
+- Quick links to export formats
+- Dark / light theme toggle (persisted in `localStorage` as `ioc-theme`)
 
-### Admin: `/admin`
+### Indicators — `/indicators`
 
-Operational admin controls for feeds, configuration and sync jobs.
+Kibana-like search interface with multi-field filtering.
 
-**Features:**
-- Feed management table with quick actions (`Run now`, `Enable/Disable`, `Configure`, `View logs`)
-- Operational feed metrics panel:
-  - window selector (`24h`, `7d`, `30d`)
-  - status/datasource/text filters
-  - status chips
-  - fetched trend mini-chart
-  - client-side pagination
-  - CSV export for visible rows
+**Search & filters:**
+- Free-text query with boolean syntax (`type:ip AND confidence:>70 AND tags:apt`)
+- Type / TLP / Source dropdowns
+- Confidence range (min / max sliders)
+- **Time-window** dropdown: `30m`, `1h`, `6h`, `12h`, `24h`, `7d`, `30d`, `2m`, `3m`, `6m`, `1y`, `all` — filters on `last_seen >= now - period`
+- Absolute date range: `date_from` / `date_to` HTML5 date pickers
+- Autocomplete suggestions in the search box, including `since:*` completions
 
-### Indicator Search: `/indicators`
+**Results table columns:** value, type, confidence (bar + hover tooltip showing %), TLP, source, export links, tags, MISP event link.
 
-Kibana-like search interface with filters.
+**Export:** inline per-row export and bulk export in 17 formats from the sidebar.
 
-**Features:**
-- Search input with syntax help
-- Type/TLP/Source filters
-- Confidence range sliders
-- Per-row export links
-- Responsive table layout
+### Admin — `/admin`
 
-**Accessibility:**
-- ARIA labels on all controls
-- Keyboard shortcuts (/ to focus search)
-- Skip links
-- Semantic HTML
-- Screen reader support
+Operational controls for feeds, configuration, and sync jobs.
 
----
+- Feed management table: enable / disable, configure, run now, view logs per feed
+- Feed metrics panel with window selector (24 h / 7 d / 30 d), status chips, fetched-count trend chart, datasource / status / text filters, CSV export
+- Global settings: proxy (HTTP / HTTPS / no-proxy / CA bundle / trusted proxy count / skip-TLS flag), MWDB group selection
+- Sync job queue viewer with dead-letter queue
+- Dangerous operations (wipe, reset) behind confirmation gate
 
-## Search Interface
+### Logs — `/logs`
 
-### Query Input
+Filterable application log viewer.
 
-Supports Kibana-like syntax:
+- Filters: feed, job ID, run ID, log level, component, time range (since / until)
+- Live refresh
+- Structured log entries with metadata
 
-```
-value:192.168.*
-type:ip AND confidence:>70
-tlp:AMBER OR tlp:RED
-```
+### Docs — `/docs`
 
-### Filters
-
-- **Type:** ip, domain, url, hash, email, all
-- **TLP:** WHITE, GREEN, AMBER, RED, all
-- **Source:** misp, crowdsec, malwarebazaar, mwdb, all
-- **Confidence:** Min/Max sliders (0-100)
-
-### Results Table
-
-Columns:
-1. Indicator value (monospace)
-2. Type (badge)
-3. Confidence (progress bar)
-4. TLP (badge)
-5. Source
-6. Export formats
-7. Tags
-8. MISP Event link (if applicable)
+In-app documentation section. See [Architecture](architecture.md) for diagrams, or [API Reference](/docs/api) for interactive Swagger UI.
 
 ---
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
+| Keys | Action |
+|------|--------|
 | `/` | Focus search box |
-| `Esc` | Clear search and blur |
-| `Tab` | Navigate between controls |
+| `g` `i` | Go to Indicators |
+| `g` `a` | Go to Admin panel |
+| `g` `l` | Go to Logs |
+| `g` `d` | Go to Docs |
+| `r` | Refresh page |
+| `?` | Show shortcut help |
+| `Esc` | Close / blur |
+
+---
+
+## Search Syntax
+
+```
+# Type filter
+type:ip
+type:domain
+
+# Confidence threshold
+confidence:>70
+confidence:<40
+
+# TLP
+tlp:AMBER
+
+# Tags
+tags:apt
+tags:malware
+
+# Boolean operators
+type:ip AND confidence:>70 AND (tags:apt OR tags:malware)
+
+# Wildcards
+value:192.168.*
+```
+
+---
+
+## Time Window Filter
+
+The `since` dropdown restricts results to indicators seen within a recent period. It sets `last_seen >= now - period`.
+
+Supported values: `30m`, `1h`, `6h`, `12h`, `24h`, `7d`, `30d`, `2m`, `3m`, `6m`, `1y`. Default: `all` (no restriction).
+
+Absolute range via URL: `?date_from=2026-01-01&date_to=2026-03-31`
 
 ---
 
 ## Mobile Support
 
-Responsive design with:
-- Horizontal scroll for table
-- Touch-friendly buttons
-- Readable font sizes
-- Optimized layout
-
----
-
-## Customization
-
-### Theming
-
-Theme is unified across `/`, `/indicators`, `/admin`, `/logs`, and feed config pages.
-Preference is stored in browser `localStorage` under key `ioc-theme`.
-
-### Admin Feed Configuration UX
-
-Feed forms include:
-- `Save settings`
-- `Test connection`
-- `Back`
-- Disabled/loading button states on submit
-
-**MWDB feed** additionally shows a "My MWDB group" single-select dropdown populated
-after a successful connection test. Selecting a group configures `MWDB_MY_GROUP`:
-indicators uploaded by members of that group are tagged `TLP:AMBER` instead of the
-default `TLP:GREEN`. The selection is persisted in DB settings.
-
-### Admin Proxy Settings
-
-Global admin configuration includes outbound proxy controls:
-- `HTTP proxy`
-- `HTTPS proxy`
-- `No proxy list`
-- `Organization CA bundle path` (maps to `REQUESTS_CA_BUNDLE`)
-- `Trusted proxy count`
-- `Skip TLS certificate verification for outbound HTTP requests (insecure, curl -k equivalent)`
-- `Test proxy` action (checks `mwdb.cert.pl`, `abuse.ch`, `cert.pl` and stores result table)
-
-`Skip TLS certificate verification` is intended for troubleshooting only. For production,
-prefer proper CA trust (`REQUESTS_CA_BUNDLE`) instead of disabling verification.
-
-`Test proxy` stores a result snapshot with:
-- target
-- status (`OK` / `WARNING` / `ERROR`)
-- HTTP status
-- latency
-- page title (anti-captive-portal sanity check)
-- notes/error details
-
-### Layout
-
-Modify HTML templates in rendering functions:
-- `_render_index()` - Dashboard
-- `_render_indicators()` - Search results
+Responsive design with horizontal scroll for table, touch-friendly controls, and a collapsible sidebar navigation in the Docs section.
 
 ---
 
 ## See Also
 
-- [API Documentation](api.md) - REST endpoints
-- [Architecture](architecture.md) - Web application layer
+- [API Reference](/docs/api) — REST endpoints
+- [Configuration](configuration.md) — environment variables
+- [Architecture](architecture.md) — application layers
