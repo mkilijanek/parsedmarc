@@ -1,0 +1,40 @@
+{% extends "docs/layout.html" %}
+
+{% block extra_css %}
+  {{ super() }}
+  .api-frame-wrap {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .api-frame-wrap iframe {
+    display: block;
+    width: 100%;
+    height: calc(100vh - 160px);
+    min-height: 600px;
+    border: none;
+  }
+  .api-frame-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .api-frame-header h2 { margin: 0; font-size: var(--fs-md); }
+{% endblock %}
+
+{% block docs_content %}
+<div class="api-frame-wrap">
+  <div class="api-frame-header">
+    <h2>OpenAPI / Swagger UI</h2>
+    <a href="/api/swagger" target="_blank" class="btn btn-sm" aria-label="Open Swagger UI in new tab">Open in new tab ↗</a>
+  </div>
+  <iframe src="/api/swagger"
+          title="API Reference — Swagger UI"
+          aria-label="Swagger UI interactive API documentation"></iframe>
+</div>
+{% endblock %}

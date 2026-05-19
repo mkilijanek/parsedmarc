@@ -1,0 +1,172 @@
+{% extends "docs/layout.html" %}
+
+{% block extra_css %}
+  {{ super() }}
+  .uml-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: var(--space-4);
+  }
+  .uml-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow var(--motion-fast), transform var(--motion-fast);
+  }
+  .uml-card:hover { box-shadow: var(--shadow-card-hover); transform: translateY(-2px); }
+  .uml-card-header {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .uml-card-header h3 { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+  .uml-card-body {
+    padding: var(--space-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    min-height: 200px;
+    cursor: zoom-in;
+  }
+  .uml-card-body img {
+    max-width: 100%;
+    max-height: 320px;
+    object-fit: contain;
+    display: block;
+  }
+  /* Lightbox */
+  .uml-lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: rgba(0,0,0,.82);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-6);
+  }
+  .uml-lightbox.open { display: flex; }
+  .uml-lightbox-inner {
+    position: relative;
+    max-width: 95vw;
+    max-height: 92vh;
+    background: #fff;
+    border-radius: var(--radius-xl);
+    overflow: auto;
+    box-shadow: 0 32px 80px rgba(0,0,0,.5);
+  }
+  .uml-lightbox-inner img { display: block; max-width: 100%; }
+  .uml-lightbox-close {
+    position: fixed;
+    top: var(--space-5);
+    right: var(--space-5);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-card);
+    z-index: 9001;
+  }
+  .uml-lightbox-title {
+    position: fixed;
+    top: var(--space-5);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: .35rem var(--space-4);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    z-index: 9001;
+    white-space: nowrap;
+  }
+{% endblock %}
+
+{% block docs_content %}
+<div class="card">
+  <div class="docs-prose">
+    <h1>UML Diagrams</h1>
+    <p>Pre-rendered PlantUML diagrams from <code>docs/uml/generated/</code>.
+    Click any diagram to open it full-size. SVGs also available at <code>/docs/_uml/&lt;filename&gt;</code>.</p>
+  </div>
+</div>
+
+{% if not svgs %}
+<div class="card">
+  <p style="color:var(--muted)">No SVG files found in <code>docs/uml/generated/</code>.</p>
+</div>
+{% else %}
+<div class="uml-grid">
+  {% for svg in svgs %}
+  <div class="uml-card">
+    <div class="uml-card-header">
+      <h3>{{ svg.title }}</h3>
+      <a href="/docs/_uml/{{ svg.filename }}" target="_blank" class="btn btn-sm" aria-label="Open {{ svg.title }} in new tab">SVG ↗</a>
+    </div>
+    <div class="uml-card-body" role="button" tabindex="0"
+         aria-label="Zoom {{ svg.title }}"
+         data-src="/docs/_uml/{{ svg.filename }}"
+         data-title="{{ svg.title }}">
+      <img src="/docs/_uml/{{ svg.filename }}" alt="{{ svg.title }}" loading="lazy" />
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Lightbox -->
+<div class="uml-lightbox" id="umlLightbox" role="dialog" aria-modal="true" aria-label="Diagram viewer">
+  <span class="uml-lightbox-title" id="umlLightboxTitle"></span>
+  <button class="uml-lightbox-close" id="umlLightboxClose" aria-label="Close diagram viewer">✕</button>
+  <div class="uml-lightbox-inner">
+    <img id="umlLightboxImg" src="" alt="" />
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  {{ super() }}
+  (function() {
+    const lightbox = document.getElementById('umlLightbox');
+    const lbImg    = document.getElementById('umlLightboxImg');
+    const lbTitle  = document.getElementById('umlLightboxTitle');
+    const lbClose  = document.getElementById('umlLightboxClose');
+
+    function openLightbox(src, title) {
+      lbImg.src = src;
+      lbImg.alt = title;
+      lbTitle.textContent = title;
+      lightbox.classList.add('open');
+      lbClose.focus();
+    }
+    function closeLightbox() {
+      lightbox.classList.remove('open');
+      lbImg.src = '';
+    }
+
+    document.querySelectorAll('.uml-card-body').forEach(function(el) {
+      el.addEventListener('click', function() { openLightbox(el.dataset.src, el.dataset.title); });
+      el.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(el.dataset.src, el.dataset.title); }
+      });
+    });
+
+    lbClose?.addEventListener('click', closeLightbox);
+    lightbox?.addEventListener('click', function(e) { if (e.target === lightbox) closeLightbox(); });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
+  })();
+{% endblock %}

@@ -1226,3 +1226,34 @@ class TestApiV1Coverage:
     def test_openapi_json_accessible(self, client):
         resp = client.get("/api/v1/openapi.json")
         assert resp.status_code in (200, 404)
+
+
+class TestDocsRoutes:
+
+    def test_docs_index_returns_200(self, client):
+        resp = client.get("/docs")
+        assert resp.status_code == 200
+
+    def test_docs_index_trailing_slash(self, client):
+        resp = client.get("/docs/")
+        assert resp.status_code == 200
+
+    def test_docs_api_page_returns_200(self, client):
+        resp = client.get("/docs/api")
+        assert resp.status_code == 200
+
+    def test_docs_architecture_page_returns_200(self, client):
+        resp = client.get("/docs/architecture")
+        assert resp.status_code == 200
+
+    def test_docs_diagrams_page_returns_200(self, client):
+        resp = client.get("/docs/diagrams")
+        assert resp.status_code == 200
+
+    def test_docs_nonexistent_page_returns_404(self, client):
+        resp = client.get("/docs/nonexistent-page-xyz")
+        assert resp.status_code == 404
+
+    def test_docs_index_contains_sidebar(self, client):
+        resp = client.get("/docs")
+        assert b"docs-sidebar" in resp.data or b"Introduction" in resp.data

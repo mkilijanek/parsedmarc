@@ -55,6 +55,7 @@ from .query_parser import Term, Token, parse_kibana_query
 from .routes import (
     register_api_v1_routes,
     register_auth_routes,
+    register_docs_routes,
     register_events_routes,
     register_health_blueprint,
     register_logs_routes,
@@ -929,6 +930,8 @@ def create_app() -> Flask:
             "_db_circuit_breaker": _db_circuit_breaker,
         },
     )
+
+    register_docs_routes(app, limiter=limiter)
 
     if cfg.ENABLE_BACKGROUND_JOBS and not app.config.get("TESTING"):
         Thread(target=_scheduler_loop, daemon=True).start()

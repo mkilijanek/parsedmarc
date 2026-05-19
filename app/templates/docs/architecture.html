@@ -1,0 +1,111 @@
+{% extends "docs/layout.html" %}
+
+{% block extra_css %}
+  {{ super() }}
+  .mermaid-section {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--space-4);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+  .mermaid-section-header {
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .mermaid-section-header h3 { margin: 0; font-size: var(--fs-md); }
+  .mermaid-wrap {
+    padding: var(--space-5);
+    overflow-x: auto;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mermaid-wrap .mermaid { max-width: 100%; }
+  .mermaid-loading {
+    color: var(--muted);
+    font-size: var(--fs-sm);
+  }
+  .mermaid-error {
+    background: var(--bg);
+    border: 1px solid var(--error);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    color: var(--error);
+    font-size: var(--fs-sm);
+  }
+{% endblock %}
+
+{% block docs_content %}
+<div class="card">
+  <div class="docs-prose">
+    <h1>Architecture Overview</h1>
+    <p>The diagrams below are rendered from Mermaid source files in <code>docs/diagrams/</code>.
+    They represent the v1.9.x architecture across multiple views: C4 context, domain model, service layer, data flow, and request/admin sequences.</p>
+  </div>
+</div>
+
+{% if not diagrams %}
+<div class="card">
+  <p style="color:var(--muted)">No Mermaid diagram sources found in <code>docs/diagrams/</code>.</p>
+</div>
+{% else %}
+  {% for d in diagrams %}
+  <div class="mermaid-section">
+    <div class="mermaid-section-header">
+      <h3>{{ d.title }}</h3>
+    </div>
+    <div class="mermaid-wrap">
+      <pre class="mermaid" data-diagram-title="{{ d.title }}">{{ d.source }}</pre>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+  {{ super() }}
+  (function() {
+    function initMermaid() {
+      const dark = document.body.getAttribute('data-theme') === 'dark';
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: dark ? 'dark' : 'default',
+        securityLevel: 'loose',
+        fontFamily: 'var(--font-sans, system-ui, sans-serif)',
+      });
+      mermaid.run({ querySelector: '.mermaid' });
+    }
+
+    // Load Mermaid.js from CDN, then initialise.
+    // For air-gapped deployments: download mermaid.min.js to app/static/ and
+    // change the src below to '/static/mermaid.min.js'.
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+    s.onload = initMermaid;
+    s.onerror = function() {
+      document.querySelectorAll('.mermaid-loading').forEach(function(el) {
+        el.textContent = 'Could not load Mermaid.js — check internet connectivity.';
+        el.className = 'mermaid-error';
+      });
+    };
+    document.head.appendChild(s);
+
+    // Re-render when theme is toggled
+    document.getElementById('themeToggle')?.addEventListener('click', function() {
+      if (typeof mermaid === 'undefined') return;
+      setTimeout(function() {
+        const nowDark = document.body.getAttribute('data-theme') === 'dark';
+        mermaid.initialize({ startOnLoad: false, theme: nowDark ? 'dark' : 'default', securityLevel: 'loose' });
+        document.querySelectorAll('.mermaid').forEach(function(el) { el.removeAttribute('data-processed'); });
+        mermaid.run({ querySelector: '.mermaid' });
+      }, 60);
+    });
+  })();
+{% endblock %}

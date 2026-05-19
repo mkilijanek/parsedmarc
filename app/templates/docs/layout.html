@@ -1,0 +1,161 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ docs_title }} — Docs — Threat Feed Aggregator{% endblock %}
+
+{% block extra_css %}
+  /* ── Docs two-column shell ─────────────────────────────────────────── */
+  .docs-shell {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: var(--space-6);
+    align-items: start;
+    min-height: calc(100vh - 120px);
+  }
+  /* ── Sidebar ──────────────────────────────────────────────────────── */
+  .docs-sidebar {
+    position: sticky;
+    top: var(--space-6);
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    padding: var(--space-4) 0;
+    box-shadow: var(--shadow-card);
+    scrollbar-width: thin;
+  }
+  .docs-sidebar-header {
+    padding: 0 var(--space-4) var(--space-3);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: var(--space-2);
+  }
+  .docs-nav-section {
+    padding: var(--space-3) var(--space-4) var(--space-1);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .docs-sidebar a {
+    display: block;
+    padding: .35rem var(--space-4);
+    font-size: var(--fs-sm);
+    color: var(--fg);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  }
+  .docs-sidebar a:hover { background: var(--bg); color: var(--primary); }
+  .docs-sidebar a.active {
+    background: var(--bg);
+    border-left-color: var(--primary);
+    color: var(--primary);
+    font-weight: var(--fw-semibold);
+  }
+  /* ── Content area ─────────────────────────────────────────────────── */
+  .docs-content {
+    min-width: 0;
+  }
+  .docs-content .card { margin-bottom: var(--space-4); }
+  /* ── Markdown prose ───────────────────────────────────────────────── */
+  .docs-prose { line-height: 1.75; }
+  .docs-prose h1 { font-size: var(--fs-2xl); margin: 0 0 var(--space-4); }
+  .docs-prose h2 { font-size: var(--fs-xl); margin: var(--space-6) 0 var(--space-3); padding-bottom: .4rem; border-bottom: 1px solid var(--line); }
+  .docs-prose h3 { font-size: var(--fs-lg); margin: var(--space-5) 0 var(--space-2); }
+  .docs-prose h4 { font-size: var(--fs-md); margin: var(--space-4) 0 var(--space-2); }
+  .docs-prose p { margin: 0 0 var(--space-3); }
+  .docs-prose ul, .docs-prose ol { margin: 0 0 var(--space-3); padding-left: 1.5rem; }
+  .docs-prose li { margin-bottom: .25rem; }
+  .docs-prose code {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: .875em;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: .1em .35em;
+  }
+  .docs-prose pre {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    overflow-x: auto;
+    margin: 0 0 var(--space-4);
+  }
+  .docs-prose pre code { background: none; border: none; padding: 0; font-size: .85em; }
+  .docs-prose table { width: 100%; border-collapse: collapse; margin: 0 0 var(--space-4); font-size: var(--fs-sm); }
+  .docs-prose th, .docs-prose td { padding: .5rem .75rem; border: 1px solid var(--line); text-align: left; }
+  .docs-prose th { background: var(--bg); font-weight: var(--fw-semibold); }
+  .docs-prose a { color: var(--primary); text-decoration: underline; }
+  .docs-prose blockquote {
+    border-left: 4px solid var(--primary);
+    margin: 0 0 var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    background: var(--bg);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    color: var(--muted);
+  }
+  .docs-prose hr { border: none; border-top: 1px solid var(--line); margin: var(--space-5) 0; }
+  /* ── Mobile sidebar toggle ────────────────────────────────────────── */
+  .docs-sidebar-toggle {
+    display: none;
+    margin-bottom: var(--space-4);
+  }
+  @media (max-width: 900px) {
+    .docs-shell { grid-template-columns: 1fr; }
+    .docs-sidebar {
+      position: static;
+      max-height: none;
+      display: none;
+    }
+    .docs-sidebar.open { display: block; }
+    .docs-sidebar-toggle { display: flex; }
+  }
+{% endblock %}
+
+{% block content %}
+{% set active_page = 'docs' %}
+<button class="btn btn-sm docs-sidebar-toggle" id="docsSidebarToggle" aria-expanded="false" aria-controls="docsSidebar">
+  ☰ Navigation
+</button>
+<div class="docs-shell">
+  <aside class="docs-sidebar" id="docsSidebar" aria-label="Documentation navigation">
+    <div class="docs-sidebar-header">Docs</div>
+    {% for group in docs_sidebar %}
+      {% if group.section %}
+      <div class="docs-nav-section">{{ group.section }}</div>
+      {% endif %}
+      {% for page in group.pages %}
+      <a href="{{ '/docs/' + page.slug if page.slug else '/docs' }}"
+         class="{% if docs_slug == page.slug %}active{% endif %}"
+         aria-current="{% if docs_slug == page.slug %}page{% else %}false{% endif %}">
+        {{ page.title }}
+      </a>
+      {% endfor %}
+    {% endfor %}
+  </aside>
+  <div class="docs-content">
+    {% block docs_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+(function() {
+  const toggle = document.getElementById('docsSidebarToggle');
+  const sidebar = document.getElementById('docsSidebar');
+  if (toggle && sidebar) {
+    toggle.addEventListener('click', function() {
+      const open = sidebar.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.textContent = open ? '✕ Close' : '☰ Navigation';
+    });
+  }
+})();
+{% endblock %}

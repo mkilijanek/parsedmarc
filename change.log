@@ -1,5 +1,22 @@
 2026-05-19
 
+[feat: #246 — /docs section with API reference, UML diagrams, and sidebar navigation]
+- What changed: Added a full /docs section to the app with sidebar navigation, markdown page rendering, Swagger UI embed, Mermaid architecture diagrams, and a PlantUML SVG gallery with lightbox.
+- Why: Analysts and operators need in-app access to architecture docs, API reference, and diagram library without leaving the UI.
+- Files added:
+  - app/routes/docs.py: Flask blueprint with GET /docs, /docs/<slug>, /docs/_uml/<filename>; server-side markdown-it rendering; Mermaid .mmd loading; SVG allowlist for path traversal prevention.
+  - app/templates/docs/layout.html: two-column grid shell (240px sticky sidebar + fluid content), collapses to single column at 900px.
+  - app/templates/docs/page.html: generic markdown → HTML page.
+  - app/templates/docs/api.html: full-height iframe embedding /api/swagger with open-in-new-tab link.
+  - app/templates/docs/architecture.html: Mermaid.js diagrams (CDN loaded dynamically), re-renders on theme toggle.
+  - app/templates/docs/diagrams.html: CSS grid of PlantUML SVG cards with lightbox, keyboard/ARIA accessible.
+- Files modified:
+  - app/routes/__init__.py: exported register_docs_routes.
+  - app/factory.py: imported and called register_docs_routes(app, limiter=limiter) after ops routes.
+  - app/templates/layout.html: added Docs nav link; updated `gd` shortcut to /docs and help dialog label.
+  - tests/test_api.py: 7 new tests (TestDocsRoutes) covering index, api, architecture, diagrams, 404, sidebar content.
+- Result: 1364 passed, 2 skipped.
+
 [fix: #245 — confidence bar tooltip on hover]
 - Added `title="{{ row.confidence }}%"` to the `.confbar` element in indicators table.
 - No JS needed; native browser tooltip, value matches aria-valuenow.

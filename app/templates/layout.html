@@ -188,6 +188,7 @@
         <a href="/indicators" class="{% if active_page == 'indicators' %}active{% endif %}">Indicators</a>
         <a href="/admin" class="{% if active_page == 'admin' %}active{% endif %}">Admin</a>
         <a href="/logs" class="{% if active_page == 'logs' %}active{% endif %}">Logs</a>
+        <a href="/docs" class="{% if active_page == 'docs' %}active{% endif %}">Docs</a>
       </nav>
       <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">🌓</button>
     </div>
@@ -417,7 +418,7 @@
         if (seq === 'gi') { location.href = '/indicators'; seq = ''; }
         else if (seq === 'ga') { location.href = '/admin'; seq = ''; }
         else if (seq === 'gl') { location.href = '/logs'; seq = ''; }
-        else if (seq === 'gd') { location.href = '/'; seq = ''; }
+        else if (seq === 'gd') { location.href = '/docs'; seq = ''; }
       });
 
       document.addEventListener('DOMContentLoaded', function() {
@@ -432,7 +433,7 @@
           '<tr><td><kbd>g</kbd> <kbd>i</kbd></td><td>Go to Indicators</td></tr>' +
           '<tr><td><kbd>g</kbd> <kbd>a</kbd></td><td>Go to Admin panel</td></tr>' +
           '<tr><td><kbd>g</kbd> <kbd>l</kbd></td><td>Go to Logs</td></tr>' +
-          '<tr><td><kbd>g</kbd> <kbd>d</kbd></td><td>Go to Dashboard</td></tr>' +
+          '<tr><td><kbd>g</kbd> <kbd>d</kbd></td><td>Go to Docs</td></tr>' +
           '<tr><td><kbd>r</kbd></td><td>Refresh page</td></tr>' +
           '<tr><td><kbd>?</kbd></td><td>Show this help</td></tr>' +
           '<tr><td><kbd>Esc</kbd></td><td>Close / Blur</td></tr>' +
