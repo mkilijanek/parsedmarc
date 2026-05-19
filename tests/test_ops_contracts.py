@@ -33,8 +33,8 @@ def test_entrypoint_requires_explicit_secret_key():
 def test_dockerignore_excludes_non_runtime_repo_content():
     dockerignore = (ROOT / ".dockerignore").read_text()
     assert "tests/" in dockerignore
-    assert "docs/" in dockerignore
     assert "ref/" in dockerignore
+    # docs/ is intentionally included in the image (served via /docs route)
     assert ".git" in dockerignore
 
 

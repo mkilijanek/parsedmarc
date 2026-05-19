@@ -1,6 +1,6 @@
 # Access Control Baseline
 
-Status: updated for `1.8.0` + `compliance-1.0`, post-refactor cleanup (2026-05-16).
+Status: updated for `1.9.x` (2026-05-19).
 
 This document defines the minimum access-control model currently enforced by IOC Service for the admin surface and the supported versioned API surface.
 

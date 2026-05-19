@@ -1,6 +1,6 @@
 # API v1 Migration Guide
 
-Status: introduced for `1.6.0` (2026-04-21).
+Status: updated for `1.9.x` (2026-05-19).
 
 This guide documents the additive migration from selected legacy `/api/*` endpoints to the supported versioned API surface under `/api/v1/*`.
 

@@ -1,6 +1,6 @@
 # Configuration
 
-Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
+Status: updated for `1.9.x` (2026-05-19).
 
 ## Environment Variables
 
@@ -149,6 +149,31 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 ```
+
+## New in `1.9.x` — Export, retention, and Azure Sentinel
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_READ_URL` | `""` | Optional PostgreSQL read-replica URL; separates read traffic from writes when set |
+| `EXPORT_ASYNC_THRESHOLD` | `5000` | Row count above which `/api/logs/export` switches to async background job |
+| `EXPORT_JOB_TTL_HOURS` | `24` | Hours before a completed async export job record is purged |
+| `DLQ_RETENTION_DAYS` | `90` | Auto-purge dead-letter queue entries older than N days (0 = disabled) |
+| `APP_HOST_BIND` | `127.0.0.1` | Address Gunicorn binds to inside the container (use `0.0.0.0` only behind a proxy) |
+| `CANONICAL_HTTPS_HOST` | `""` | Canonical public hostname used in HTTP→HTTPS redirects and HSTS headers |
+| `EDGE_HTTPS_ENABLED` | `true` | Trust `X-Forwarded-Proto` header from upstream proxy to detect TLS termination |
+| `HSTS_ENABLED` | `true` | Emit `Strict-Transport-Security` header on HTTPS responses |
+| `SESSION_COOKIE_SECURE_ENABLED` | `true` | Set `Secure` flag on session cookies (requires HTTPS) |
+| `METRICS_AUTH_TOKEN` | `""` | Bearer token required for `/metrics` endpoint; empty = no auth |
+| `ADMIN_DANGEROUS_OPS` | `false` | Enable destructive admin operations (bulk delete, DB reset) |
+| `ADMIN_PANEL_ENABLED` | `true` | Show the `/admin` panel at all |
+| `ADMIN_AUTH_ENABLED` | `true` | Require authentication for admin panel |
+| `ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION` | `false` | Allow `ADMIN_AUTH_ENABLED=false` in production (break-glass) |
+| `ADMIN_API_TOKEN` | `""` | Static Bearer token for machine-to-machine admin API calls |
+| `ADMIN_ROLE` | `admin` | Flask-Login role name required for admin access |
+| `INSTANCE_NAME` | `ioc-service` | Human-readable name shown in UI header and log context |
+| `AZURE_SENTINEL_*` | — | Azure Sentinel Graph API export (see Azure Sentinel Integration below) |
+
+---
 
 ## New in `1.8.0` — Resilience and retention
 
@@ -421,6 +446,16 @@ DATABASE_URL=postgresql+psycopg2://threatfeed:PASSWORD@postgres:5432/threatfeed
 - Pool pre-ping: Enabled (detects stale connections)
 - Pool recycle: controlled by `DB_POOL_RECYCLE` (default: 1800s)
 
+### DATABASE_READ_URL
+
+**Type:** PostgreSQL connection string  
+**Default:** Empty (disabled)  
+**Purpose:** Optional read-replica URL. When set, read-heavy queries (indicators listing, search) are routed to this connection while writes stay on `DATABASE_URL`. Same format as `DATABASE_URL`.
+
+```bash
+DATABASE_READ_URL=postgresql+psycopg2://user:pass@replica:5432/threatfeed
+```
+
 ---
 
 ## Cache Configuration
@@ -586,6 +621,98 @@ SECURITY_ALLOW_PERMISSIVE_DEFAULTS=true
 
 When `APP_ENV=production` and this flag is `false`, startup fails if `ALLOWED_HOSTS` or `CORS_ORIGINS` remains `*`.
 
+### APP_HOST_BIND
+
+**Type:** String  
+**Default:** `127.0.0.1`  
+**Purpose:** Address Gunicorn binds to inside the container. Keep at `127.0.0.1` when Nginx proxies from the same host. Change to `0.0.0.0` only when running without a local proxy and you accept direct external connections.
+
+```bash
+APP_HOST_BIND=127.0.0.1
+```
+
+### CANONICAL_HTTPS_HOST
+
+**Type:** String  
+**Default:** Empty  
+**Purpose:** Public hostname used in HTTP→HTTPS redirects and `Location:` headers. Set to your external hostname in production so redirects go to the right FQDN rather than the internal hostname.
+
+```bash
+CANONICAL_HTTPS_HOST=threatfeed.example.com
+```
+
+### EDGE_HTTPS_ENABLED / HSTS_ENABLED / SESSION_COOKIE_SECURE_ENABLED
+
+Controls TLS-related headers and cookie flags when running behind a TLS-terminating proxy.
+
+```bash
+EDGE_HTTPS_ENABLED=true              # Trust X-Forwarded-Proto from proxy
+HSTS_ENABLED=true                    # Emit Strict-Transport-Security header
+SESSION_COOKIE_SECURE_ENABLED=true   # Require HTTPS for session cookies
+```
+
+Set all three to `false` only in pure-HTTP development environments.
+
+### METRICS_AUTH_TOKEN
+
+**Type:** String  
+**Default:** Empty (no auth)  
+**Purpose:** Static Bearer token required to access `/metrics`. When empty, the endpoint is unauthenticated (restrict at network/proxy level instead).
+
+```bash
+METRICS_AUTH_TOKEN=your-secret-token
+```
+
+### ADMIN_PANEL_ENABLED / ADMIN_AUTH_ENABLED
+
+Control the admin panel availability and authentication requirement.
+
+```bash
+ADMIN_PANEL_ENABLED=true              # Show /admin panel (default on)
+ADMIN_AUTH_ENABLED=true               # Require login for /admin (default on)
+ADMIN_AUTH_ALLOW_DISABLED_IN_PRODUCTION=false   # Break-glass: allow auth-disabled in prod
+```
+
+### ADMIN_API_TOKEN
+
+**Type:** String  
+**Default:** Empty  
+**Purpose:** Bearer token for machine-to-machine admin API requests (CI pipelines, automation). When set, requests with `Authorization: Bearer <token>` skip session authentication.
+
+```bash
+ADMIN_API_TOKEN=your-admin-api-token
+```
+
+### ADMIN_ROLE
+
+**Type:** String  
+**Default:** `admin`  
+**Purpose:** Flask-Login role name checked for admin panel access. Change only if your user model uses a different role name.
+
+```bash
+ADMIN_ROLE=admin
+```
+
+### ADMIN_DANGEROUS_OPS
+
+**Type:** Boolean  
+**Default:** `false`  
+**Purpose:** Enable destructive admin operations — bulk delete, database reset, DLQ purge. Must be explicitly set to `true`; defaults to disabled in production.
+
+```bash
+ADMIN_DANGEROUS_OPS=false
+```
+
+### INSTANCE_NAME
+
+**Type:** String  
+**Default:** `ioc-service`  
+**Purpose:** Human-readable label shown in the web UI header and embedded in log context. Useful when running multiple instances in the same organisation.
+
+```bash
+INSTANCE_NAME=ioc-service-prod
+```
+
 ---
 
 ## Integration Configuration
@@ -749,6 +876,43 @@ MWDB_TAGS=malware,apt
 ```bash
 MWDB_LIMIT=1000
 ```
+
+---
+
+### Azure Sentinel Integration
+
+ioc-service can push IOC indicators to Microsoft Sentinel via the Microsoft Graph API (`/beta/security/tiIndicators/submitTiIndicators`). Configure the variables below to enable outbound export.
+
+#### Authentication modes
+
+Two modes are supported — set `AZURE_SENTINEL_AUTH_MODE` to choose:
+
+| Mode | Variables required |
+|------|-------------------|
+| `client_secret` | `AZURE_SENTINEL_TENANT_ID`, `AZURE_SENTINEL_CLIENT_ID`, `AZURE_SENTINEL_CLIENT_SECRET` |
+| `certificate` | `AZURE_SENTINEL_TENANT_ID`, `AZURE_SENTINEL_CLIENT_ID`, `AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM`, `AZURE_SENTINEL_CERT_THUMBPRINT` |
+
+#### Variables
+
+```bash
+AZURE_SENTINEL_TENANT_ID=<your-tenant-id>
+AZURE_SENTINEL_CLIENT_ID=<app-registration-client-id>
+AZURE_SENTINEL_AUTH_MODE=client_secret     # or: certificate
+
+# Client secret auth
+AZURE_SENTINEL_CLIENT_SECRET=<client-secret>
+
+# Certificate auth (mutually exclusive with client_secret)
+AZURE_SENTINEL_CERT_PRIVATE_KEY_PEM=<PEM-encoded private key, newlines as \n>
+AZURE_SENTINEL_CERT_THUMBPRINT=<hex SHA-1 thumbprint of the public certificate>
+
+# Optional overrides (defaults shown)
+AZURE_SENTINEL_SCOPE=https://graph.microsoft.com/.default
+AZURE_SENTINEL_ENDPOINT_URL=https://graph.microsoft.com/beta/security/tiIndicators/submitTiIndicators
+AZURE_SENTINEL_CHUNK_SIZE=100              # indicators per API request
+```
+
+**Required Azure AD permissions:** `ThreatIndicators.ReadWrite.OwnedBy` on the Microsoft Graph API.
 
 ---
 
@@ -929,6 +1093,27 @@ SYNC_JOB_MAX_RETRIES=3
 SYNC_JOB_RETRY_BASE_DELAY_S=30
 SYNC_JOB_RETRY_MAX_DELAY_S=900
 ```
+
+### DLQ_RETENTION_DAYS
+
+**Type:** Integer (days)  
+**Default:** `90`  
+**Purpose:** Dead-letter queue entries older than this are auto-purged during the nightly maintenance job. Set to `0` to disable automatic purge.
+
+```bash
+DLQ_RETENTION_DAYS=90
+```
+
+### EXPORT_ASYNC_THRESHOLD / EXPORT_JOB_TTL_HOURS
+
+Control async export behaviour for `/api/logs/export`.
+
+```bash
+EXPORT_ASYNC_THRESHOLD=5000   # Row count above which export runs as background job
+EXPORT_JOB_TTL_HOURS=24       # Hours to retain completed async export job records
+```
+
+When a request exceeds the threshold, the endpoint returns `202 Accepted` with a `job_id`; poll `/api/jobs/<job_id>` for status and download URL.
 
 ---
 

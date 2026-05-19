@@ -1,6 +1,6 @@
 # API Documentation
 
-Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
+Status: updated for `1.9.x` (2026-05-19).
 
 ## Overview
 
@@ -67,13 +67,19 @@ Response:
 - `400` for invalid filters or invalid search query syntax
 
 Supported query parameters:
-- `q`
-- `type`
-- `tlp`
-- `source`
-- `min_conf`
-- `limit`
-- `offset`
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `q` | Full-text / Lucene search across indicator value, tags, comment | `q=192.168.` |
+| `type` | IOC type filter | `type=ip` |
+| `tlp` | TLP level filter | `tlp=AMBER` |
+| `source` | Feed source ID | `source=misp` |
+| `min_conf` | Minimum confidence score (0–100) | `min_conf=70` |
+| `since` | Return indicators first seen after this ISO 8601 timestamp | `since=2026-01-01T00:00:00Z` |
+| `date_from` | Alias for `since` (either form accepted) | `date_from=2026-01-01` |
+| `date_to` | Return indicators first seen before this ISO 8601 timestamp | `date_to=2026-04-30T23:59:59Z` |
+| `limit` | Max rows returned (default 200, max 500) | `limit=500` |
+| `offset` | Pagination offset | `offset=500` |
 
 #### `POST /api/v1/sync`
 

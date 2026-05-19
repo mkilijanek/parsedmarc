@@ -1,6 +1,6 @@
 # Operations Runbook
 
-Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
+Status: updated for `1.9.x` (2026-05-19).
 
 ## Scope
 

@@ -1,155 +1,90 @@
-# Performance & SLO (M12)
+# Performance & SLO
 
-Status: updated for 1.1.x (2026-02-26).
+Status: updated for `1.9.x` (2026-05-19).
 
-## Scope
-
-M12 introduces:
-- Benchmark harness for mixed API traffic (`scripts/benchmark_m12.py`)
-- SLO-oriented latency/error budget targets
-- Degradation handling for cache failures (serve from DB path)
-- Alert rules and dashboard templates for ongoing operations
+---
 
 ## SLO Targets
 
-Service-level targets for production baseline:
+Service-level targets for production baseline (mixed API traffic, not health-only):
 
-- Availability: `>= 99.9%` successful responses (non-5xx)
-- Error budget: `<= 1%` 5xx over 5-minute windows
-- Latency:
-  - p50 `< 150 ms`
-  - p95 `< 500 ms`
-  - p99 `< 1000 ms`
-- Cache stability: cache access error rate `< 1 req/s` sustained
+| Metric | Target |
+|--------|--------|
+| Availability | ≥ 99.9% successful (non-5xx) responses |
+| Error budget | ≤ 1% 5xx rate over any 5-minute window |
+| Latency p50 | < 150 ms |
+| Latency p95 | < 500 ms |
+| Latency p99 | < 1 000 ms |
+| Cache error rate | < 1 error/s sustained |
 
-Notes:
-- Targets apply to mixed traffic profile (not only `/health`).
-- Endpoint-specific targets can be stricter for cached endpoints.
+Cached endpoints (`/api/v1/indicators`, `/api/v1/indicators/<fmt>`) should stay well inside p95.
 
-## Benchmark Harness
+---
 
-Run benchmark against local stack:
+## Degradation Behaviour
 
-```bash
-sudo RATE_LIMITS_ENABLED=false docker compose up -d postgres redis app
-python scripts/benchmark_m12.py \
-  --base-url http://127.0.0.1:8080 \
-  --duration 30 \
-  --concurrency 64 \
-  --output-json /tmp/m12-benchmark.json
+### Redis unavailable
+
+- `/api/v1/indicators` and export endpoints continue serving from the DB path.
+- `cache_access_total{status="error"}` counter increases in Prometheus.
+- Warning logs contain `cache_unavailable` or `cache_write_failed`.
+
+### DB slow
+
+- Connection pool (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`) absorbs short bursts.
+- Requests that exceed `DB_POOL_TIMEOUT` (default 30 s) return 503.
+- `DB_POOL_RECYCLE` (default 1 800 s) prevents stale connections after failover.
+
+---
+
+## Tuning Reference
+
+| Variable | Default | Guidance |
+|----------|---------|----------|
+| `WORKERS` | `3` | Formula: `2 × CPU_CORES + 1`. Increase on I/O-heavy workloads. |
+| `DB_POOL_SIZE` | `6` | Set to ≥ `WORKERS`. Add headroom for background jobs. |
+| `DB_MAX_OVERFLOW` | `4` | Burst capacity above pool; keep low to avoid DB saturation. |
+| `GUNICORN_TIMEOUT` | `120` | Raise only for large async exports. |
+| `CACHE_TTL` | `300` | Lower for fresher results; raises DB load. |
+| `EXPORT_ASYNC_THRESHOLD` | `5000` | Requests above this row count run as async jobs (202 Accepted). |
+| `UPDATE_INTERVAL` | `600` | Feed polling interval; lower values increase external API pressure. |
+
+---
+
+## Monitoring
+
+Alert rules and dashboard are in the `monitoring/` directory:
+
+```
+monitoring/alerts/slo-alerts.yml     # Prometheus alert rules (error rate, p95, cache)
+monitoring/grafana/dashboard.json    # Grafana dashboard template
 ```
 
-Default traffic profile:
-- `/health`
-- `/metrics`
-- `/indicators?limit=100&offset=0`
-- `/indicators/json?type=ip&limit=500&offset=0`
-- `/correlations?min_sources=2&limit=100`
+Import `slo-alerts.yml` into your Prometheus `rule_files` and `dashboard.json` into Grafana.
 
-The tool returns:
-- total throughput (req/s)
-- error rate
-- p50/p95/p99 latency
-- per-endpoint breakdown
+Key metrics to watch:
 
-M14 suite with 3 runs and median summary:
+| Metric | Description |
+|--------|-------------|
+| `http_request_duration_seconds` | Gunicorn/Flask request latency histogram |
+| `http_requests_total{status=~"5.."}` | 5xx error rate |
+| `cache_access_total{status}` | Cache hit/miss/error counts |
+| `db_pool_size` / `db_pool_checked_out` | Connection pool utilisation |
+| `feed_sync_duration_seconds` | Per-feed sync job latency |
+| `feed_sync_total{status}` | Feed sync success/failure counts |
 
-```bash
-python scripts/benchmark_suite_m14.py \
-  --base-url http://127.0.0.1:8080 \
-  --duration 20 \
-  --concurrency 64 \
-  --runs 3 \
-  --output-dir /tmp/m14-suite
-```
-
-Scenarios in suite:
-- `mixed`
-- `indicator_heavy`
-- `control_light`
-
-## Docker Cluster Benchmark
-
-To compare single-instance vs scaled app replicas in Docker:
-
-```bash
-bash scripts/benchmark_cluster_m12.sh 4 20 64
-```
-
-Parameters:
-- arg1: number of `app` replicas (default `4`)
-- arg2: benchmark duration seconds (default `20`)
-- arg3: concurrency (default `64`)
-
-Artifacts:
-- `/tmp/m12-baseline.json`
-- `/tmp/m12-cluster.json`
-- `/tmp/m12-cluster-summary.json`
-
-Implementation notes:
-- Uses `docker compose` for shared dependencies (`postgres`, `redis`) and starts app replicas as separate containers in the same Docker network.
-- Benchmark traffic is distributed across replica container IPs (client-side balancing).
-
-## Entrypoint Switch
-
-Container supports one-shot benchmark mode:
-
-```bash
-docker compose run --rm -e BENCHMARK_BASE_URL=http://app:8080 app --benchmark
-```
-
-Supported env vars:
-- `BENCHMARK_BASE_URL` (default: `http://app:8080`)
-- `BENCHMARK_DURATION` (default: `30`)
-- `BENCHMARK_CONCURRENCY` (default: `64`)
-- `BENCHMARK_TIMEOUT` (default: `5`)
-- `BENCHMARK_OUTPUT_JSON` (default: `/tmp/m12-benchmark.json`)
-
-## Degradation Behavior
-
-If Redis cache is unavailable:
-- `/indicators` and `/indicators/<fmt>` continue serving responses from DB path
-- cache metric `cache_access_total{status="error"}` increases
-- warning logs include `cache_unavailable` or `cache_write_failed`
-
-## Monitoring Artifacts
-
-- Alert rules: `monitoring/alerts/m12-slo-alerts.yml`
-- Operations alerts: `monitoring/alerts/m15-operations-alerts.yml`
-- Dashboard template: `monitoring/grafana/m12-dashboard.json`
-
-Both artifacts are intentionally generic and can be imported into existing Prometheus/Grafana deployment.
+---
 
 ## Operational Runbook
 
-1. Detect
-- Check SLO alerts (error rate, p95 latency, cache error spike).
-- Confirm affected endpoints via `/metrics`.
+1. **Detect** — SLO alert fires (error rate, p95 spike, cache error burst). Confirm affected endpoints via `/metrics`.
+2. **Isolate** — Check Redis (`PING`, memory, evictions). Check DB latency and active connections (`db_pool_checked_out`).
+3. **Mitigate** — Reduce concurrency at edge, scale app replicas, or temporarily raise `EXPORT_ASYNC_THRESHOLD` to push large requests async.
+4. **Recover** — Cache error metric returns near zero, p95 drops below target. Verify `/healthz` and `/deps` return healthy.
 
-2. Isolate
-- Verify Redis health (`PING`, memory pressure, evictions).
-- Verify DB latency and active connections.
+---
 
-3. Mitigate
-- Reduce worker pressure (temporary rate controls at edge).
-- Scale app replicas horizontally.
-- Disable expensive traffic patterns or reduce export limits temporarily.
+## See Also
 
-4. Recover
-- Ensure cache error metric returns near zero.
-- Validate latency returns below p95 target.
-- Re-run benchmark profile to confirm recovery.
-
-## M15 Release Gate
-
-Local pre-merge gate:
-
-```bash
-bash scripts/m15_premerge_gate.sh
-```
-
-Chaos fallback check:
-
-```bash
-bash scripts/m15_chaos_check.sh
-```
+- [Configuration](configuration.md) — tuning variables
+- [Runbook](runbook.md) — production deployment and incident response

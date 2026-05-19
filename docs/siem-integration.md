@@ -1,6 +1,6 @@
 # SIEM Integration
 
-Status: introduced for `compliance-1.0`.
+Status: updated for `1.9.x` (2026-05-19).
 Framework: NIST CSF DE.CM (Security Continuous Monitoring), ISO 27001 A.12.4.
 
 ---
@@ -127,7 +127,32 @@ output {
 
 ## 6. Microsoft Sentinel Integration
 
-Use the Log Analytics workspace HTTP Data Collector API:
+ioc-service supports two complementary Sentinel integrations:
+
+### Option A — Push IOC indicators via Graph API (native)
+
+Configure `AZURE_SENTINEL_*` environment variables to push threat indicators directly to Sentinel via the Microsoft Graph API (`/beta/security/tiIndicators/submitTiIndicators`). The worker sends indicators automatically during feed sync.
+
+Required env vars (see [Configuration](configuration.md) for full reference):
+
+```bash
+AZURE_SENTINEL_TENANT_ID=<tenant-id>
+AZURE_SENTINEL_CLIENT_ID=<app-registration-client-id>
+AZURE_SENTINEL_AUTH_MODE=client_secret          # or: certificate
+AZURE_SENTINEL_CLIENT_SECRET=<client-secret>    # for client_secret mode
+```
+
+Optional:
+```bash
+AZURE_SENTINEL_CHUNK_SIZE=100    # indicators per API request (default 100)
+AZURE_SENTINEL_SCOPE=https://graph.microsoft.com/.default
+```
+
+Required Azure AD permission: `ThreatIndicators.ReadWrite.OwnedBy` on Microsoft Graph.
+
+### Option B — Forward logs via HTTP Data Collector API
+
+Pull log events from ioc-service and push them to a Sentinel Log Analytics workspace:
 
 ```python
 import requests, json, hashlib, hmac, base64, datetime
@@ -141,11 +166,15 @@ def build_signature(workspace_id, key, date, content_length):
     string_to_hash = f"POST\n{content_length}\napplication/json\n{x_headers}\n/api/logs"
     bytes_to_hash = string_to_hash.encode("utf-8")
     decoded_key = base64.b64decode(key)
-    encoded_hash = base64.b64encode(hmac.new(decoded_key, bytes_to_hash, hashlib.sha256).digest()).decode("utf-8")
+    encoded_hash = base64.b64encode(
+        hmac.new(decoded_key, bytes_to_hash, hashlib.sha256).digest()
+    ).decode("utf-8")
     return f"SharedKey {workspace_id}:{encoded_hash}"
 
-logs = requests.get("https://ioc-service/api/logs?level=WARNING|ERROR&limit=500",
-                    cookies={"session": "<session>"}).json()["items"]
+logs = requests.get(
+    "https://ioc-service/api/logs?level=WARNING|ERROR&limit=500",
+    cookies={"session": "<session>"}
+).json()["items"]
 
 body = json.dumps(logs)
 rfc1123date = datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
@@ -172,4 +201,4 @@ The following log patterns are significant for SIEM alerting:
 | Feed sync repeatedly failing | ERROR | fetcher | — | Feed availability issue |
 | Log retention cleanup | INFO | maintenance | — | Informational |
 
-Full detection matrix: `docs/incident-response.md` section 3.
+See [Runbook](runbook.md) for incident classification and escalation guidance.
