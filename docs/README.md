@@ -1,108 +1,31 @@
-# Threat Feed Aggregator - Documentation
+# IOC Service — Documentation
 
-Status: updated for `1.8.0` + `compliance-1.0` (2026-04-30).
+**Version:** 1.9.x · **Updated:** 2026-05-19
 
-Comprehensive documentation for the IOC (Indicators of Compromise) Threat Feed Aggregation system.
-
----
-
-## Quick Links
-
-- 📖 **[API Documentation](api.md)** - REST endpoints, formats, and integration examples
-- 🔁 **[API v1 Migration](api-v1-migration.md)** - legacy-to-versioned API route mapping and migration notes
-- 🗺️ **[Milestone 1.6.0 Plan](milestone-1.6.0-plan.md)** - execution plan for versioned API, OpenAPI, config, and packaging changes
-- 📚 **[Swagger UI Endpoint](../README.md#endpoints)** - bundled interactive API explorer at `/api/swagger`
-- 📊 **[Grafana Dashboard](../grafana/dashboard.json)** - 10-panel operational dashboard
-- 🏗️ **[Architecture](architecture.md)** - System design and components
-- ⚙️ **[Configuration](configuration.md)** - Environment variables and settings
-- 🔐 **[Access Control](access-control.md)** - Admin auth, roles, CSRF, and operational boundaries
-- ⚡ **[Performance](performance.md)** - SLOs, benchmarking, degradation and runbook
-- 🛠️ **[Runbook](runbook.md)** - Incident response and release gate procedures
-- 🚨 **[Incident Response](incident-response.md)** - Classification, playbooks, evidence checklist (NIST RS.RP)
-- 🔄 **[Disaster Recovery](disaster-recovery.md)** - RTO/RPO, backup procedures, restore runbook
-- 📋 **[Compliance](compliance.md)** - ISO 27001 / NIST CSF controls matrix, audit trail procedures
-- 🏗️ **[SSDLC](ssdlc.md)** - Secure development lifecycle controls and CI security gates
-- 📦 **[Asset Management](asset-management.md)** - Data and software asset inventory, classification
-- 📡 **[SIEM Integration](siem-integration.md)** - CEF format, Splunk/ELK/Sentinel integration guide
-- 🧭 **[M16 Finalization](m16-finalization.md)** - Go/no-go and closure checklist
-- 📆 **[Maintenance Plan](maintenance-plan.md)** - 90-day operating cadence and KPI policy
-- 🧩 **[UML Diagrams](uml/README.md)** - deployment, data model, sync flow, state machine
-- ✅ **[Contributing](../CONTRIBUTING.md)** - Quality gate and CI merge policy
-- 🔌 **[Data Sources](data-sources.md)** - MISP, CrowdSec, MalwareBazaar, MWDB integration
-- 💾 **[Database](database.md)** - Schema, indexes, and queries
-- 💻 **[CLI Tool](cli.md)** - Manual ingestion commands
-- 🌐 **[Web UI](web-ui.md)** - Browser interface guide
-- 🔒 **[SSL/TLS](ssl.md)** - Certificate management
+IOC Service is a Threat Feed Aggregation platform that collects Indicators of Compromise from multiple sources (MISP, CrowdSec, MalwareBazaar, MWDB), normalises them into a unified schema, and exposes them through a REST API, a browser UI, and 17 export formats.
 
 ---
 
-## Getting Started
+## Quick Start
 
-### For Users
+```bash
+# Generate a secret key
+SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
 
-1. **[QUICKSTART.md](../QUICKSTART.md)** - Get running in 5 minutes
-2. **[Configuration](configuration.md)** - Configure your deployment
-3. **[API Documentation](api.md)** - Start querying IOCs
+# Start the stack
+docker compose up -d
 
-### For Developers
+# Verify
+curl http://localhost:7005/healthz
+```
 
-1. **[Architecture](architecture.md)** - Understand the system
-2. **[Database](database.md)** - Schema and data model
-3. **[Data Sources](data-sources.md)** - Add new integrations
-
-### For Security Teams
-
-1. **[SECURITY_AUDIT_REPORT.md](../SECURITY_AUDIT_REPORT.md)** - Security analysis
-2. **[SECURITY.md](../SECURITY.md)** - Security policy
-3. **[API Documentation](api.md#security-headers)** - Security features
+See [Configuration](configuration.md) for all environment variables.
 
 ---
 
-## Documentation Structure
+## Core Features
 
-### Core Documentation
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| **[api.md](api.md)** | API endpoints, formats, examples | Users, Integrators |
-| **[architecture.md](architecture.md)** | System design, data flow, scalability | Developers, Architects |
-| **[configuration.md](configuration.md)** | Environment variables, examples | Ops, Admins |
-| **[access-control.md](access-control.md)** | Admin authentication and role baseline | Ops, Security, Maintainers |
-| **[performance.md](performance.md)** | SLOs, benchmark harness, runbook | Ops, SRE, Developers |
-| **[runbook.md](runbook.md)** | Incident response and rollback procedures | Ops, SRE |
-| **[m16-finalization.md](m16-finalization.md)** | Final release decision and residual risks | Tech Leads, Ops |
-| **[maintenance-plan.md](maintenance-plan.md)** | Post-release operating plan | Ops, SRE |
-
-### Integration Documentation
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| **[data-sources.md](data-sources.md)** | Source integrations, normalization | Developers, Threat Intel |
-| **[database.md](database.md)** | Schema, indexes, queries | DBAs, Developers |
-| **[access-control.md](access-control.md)** | Admin auth and RBAC baseline | Security, Operators |
-| **[data-protection.md](data-protection.md)** | Data classification and protection baseline | Security, Operators |
-| **[risk-register.md](risk-register.md)** | Current project risk register | Security, PM |
-| **[vulnerability-management.md](vulnerability-management.md)** | Vulnerability and patch management process | Security, Maintainers |
-| **[compliance.md](compliance.md)** | ISO 27001 / NIST CSF controls matrix and audit trail | Security, Auditors |
-| **[incident-response.md](incident-response.md)** | Incident playbooks and evidence checklist | Security, Ops |
-| **[ssdlc.md](ssdlc.md)** | SSDLC controls, CI security gates, threat model | Security, Developers |
-| **[disaster-recovery.md](disaster-recovery.md)** | DR plan with RTO/RPO and restore procedures | Ops, SRE |
-| **[asset-management.md](asset-management.md)** | Asset inventory, classification, lifecycle | Security, Ops |
-| **[siem-integration.md](siem-integration.md)** | CEF, Splunk, ELK, Sentinel integration guide | Security, Ops |
-| **[cli.md](cli.md)** | Manual ingestion tool | Operators, Analysts |
-
-### User Documentation
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| **[web-ui.md](web-ui.md)** | Web interface guide | End Users |
-| **[ssl.md](ssl.md)** | TLS certificate management | Ops, Admins |
-
----
-
-## Key Features
-
-### 🔍 Unified Search
+### Unified Search
 
 Kibana-like query syntax with boolean operators:
 
@@ -110,342 +33,136 @@ Kibana-like query syntax with boolean operators:
 type:ip AND confidence:>70 AND (tags:apt OR tags:malware)
 ```
 
-### 🔗 IOC Correlation
+Time-window filters (`since=7d`, `since=30m`, absolute `date_from`/`date_to`) and full-text search across value, source, tags, and metadata.
 
-Cross-source correlation endpoint:
+### Export (17 Formats)
+
+| Category | Formats |
+|----------|---------|
+| Basic | TXT, CSV, JSON, XML |
+| Firewalls | FortiGate, Check Point, Palo Alto, F5 |
+| SIEMs | Sentinel, Defender, ArcSight, Splunk, Elasticsearch |
+| Streaming | NDJSON (Elasticsearch, Cribl) |
 
 ```bash
-# app-only
-curl "http://localhost:7005/correlations?min_sources=2&type=domain"
-
-# TLS variant
-curl -k "https://localhost:7003/correlations?min_sources=2&type=domain"
+curl http://localhost:7005/indicators/fortigate
+curl http://localhost:7005/indicators/splunk
+curl http://localhost:7005/indicators/elasticsearch
 ```
 
-### 📤 17 Export Formats
+### Feed Management
 
-- **Basic:** TXT, CSV, JSON, XML
-- **Firewalls:** FortiGate, Check Point, Palo Alto, F5
-- **SIEMs:** Sentinel, Defender, ArcSight, Splunk, Elasticsearch
+- Per-feed on/off toggle, connection test, and manual sync trigger
+- Background worker polls feeds every 10 minutes (configurable via `SYNC_INTERVAL_MINUTES`)
+- Sync job queue with status tracking and dead-letter queue for permanent failures
+- Feed health stats with per-run metrics
 
-### 🔄 Auto-Update
+### Security
 
-Background worker fetches from MISP and CrowdSec every 10 minutes (configurable).
+- Rate limiting on all endpoints
+- CSP, HSTS, X-Frame-Options, X-Content-Type-Options headers
+- HMAC-SHA256 audit log integrity chain
+- Admin token auth with constant-time comparison
+- DB circuit breaker with half-open probing
+- Proxy-aware IP tracking (`TRUSTED_PROXY_COUNT`)
 
-### 🧰 Feed Admin & Sync Jobs
+---
 
-- Per-feed configuration with connection test.
-- Queue-driven synchronization (`sync_jobs`) with job status tracking.
-- Logs filtered by feed, component, severity, and `job_id`.
+## System Architecture
 
-### 🔒 Security
+```
+┌─────────────┐
+│    Nginx    │  ← TLS termination, rate limiting
+└──────┬──────┘
+       │
+┌──────▼──────────────────────────────┐
+│        Flask Application            │
+│  ┌──────┐  ┌────────┐  ┌────────┐  │
+│  │ API  │  │ Web UI │  │ Docs   │  │
+│  └──────┘  └────────┘  └────────┘  │
+│  ┌──────────────────────────────┐   │
+│  │         Background Worker    │   │
+│  └──────────────────────────────┘   │
+└───────┬─────────────┬───────────────┘
+        │             │
+   ┌────▼────┐   ┌────▼────┐   ┌────────────┐
+   │PostgreSQL│  │  Redis  │   │ Feed APIs  │
+   │ (storage)│  │ (cache) │   │MISP/CrowdSec│
+   └──────────┘  └─────────┘   └────────────┘
+```
 
-- TLS 1.2+ with modern ciphers
-- Rate limiting per endpoint
-- Comprehensive security headers
-- Audit logging with HMAC-SHA256 integrity chain
-- IP tracking with proxy awareness
-- DBCircuitBreaker with half-open probing
-- Dead Letter Queue for permanently-failed jobs
-
-### ⚡ Performance
-
-- PostgreSQL connection pooling
-- Redis response caching (5 min TTL)
-- Database-native exports
-- GIN/B-tree indexes
-- `limit`/`offset` pagination on view and export endpoints
-- Optional NDJSON streaming for `elasticsearch` and `cribl` exports
-- Global hard cap: `REQUESTS_PER_SECOND_MAX` (default 1,000,000 req/s)
+See [Architecture Overview](architecture.md) for the full design, and the [Architecture Diagrams](/docs/architecture) page for Mermaid views.
 
 ---
 
 ## API Quick Reference
 
-### Health & Monitoring
-
 ```bash
-# app-only variant
-curl http://localhost:7005/health
-curl http://localhost:7005/metrics
+# Health
+curl http://localhost:7005/healthz
 
-# TLS variant
-curl -k https://localhost:7003/health
-curl -k https://localhost:7003/metrics
-```
+# List indicators
+curl http://localhost:7005/api/v1/indicators
 
-### Search & View
+# Filter by type and time window
+curl "http://localhost:7005/api/v1/indicators?type=ip&since=24h&min_conf=80"
 
-```bash
-# HTML interface (app-only)
-curl http://localhost:7005/indicators
-
-# With filters (TLS variant)
-curl -k "https://localhost:7003/indicators?type=ip&min_conf=80&tlp=AMBER"
-```
-
-### Export Formats
-
-```bash
-# Plain text
-curl http://localhost:7005/indicators/txt
-
-# FortiGate blocklist
+# Export as FortiGate blocklist
 curl http://localhost:7005/indicators/fortigate
 
-# Elasticsearch bulk
-curl http://localhost:7005/indicators/elasticsearch
-
-# Splunk HEC
-curl http://localhost:7005/indicators/splunk
+# Trigger feed sync
+curl -X POST http://localhost:7005/api/v1/sync \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "crowdsec"}'
 ```
 
-See **[API Documentation](api.md)** for full details.
+See [API Reference](/docs/api) for the interactive Swagger UI.
 
 ---
 
-## Configuration Quick Reference
-
-### Required Variables
+## Common Configuration
 
 ```bash
-SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
-DATABASE_URL=postgresql+psycopg2://user:pass@postgres:5432/threatfeed
+# Required
+SECRET_KEY=<32+ char random string>
+DATABASE_URL=postgresql+psycopg2://user:pass@postgres:5432/ioc
 REDIS_URL=redis://:password@redis:6379/0
-```
 
-### Security (Production)
-
-```bash
-ALLOWED_HOSTS=your-domain.com
-TRUSTED_PROXY_COUNT=1
-MISP_VERIFY_SSL=true
-```
-
-### Integrations
-
-```bash
-# MISP
+# Feed integrations
 MISP_URL=https://misp.example.com
 MISP_API_KEY=your-key
-
-# CrowdSec
 CROWDSEC_API_KEY=your-key
-CROWDSEC_LISTS=list1,list2,list3
+CROWDSEC_LISTS=list1,list2
+
+# Production hardening
+ALLOWED_HOSTS=your-domain.com
+TRUSTED_PROXY_COUNT=1
+HSTS_ENABLED=true
 ```
 
-See **[Configuration](configuration.md)** for all variables.
-
----
-
-## Architecture Overview
-
-```
-┌─────────────┐
-│   Nginx     │ ← TLS termination, rate limiting
-│  (Reverse   │
-│   Proxy)    │
-└──────┬──────┘
-       │
-┌──────▼──────────────────────────────┐
-│      Flask Application              │
-│  ┌────────┐  ┌────────┐  ┌────────┐│
-│  │  API   │  │ Web UI │  │ Worker ││
-│  └────────┘  └────────┘  └────────┘│
-└──────┬──────────┬──────────┬────────┘
-       │          │          │
-   ┌───▼───┐  ┌──▼───┐  ┌──▼────┐
-   │ PostgreSQL│ Redis│ │External│
-   │ (Storage) │(Cache││Sources │
-   └───────────┘└──────┘└────────┘
-```
-
-See **[Architecture](architecture.md)** for details.
-
----
-
-## Data Flow
-
-### Ingestion (Background Worker)
-
-```
-External API → Fetch → Normalize → Upsert → Update Stats
-     ↓
-  (MISP, CrowdSec)
-```
-
-### Query (API Request)
-
-```
-Request → Cache Check → Database Query → Format → Response
-   ↓            ↓              ↓
-Security    Hit/Miss      Parameterized SQL
-Headers
-```
-
-See **[Architecture](architecture.md#data-flow)** for details.
-
----
-
-## Database Schema
-
-### Core Tables
-
-- **ti.indicators** - IOC storage with provenance
-- **ti.feed_stats** - Feed health and statistics
-- **ti.audit_log** - API access logging
-
-### Key Indexes
-
-- B-tree on (source, source_ref, is_active)
-- GIN on tags array
-- GIN on metadata JSONB
-- pg_trgm for wildcard search
-
-See **[Database](database.md)** for schema details.
-
----
-
-## Security
-
-### Critical Security Fixes
-
-The system has undergone comprehensive security audit:
-
-- ✅ **SECRET_KEY enforcement** - Required, minimum 32 characters
-- ✅ **MISP SSL verification** - Enabled by default
-- ✅ **IP tracking security** - Proxy-aware with TRUSTED_PROXY_COUNT
-- ✅ **Security headers** - CSP, HSTS, X-Frame-Options, etc.
-- ✅ **Secure cookies** - HttpOnly, Secure, SameSite
-- ✅ **Rate limiting** - All endpoints protected
-
-See **[SECURITY_AUDIT_REPORT.md](../SECURITY_AUDIT_REPORT.md)** for full audit.
-
-### Best Practices
-
-1. **Always use HTTPS** in production
-2. **Set strong SECRET_KEY** (32+ characters)
-3. **Enable MISP_VERIFY_SSL** (default: true)
-4. **Configure ALLOWED_HOSTS** for production
-5. **Set TRUSTED_PROXY_COUNT** if behind proxy
-6. **Use VPN/private network** for /metrics endpoint
-
----
-
-## CLI Tool
-
-Manual IOC ingestion from MalwareBazaar and MWDB:
-
-```bash
-python -m app.cli fetch \
-  --data-source bazaar \
-  --tags TrickBot,Emotet \
-  --since 2025-01-01 \
-  --until 2025-01-31
-```
-
-See **[CLI Documentation](cli.md)** for full usage.
+See [Configuration](configuration.md) for the full variable reference.
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
-
 **SECRET_KEY not set:**
 ```
 RuntimeError: SECURITY ERROR: SECRET_KEY environment variable must be set.
 ```
-**Fix:** Generate with `python -c 'import secrets; print(secrets.token_hex(32))'`
+Fix: `export SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')`
 
 **Database connection failed:**
 ```
 sqlalchemy.exc.OperationalError: could not connect to server
 ```
-**Fix:** Check DATABASE_URL, ensure PostgreSQL is running
+Fix: check `DATABASE_URL`, ensure PostgreSQL is running and the schema is migrated (`docker compose run migrate`).
 
 **Redis connection failed:**
 ```
 redis.exceptions.ConnectionError
 ```
-**Fix:** Check REDIS_URL, ensure Redis is running
+Fix: check `REDIS_URL`, ensure Redis is running.
 
-See individual docs for more troubleshooting.
-
----
-
-## Support & Contributing
-
-### Getting Help
-
-- 📚 **Documentation:** Start here!
-- 🐛 **Issues:** Check logs: `docker compose logs app`
-- 🔍 **Debugging:** Set `LOG_LEVEL=DEBUG`
-
-### Development
-
-```bash
-# Setup
-git clone <repo>
-cd ioc-service
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Run tests
-pytest tests/ -v
-
-# Run app
-export SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
-python -m flask --app app.factory run --debug
-```
-
----
-
-## Additional Resources
-
-### In Repository
-
-- **[README.md](../README.md)** - Project overview
-- **[QUICKSTART.md](../QUICKSTART.md)** - Quick setup guide
-- **[DEPLOYMENT.md](../DEPLOYMENT.md)** - Production deployment
-- **[SECURITY.md](../SECURITY.md)** - Security policy
-- **[SECURITY_AUDIT_REPORT.md](../SECURITY_AUDIT_REPORT.md)** - Security audit
-
-### External
-
-- **Flask:** https://flask.palletsprojects.com/
-- **SQLAlchemy:** https://www.sqlalchemy.org/
-- **PostgreSQL:** https://www.postgresql.org/docs/
-- **Redis:** https://redis.io/docs/
-- **MISP:** https://www.misp-project.org/
-
----
-
-## Document Versions
-
-| Document | Last Updated | Version |
-|----------|--------------|---------|
-| api.md | 2026-04-30 | 1.8.0 |
-| architecture.md | 2026-04-30 | 1.8.0 |
-| configuration.md | 2026-04-30 | 1.8.0 |
-| access-control.md | 2026-04-30 | 1.8.0 |
-| data-sources.md | 2026-04-21 | 1.6.0 |
-| database.md | 2026-04-21 | 1.6.0 |
-| cli.md | 2026-04-21 | 1.6.0 |
-| web-ui.md | 2026-04-21 | 1.6.0 |
-| ssl.md | 2026-04-21 | 1.6.0 |
-| runbook.md | 2026-04-30 | 1.8.0 |
-| risk-register.md | 2026-04-30 | 1.8.0 |
-| vulnerability-management.md | 2026-04-30 | 1.8.0 |
-| data-protection.md | 2026-04-30 | 1.8.0 |
-| compliance.md | 2026-04-29 | compliance-1.0 |
-| incident-response.md | 2026-04-29 | compliance-1.0 |
-| disaster-recovery.md | 2026-04-29 | compliance-1.0 |
-| ssdlc.md | 2026-04-29 | compliance-1.0 |
-| asset-management.md | 2026-04-29 | compliance-1.0 |
-| siem-integration.md | 2026-04-29 | compliance-1.0 |
-
----
-
-**Note:** This documentation reflects the state of the codebase at `1.8.0` + `compliance-1.0` (2026-04-30).
+See [Troubleshooting](troubleshooting/502-bad-gateway.md) for more.

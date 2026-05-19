@@ -15,59 +15,79 @@ _MMD_DIR    = _DOCS_ROOT / "diagrams"
 _md = MarkdownIt("commonmark", {"html": False}).enable("table")
 
 # slug must be lowercase letters, digits, hyphens — no path traversal possible
-_SAFE_SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+_SAFE_SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9.-]*$')
 
 # filename → slug overrides for files whose stem != sidebar slug
 _FILENAME_TO_SLUG: dict[str, str] = {
-    "README.md":          "",
+    "README.md":           "",
     "api-v1-migration.md": "api-migration",
 }
 
 DOCS_SIDEBAR: list[dict[str, Any]] = [
     {"section": None, "pages": [
-        {"slug": "",                "title": "Introduction"},
+        {"slug": "",                  "title": "Introduction"},
     ]},
     {"section": "Reference", "pages": [
-        {"slug": "api",             "title": "API Reference"},
-        {"slug": "configuration",   "title": "Configuration"},
-        {"slug": "data-sources",    "title": "Data Sources"},
-        {"slug": "api-migration",   "title": "API Migration"},
+        {"slug": "api",               "title": "API Reference"},
+        {"slug": "configuration",     "title": "Configuration"},
+        {"slug": "data-sources",      "title": "Data Sources"},
+        {"slug": "api-migration",     "title": "API Migration"},
     ]},
     {"section": "Architecture", "pages": [
-        {"slug": "architecture",    "title": "Architecture Overview"},
-        {"slug": "diagrams",        "title": "UML Diagrams"},
-        {"slug": "database",        "title": "Database Schema"},
-        {"slug": "deployment",      "title": "Deployment"},
+        {"slug": "architecture",      "title": "Architecture Overview"},
+        {"slug": "diagrams",          "title": "UML Diagrams"},
+        {"slug": "database",          "title": "Database Schema"},
+    ]},
+    {"section": "Guides", "pages": [
+        {"slug": "web-ui",            "title": "Web UI"},
+        {"slug": "cli",               "title": "CLI Tool"},
+        {"slug": "ssl",               "title": "SSL / TLS"},
+        {"slug": "siem-integration",  "title": "SIEM Integration"},
     ]},
     {"section": "Operations", "pages": [
-        {"slug": "troubleshooting", "title": "Troubleshooting"},
+        {"slug": "runbook",           "title": "Runbook"},
+        {"slug": "performance",       "title": "Performance"},
+        {"slug": "access-control",    "title": "Access Control"},
+        {"slug": "troubleshooting",   "title": "Troubleshooting"},
     ]},
 ]
 
 _PAGE_FILES: dict[str, str | None] = {
-    "":               "README.md",
-    "api":            None,
-    "architecture":   None,
-    "diagrams":       None,
-    "configuration":  "configuration.md",
-    "data-sources":   "data-sources.md",
-    "database":       "database.md",
-    "deployment":     "architecture.md",
-    "api-migration":  "api-v1-migration.md",
-    "troubleshooting":"troubleshooting/502-bad-gateway.md",
+    "":                "README.md",
+    "api":             None,
+    "architecture":    None,
+    "diagrams":        None,
+    "configuration":   "configuration.md",
+    "data-sources":    "data-sources.md",
+    "database":        "database.md",
+    "api-migration":   "api-v1-migration.md",
+    "web-ui":          "web-ui.md",
+    "cli":             "cli.md",
+    "ssl":             "ssl.md",
+    "siem-integration":"siem-integration.md",
+    "runbook":         "runbook.md",
+    "performance":     "performance.md",
+    "access-control":  "access-control.md",
+    "troubleshooting": "troubleshooting/502-bad-gateway.md",
 }
 
 _PAGE_TITLES: dict[str, str] = {
-    "":               "Introduction",
-    "api":            "API Reference",
-    "architecture":   "Architecture Overview",
-    "diagrams":       "UML Diagrams",
-    "configuration":  "Configuration",
-    "data-sources":   "Data Sources",
-    "database":       "Database Schema",
-    "deployment":     "Deployment",
-    "api-migration":  "API Migration Guide",
-    "troubleshooting":"Troubleshooting",
+    "":                "Introduction",
+    "api":             "API Reference",
+    "architecture":    "Architecture Overview",
+    "diagrams":        "UML Diagrams",
+    "configuration":   "Configuration",
+    "data-sources":    "Data Sources",
+    "database":        "Database Schema",
+    "api-migration":   "API Migration Guide",
+    "web-ui":          "Web UI",
+    "cli":             "CLI Tool",
+    "ssl":             "SSL / TLS",
+    "siem-integration":"SIEM Integration",
+    "runbook":         "Operations Runbook",
+    "performance":     "Performance & SLOs",
+    "access-control":  "Access Control",
+    "troubleshooting": "Troubleshooting",
 }
 
 _MERMAID_FILES = [
