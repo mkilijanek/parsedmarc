@@ -1,5 +1,22 @@
 # Change Log
 
+2026-05-25
+- Release 9.11.2: bumped all version references from 9.5.4/9.6.0 to 9.11.2 across Dockerfiles, docker-compose.yml, build.sh, requirements.in, and CI workflows.
+- Consolidated and applied all 10 open Dependabot dependency bumps:
+  * `parsedmarc` 9.6.0 -> 9.11.2 (requirements.in + lock rebuild) for latest fixes.
+  * `urllib3` >=2.6.3 -> >=2.7.0 to pick up security patches.
+  * Python base digest: `python:3-alpine3.23` -> `sha256:01f1254...` (Dockerfile, Dockerfile-alpine.locked).
+  * Python slim base digest: `python:3.14-slim` -> `sha256:bc389f7...` (Dockerfile-debian.locked, Dockerfile.hardened).
+  * distroless/python3-debian12 digest -> `sha256:7d1042c...` (Dockerfile-debian.locked, Dockerfile.hardened).
+  * ubi9/python-312 digest -> `sha256:742c950...` (Dockerfile-ubi.locked).
+  * GitHub Actions bumps:
+    - `actions/upload-artifact` 7.0.0 -> 7.0.1 (build-locked-commit, build-locked-release, snyk-security).
+    - `docker/build-push-action` 7.0.0 -> 7.1.0 (docker-build, docker-image, scheduled-secure-images, build-locked-commit, build-locked-release).
+    - `sigstore/cosign-installer` 4.1.1 -> 4.1.2 (docker-build).
+    - `github/codeql-action/upload-sarif` 4.35.1 -> 4.35.4 (trivy, snyk-security, snyk-container).
+    - `aquasecurity/trivy-action` 0.35.0 -> 0.36.0 (trivy).
+- Rationale: resolves accumulated Dependabot alerts for container base images, Python deps, and GitHub Actions security/tooling updates. Verified via `git diff --stat` showing 14 files changed, 33 insertions(+), 33 deletions(-).
+
 2026-04-07
 - Released `parsedmarc` 9.5.4: bumped Dockerfiles, compose, workflows, and requirements so base image and pull commands use the new version; tagged/published release for reproducible deployments.
 - Hardened CI and release automation: added `production` environment with branch/tag policies and wired `build-locked-release` & `docker-build` to require it; recorded reasoning for traceability.
