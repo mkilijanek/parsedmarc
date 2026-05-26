@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload SAST SARIF
         if: matrix.scan == 'sast' && steps.sast_sarif.outputs.found == 'true'
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
         with:
           sarif_file: snyk-code.sarif
           category: snyk-code
@@ -128,7 +128,7 @@ jobs:
 
       - name: Upload IaC SARIF
         if: matrix.scan == 'iac' && steps.iac_sarif.outputs.found == 'true'
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
         with:
           sarif_file: snyk-iac.sarif
           category: snyk-iac
