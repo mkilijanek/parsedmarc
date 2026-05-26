@@ -21,7 +21,7 @@ WORKDIR /src
 COPY requirements.lock /src/requirements.lock
 
 RUN python -m venv "${VENV_PATH}" \
- && "${VENV_PATH}/bin/pip" install --no-cache-dir --upgrade pip \
+ && "${VENV_PATH}/bin/pip" install --no-cache-dir --upgrade pip setuptools wheel \
  && mkdir -p /wheels \
  && "${VENV_PATH}/bin/pip" download --dest /wheels --require-hashes -r /src/requirements.lock \
  && "${VENV_PATH}/bin/pip" install --no-cache-dir --no-index --find-links=/wheels --require-hashes -r /src/requirements.lock \
