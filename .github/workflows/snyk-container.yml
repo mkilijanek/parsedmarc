@@ -123,29 +123,50 @@ jobs:
         if: steps.image_check.outputs.exists == 'true'
         run: docker pull "${{ steps.ref.outputs.IMAGE_REF }}"
 
-      - name: Snyk scan (SARIF)
+      - name: Install Snyk CLI
         if: steps.image_check.outputs.exists == 'true'
-        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          image: ${{ steps.ref.outputs.IMAGE_REF }}
-          args: >
-            --sarif-file-output=snyk-container-${{ matrix.target.name }}.sarif
-            --severity-threshold=high
-
-      - name: Check SARIF exists
-        if: steps.image_check.outputs.exists == 'true'
-        id: sarif_check
         shell: bash
         run: |
-          [ -f "snyk-container-${{ matrix.target.name }}.sarif" ] \
-            && echo "found=true" >> "$GITHUB_OUTPUT" \
-            || echo "found=false" >> "$GITHUB_OUTPUT"
+          VERSION=latest
+          BINARY=snyk-linux
+          BASE_URL="https://downloads.snyk.io/cli/${VERSION}"
+          FALLBACK_URL="https://static.snyk.io/cli/${VERSION}"
+
+          download_and_verify() {
+            local url="$1"
+            curl --fail --location --retry 2 --output "${BINARY}" "${url}/${BINARY}?utm_source=GITHUB_ACTIONS"
+            curl --fail --location --retry 2 --output "${BINARY}.sha256" "${url}/${BINARY}.sha256?utm_source=GITHUB_ACTIONS"
+            sha256sum -c "${BINARY}.sha256"
+          }
+
+          download_and_verify "${BASE_URL}" || download_and_verify "${FALLBACK_URL}"
+          chmod +x "${BINARY}"
+          sudo mv "${BINARY}" /usr/local/bin/snyk
+          rm -f "${BINARY}.sha256"
+          snyk version
+
+      - name: Snyk container test (SARIF)
+        if: steps.image_check.outputs.exists == 'true'
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk auth "${SNYK_TOKEN}"
+          snyk container test "${{ steps.ref.outputs.IMAGE_REF }}" \
+            --severity-threshold=high \
+            --sarif-file-output="snyk-container-${{ matrix.target.name }}.sarif"
+
+      - name: Verify SARIF was produced
+        if: steps.image_check.outputs.exists == 'true'
+        run: |
+          FILE="snyk-container-${{ matrix.target.name }}.sarif"
+          if [ ! -f "$FILE" ]; then
+            echo "ERROR: SARIF file not found: $FILE"
+            exit 1
+          fi
+          echo "SARIF file found: $FILE"
 
       - name: Upload SARIF to GitHub Security
-        if: steps.image_check.outputs.exists == 'true' && steps.sarif_check.outputs.found == 'true'
+        if: steps.image_check.outputs.exists == 'true'
         uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e
         with:
           sarif_file: snyk-container-${{ matrix.target.name }}.sarif

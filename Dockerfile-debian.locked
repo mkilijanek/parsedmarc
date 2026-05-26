@@ -3,7 +3,7 @@
 ############################
 # Builder (Debian slim)
 ############################
-FROM python:3.14-slim@sha256:bc389f7dfcb21413e72a28f491985326994795e34d2b86c8ae2f417b4e7818aa AS builder
+FROM python:3.14-slim-trixie@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97 AS builder
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""
@@ -27,7 +27,7 @@ RUN python -m venv "${VENV_PATH}" \
 ############################
 # Runtime (distroless Debian)
 ############################
-FROM gcr.io/distroless/python3-debian12:nonroot@sha256:7d1042ce588ab97019fe95c24ffca7bc5a82ccdac572511d5e09bda4435c89c5
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:614040f7f08b3f0dca943ea54eae94ea555ea2b9ca83d1acda1b7e4238ce91fb
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""
@@ -36,7 +36,7 @@ ARG SOURCE_DATE_EPOCH=""
 LABEL org.opencontainers.image.source="https://github.com/mkilijanek/parsedmarc" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.title="parsedmarc-locked (distroless debian12)" \
+      org.opencontainers.image.title="parsedmarc-locked (distroless debian13)" \
       org.opencontainers.image.vendor="mkilijanek"
 
 ENV VENV_PATH=/opt/venv

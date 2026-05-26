@@ -51,7 +51,10 @@ ENV PYTHONUNBUFFERED=1
 USER 0
 
 # katalogi pod Twój compose
-RUN mkdir -p /opt/app/ini /var/log/parsedmarc \
+RUN dnf update -y \
+ && dnf clean all \
+ && rm -rf /var/cache/dnf \
+ && mkdir -p /opt/app/ini /var/log/parsedmarc \
  && chown -R 1001:0 /opt/app /var/log/parsedmarc \
  && chmod -R g=u /opt/app /var/log/parsedmarc
 
