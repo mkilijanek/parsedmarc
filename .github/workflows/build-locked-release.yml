@@ -33,12 +33,19 @@ jobs:
       - name: Compute reproducible timestamps
         id: repro
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SDE=$(git log -1 --format=%ct)
           echo "SOURCE_DATE_EPOCH=${SDE}" >> "$GITHUB_OUTPUT"
           BUILD_DATE=$(date -u -d "@${SDE}" +%Y-%m-%dT%H:%M:%SZ)
           echo "BUILD_DATE=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
-          echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            VERSION="$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName)"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
