@@ -50,13 +50,24 @@ ENV PYTHONUNBUFFERED=1
 # UBI python image can default to a non-root user; switch to root for filesystem prep.
 USER 0
 
-# Strip s2i-oriented packages the parsedmarc CLI never uses (httpd + modules,
-# Node.js/npm, vim) - they only add unpatched CVE surface to the image.
+# Strip s2i/build-oriented packages the parsedmarc CLI never uses at runtime
+# (httpd + modules, Node.js/npm, vim, SSH client, DB connector and image-lib
+# -devel headers, kernel-headers) - they only add unpatched CVE surface.
+# acl/libacl, glib2, and curl-minimal are intentionally left alone: dnf/rpm/
+# systemd depend on them and removing them breaks the package manager itself.
+# Verified locally that removal cascades cleanly (dnf pulls in gcc, git,
+# harfbuzz, gd and their -devel packages as orphaned dependents) without
+# touching python3.12 or dnf.
 RUN dnf remove -y --noautoremove \
       httpd httpd-core httpd-devel httpd-filesystem httpd-tools \
       mod_lua mod_session mod_ssl \
       nodejs nodejs-docs nodejs-full-i18n nodejs-libs npm \
       vim-minimal vim-filesystem \
+      libcurl-devel kernel-headers \
+      libpng libpng-devel libtiff libtiff-devel \
+      libpq libpq-devel \
+      mariadb-connector-c mariadb-connector-c-config mariadb-connector-c-devel \
+      openssh openssh-clients \
  && dnf update -y \
  && dnf clean all \
  && rm -rf /var/cache/dnf \
