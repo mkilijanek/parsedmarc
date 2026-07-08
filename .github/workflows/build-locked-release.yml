@@ -6,6 +6,8 @@ on:
     tags:
       - '*.*.*'
       - '*.*.*-h*'
+  schedule:
+    - cron: '0 4 */14 * *'  # Every 14 days at 04:00 UTC, refreshes floating alpine/debian/ubi tags
 
 permissions:
   contents: read

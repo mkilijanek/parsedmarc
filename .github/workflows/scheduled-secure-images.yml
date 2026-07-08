@@ -2,16 +2,15 @@ name: Scheduled Secure Image Build
 
 on:
   schedule:
-    - cron: '0 3 * * 0'  # Sunday 03:00 UTC
+    - cron: '0 3 */14 * *'  # Every 14 days at 03:00 UTC
   workflow_dispatch:
     inputs:
       parsedmarc_version:
-        description: 'Parsedmarc version'
+        description: 'Parsedmarc version (blank = latest GitHub release)'
         required: false
-        default: '9.2.1'
+        default: ''
 
 env:
-  DEFAULT_PARSEDMARC_VERSION: 9.2.1
   IMAGE: ghcr.io/mkilijanek/parsedmarc
 
 jobs:
@@ -28,11 +27,13 @@ jobs:
 
       - name: Determine version
         id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "${{ github.event.inputs.parsedmarc_version }}" ]; then
             VERSION="${{ github.event.inputs.parsedmarc_version }}"
           else
-            VERSION="${DEFAULT_PARSEDMARC_VERSION}"
+            VERSION="$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName)"
           fi
           echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
           # Allow optional hotfix suffix in image tag while installing base parsedmarc semver from PyPI.
@@ -70,7 +71,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ steps.version.outputs.VERSION }}
           build-args: |
             PARSEDMARC_VERSION=${{ steps.version.outputs.PARSEDMARC_VERSION }}
             VCS_REF=${{ github.sha }}
@@ -88,7 +88,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE }}:distroless
-            ${{ env.IMAGE }}:${{ steps.version.outputs.VERSION }}-distroless
           build-args: |
             PARSEDMARC_VERSION=${{ steps.version.outputs.PARSEDMARC_VERSION }}
             VCS_REF=${{ github.sha }}
