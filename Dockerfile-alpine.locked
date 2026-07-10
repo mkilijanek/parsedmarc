@@ -45,6 +45,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main zlib=1.3.2-r0 openssl musl=1.2.5-r23 \
+ && apk add --no-cache curl \
  && adduser -D -h /home/parsedmarc -u 1000 parsedmarc \
  && mkdir -p /home/parsedmarc/ini /var/log/parsedmarc \
  && chown -R 1000:1000 /home/parsedmarc /var/log/parsedmarc
