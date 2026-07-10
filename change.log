@@ -3,6 +3,7 @@
 2026-07-10
 - Release 10.2.1: bumped all version references (`Dockerfile`, `Dockerfile.hardened`, `docker-compose.yml`, `build.sh`, `docker-image.yml`) from 10.2.0 to 10.2.1 to match `requirements.in`.
 - Added `curl` to `Dockerfile` (default alpine image) and `Dockerfile-alpine.locked` via `apk add curl`. Left `Dockerfile-ubi.locked` alone (already has a working `curl` from the `curl-minimal` package kept for dnf/rpm) and left `Dockerfile-debian.locked`/`Dockerfile.hardened` alone (distroless, no package manager). Re-released the `10.2.1` tag/images to include this change.
+- Documented `CVE-2026-45186` (`expat`/`libexpat1` algorithmic complexity DoS, affects `Dockerfile.hardened` and `Dockerfile-debian.locked`) as an accepted risk in `SECURITY.md`: no fixed `expat` package exists yet for Debian trixie, and the distroless final stage has no package manager to pin around it. Re-check on the next `distroless/python3-debian13` base digest bump.
 
 2026-07-08
 - Merged all 8 open Dependabot PRs: `parsedmarc` 9.11.2 -> 10.2.0, distroless/python3-debian13 and ubi9/python-312 base digest bumps, and 5 GitHub Actions version bumps (`docker/login-action`, `docker/metadata-action`, `docker/build-push-action`, `docker/setup-buildx-action`, `github/codeql-action`). The base-image bumps also resolved the `expat/libexpat1` CVE that was failing the scheduled Snyk Container Scan on the `locked-debian` image.
