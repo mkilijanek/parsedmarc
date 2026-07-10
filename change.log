@@ -1,5 +1,8 @@
 # Change Log
 
+2026-07-10
+- Release 10.2.1: bumped all version references (`Dockerfile`, `Dockerfile.hardened`, `docker-compose.yml`, `build.sh`, `docker-image.yml`) from 10.2.0 to 10.2.1 to match `requirements.in`.
+
 2026-07-08
 - Merged all 8 open Dependabot PRs: `parsedmarc` 9.11.2 -> 10.2.0, distroless/python3-debian13 and ubi9/python-312 base digest bumps, and 5 GitHub Actions version bumps (`docker/login-action`, `docker/metadata-action`, `docker/build-push-action`, `docker/setup-buildx-action`, `github/codeql-action`). The base-image bumps also resolved the `expat/libexpat1` CVE that was failing the scheduled Snyk Container Scan on the `locked-debian` image.
 - Added a 14-day (`*/14 * *`) schedule to `build-locked-release` so the floating `alpine`/`debian`/`ubi` locked image tags get rebuilt against current base images even without a push to `main`. Pinned per-release version tags remain untouched/immutable.
