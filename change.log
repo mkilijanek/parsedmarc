@@ -1,5 +1,8 @@
 # Change Log
 
+2026-07-13
+- Documented two newly-disclosed CVEs found in a manual re-scan of the `-ubi` locked image as accepted risks in `SECURITY.md`: `CVE-2026-15308` (`python3`/`python3.12` `html.parser` CPU DoS) and `CVE-2026-59873`/`CVE-2026-59874` (`tar` unbounded resource use / stalled loop DoS). Traced both against parsedmarc's actual code paths: `mailsuite.utils.parse_email()` (the only caller of `html2text`/`html.parser` in the dependency tree) is never invoked by this codebase, and `tarfile`/the `tar` binary are never used (report attachments go through `zipfile`/gzip only) — so both are present-but-unreachable rather than exploitable. No fixed RHEL9 packages exist yet for either.
+
 2026-07-10
 - Release 10.2.1: bumped all version references (`Dockerfile`, `Dockerfile.hardened`, `docker-compose.yml`, `build.sh`, `docker-image.yml`) from 10.2.0 to 10.2.1 to match `requirements.in`.
 - Added `curl` to `Dockerfile` (default alpine image) and `Dockerfile-alpine.locked` via `apk add curl`. Left `Dockerfile-ubi.locked` alone (already has a working `curl` from the `curl-minimal` package kept for dnf/rpm) and left `Dockerfile-debian.locked`/`Dockerfile.hardened` alone (distroless, no package manager). Re-released the `10.2.1` tag/images to include this change.
