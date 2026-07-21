@@ -3,7 +3,7 @@
 ############################
 # Builder (UBI)
 ############################
-FROM registry.access.redhat.com/ubi9/python-312@sha256:c40a6d1ce9403c6bc2cc36f0c65c5cb18869e3432e95b29807fea2febdc3ce11 AS builder
+FROM registry.access.redhat.com/ubi9/python-312@sha256:5249b450c7b674c38d8611af2a74b48e288277bf36c77ec02bdfd3373fb9932b AS builder
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""
@@ -30,7 +30,7 @@ RUN python -m venv "${VENV_PATH}" \
 ############################
 # Runtime (UBI)
 ############################
-FROM registry.access.redhat.com/ubi9/python-312@sha256:c40a6d1ce9403c6bc2cc36f0c65c5cb18869e3432e95b29807fea2febdc3ce11
+FROM registry.access.redhat.com/ubi9/python-312@sha256:5249b450c7b674c38d8611af2a74b48e288277bf36c77ec02bdfd3373fb9932b
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""
