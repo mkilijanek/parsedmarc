@@ -3,7 +3,10 @@
 ############################
 # Builder (Debian slim)
 ############################
-FROM python:3.14-slim-trixie@sha256:83ff1d245a3d57d04152252d3ef9cb361494d0b3395abd65a5ebe91c401c8e83 AS builder
+# Debian's python3 (3.13) matches the interpreter shipped in the
+# distroless/python3-debian13 runtime stage; a venv created with the
+# docker-official /usr/local python cannot run there.
+FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132 AS builder
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""
@@ -17,7 +20,10 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /src
 COPY requirements.lock /src/requirements.lock
 
-RUN python -m venv "${VENV_PATH}" \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -m venv "${VENV_PATH}" \
  && "${VENV_PATH}/bin/pip" install --no-cache-dir --upgrade pip setuptools wheel \
  && mkdir -p /wheels \
  && "${VENV_PATH}/bin/pip" download --dest /wheels --require-hashes -r /src/requirements.lock \

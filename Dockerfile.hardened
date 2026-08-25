@@ -3,7 +3,10 @@
 ############################
 # Builder stage
 ############################
-FROM python:3.14-slim-trixie@sha256:83ff1d245a3d57d04152252d3ef9cb361494d0b3395abd65a5ebe91c401c8e83 AS builder
+# Debian's python3 (3.13) matches the interpreter shipped in the
+# distroless/python3-debian13 runtime stage; a venv created with the
+# docker-official /usr/local python cannot run there.
+FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132 AS builder
 
 ARG PARSEDMARC_VERSION=10.4.3
 ARG VCS_REF=""
@@ -16,7 +19,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 RUN if [ -z "${SOURCE_DATE_EPOCH}" ]; then unset SOURCE_DATE_EPOCH; fi \
- && python -m venv "${VENV_PATH}" \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -m venv "${VENV_PATH}" \
  && "${VENV_PATH}/bin/pip" install --no-cache-dir --upgrade pip \
   && "${VENV_PATH}/bin/pip" install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}" "urllib3>=2.7.0"
 
