@@ -17,7 +17,7 @@ permissions:
 env:
   IMAGE: ghcr.io/mkilijanek/parsedmarc-locked
   PYTHON_VERSION: "3.12"
-  PIP_TOOLS_VERSION: "7.5.3"
+  PIP_TOOLS_VERSION: "7.6.1"
 
 jobs:
   build:
