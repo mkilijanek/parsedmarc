@@ -15,7 +15,8 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-RUN python -m venv "${VENV_PATH}" \
+RUN if [ -z "${SOURCE_DATE_EPOCH}" ]; then unset SOURCE_DATE_EPOCH; fi \
+ && python -m venv "${VENV_PATH}" \
  && "${VENV_PATH}/bin/pip" install --no-cache-dir --upgrade pip \
   && "${VENV_PATH}/bin/pip" install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}" "urllib3>=2.7.0"
 

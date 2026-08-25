@@ -14,7 +14,8 @@ LABEL org.opencontainers.image.source="https://github.com/mkilijanek/parsedmarc"
       org.opencontainers.image.vendor="mkilijanek" \
       org.opencontainers.image.title="parsedmarc (containerized)"
 
-RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main zlib=1.3.2-r0 openssl musl=1.2.5-r23 \
+RUN if [ -z "${SOURCE_DATE_EPOCH}" ]; then unset SOURCE_DATE_EPOCH; fi \
+ && apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main zlib=1.3.2-r0 openssl musl=1.2.5-r23 \
  && apk add --no-cache curl \
  && python -m pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}" "urllib3>=2.6.3" \
