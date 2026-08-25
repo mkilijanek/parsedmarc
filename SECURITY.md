@@ -57,6 +57,14 @@ The following vulnerabilities are tracked but currently **not actionable** — t
 - **Mitigation in the meantime:** none required given the code path is unused; re-evaluate if a future dependency change starts exercising `mailsuite.utils.parse_email()` or any other `html.parser` consumer.
 - **Re-check trigger:** next `ubi9/python-312` base image digest bump, or if HTML parsing of email bodies is ever added to parsedmarc's own code path.
 
+### `curl-minimal` / `libcurl-minimal` 7.76.1-40.el9_8.5 — five High curl CVEs
+
+- **Affected image:** `Dockerfile-ubi.locked` (`-ubi` locked tag) only.
+- **Findings:** Snyk flags five issues, each in both `curl-minimal` and `libcurl-minimal`: infinite loop (SNYK-RHEL9-LIBCURLMINIMAL-17878844), unbounded resource allocation (-17878854), improper cryptographic signature verification (-17878878), CVE-2026-8925 (-17878902), and improper certificate validation (-17878931); `curl-minimal` twins are -17878836/-17878850/-17878882/-17878900/-17878929.
+- **Why it's low risk here:** parsedmarc itself never uses curl or libcurl — all HTTP/IMAP traffic goes through Python (`requests`/`urllib3`/`imapclient`). The packages stay in the image because `dnf`/`rpm` link against libcurl, and the `curl` binary is used only for container healthchecks against localhost. All five CVEs require curl to talk to a malicious or attacker-influenced server, which the healthcheck-only usage never does.
+- **Why it isn't fixed yet:** Red Hat has not shipped fixed curl packages for RHEL 9 (the 2026-08-25 `ubi9/python-312` digest bump to `2d3e2a70` only moved curl 7.76.1-40.el9 -> 7.76.1-40.el9_8.5, which Snyk still flags with no fix version listed).
+- **Re-check trigger:** next `ubi9/python-312` base image digest bump or scheduled rebuild.
+
 ### CVE-2026-59873 / CVE-2026-59874 — `tar` unbounded resource use / stalled loop
 
 - **Affected image:** `Dockerfile-ubi.locked` (`-ubi` locked tag) only — `tar@2:1.34-11.el9`.
