@@ -1,4 +1,4 @@
-FROM python:3-alpine3.23@sha256:01f125438100bb6b5770c0b1349e5200b23ca0ae20a976b5bd8628457af607ae
+FROM python:3-alpine3.23@sha256:6b8f06d04d5305c1d1288435388df9165ab41e681fae6439d6349d8053cc3f83
 
 ARG PARSEDMARC_VERSION=10.4.3
 ARG VCS_REF=""
@@ -16,7 +16,7 @@ LABEL org.opencontainers.image.source="https://github.com/mkilijanek/parsedmarc"
 
 RUN if [ -z "${SOURCE_DATE_EPOCH}" ]; then unset SOURCE_DATE_EPOCH; fi \
  && apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main zlib=1.3.2-r0 openssl musl=1.2.5-r23 \
- && apk add --no-cache curl \
+ && apk add --no-cache curl sqlite-libs \
  && python -m pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir "parsedmarc==${PARSEDMARC_VERSION}" "urllib3>=2.6.3" \
  && adduser -D -h /home/parsedmarc -u 1000 parsedmarc \

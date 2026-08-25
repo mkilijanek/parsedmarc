@@ -3,7 +3,7 @@
 ############################
 # Builder (Debian slim)
 ############################
-FROM python:3.14-slim-trixie@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97 AS builder
+FROM python:3.14-slim-trixie@sha256:83ff1d245a3d57d04152252d3ef9cb361494d0b3395abd65a5ebe91c401c8e83 AS builder
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""
@@ -27,7 +27,7 @@ RUN python -m venv "${VENV_PATH}" \
 ############################
 # Runtime (distroless Debian)
 ############################
-FROM gcr.io/distroless/python3-debian13:nonroot@sha256:886011e8c25a19ab38fa6d929e06b47d4fd3661d1dff61c6b4ebb4becd030c37
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:6bfc400d0a6d89f50f5bbc0a4b4ff57214ae5c01647c3a74c2a0c8d830b4cc00
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""
