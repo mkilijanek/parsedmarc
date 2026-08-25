@@ -1,5 +1,10 @@
 # Change Log
 
+2026-08-25
+- Release 10.4.3: bumped all version references (`requirements.in`, `Dockerfile`, `Dockerfile.hardened`, `docker-compose.yml`, `build.sh`, `docker-image.yml`) from 10.2.1 to 10.4.3. Locked variants need no edit — CI regenerates `requirements.lock` from `requirements.in`.
+- Fixed a local-build failure introduced by 10.4.x's new source-only deps (`dkimpy`, `authres`): the `ARG SOURCE_DATE_EPOCH=""` default leaks an empty env var into `RUN`, and setuptools/wheel does `int(os.environ["SOURCE_DATE_EPOCH"])` while building sdists, crashing with `ValueError: invalid literal for int()`. Added an `unset`-when-empty guard before `pip install` in `Dockerfile` and `Dockerfile.hardened` (reproduced and confirmed the root cause in a local venv). CI passes a real epoch, so this only affected builds without one.
+- Built `ghcr.io/mkilijanek/parsedmarc:10.4.3` locally, smoke-tested (`--version` prints 10.4.3), and pushed to GHCR (digest `sha256:7c600747c077ab3801b9277d3f0d9bf495fedfd673e672dd3dd94ed5c58a707e`) after refreshing the `gh` token with the `write:packages` scope.
+
 2026-07-13
 - Documented two newly-disclosed CVEs found in a manual re-scan of the `-ubi` locked image as accepted risks in `SECURITY.md`: `CVE-2026-15308` (`python3`/`python3.12` `html.parser` CPU DoS) and `CVE-2026-59873`/`CVE-2026-59874` (`tar` unbounded resource use / stalled loop DoS). Traced both against parsedmarc's actual code paths: `mailsuite.utils.parse_email()` (the only caller of `html2text`/`html.parser` in the dependency tree) is never invoked by this codebase, and `tarfile`/the `tar` binary are never used (report attachments go through `zipfile`/gzip only) — so both are present-but-unreachable rather than exploitable. No fixed RHEL9 packages exist yet for either.
 
