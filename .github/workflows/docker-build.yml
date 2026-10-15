@@ -83,6 +83,7 @@ jobs:
       # Standard image
       ############################################################
       - name: Build and push (standard)
+        id: build_standard
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: .
@@ -103,6 +104,7 @@ jobs:
       # Distroless hardened image
       ############################################################
       - name: Build and push (distroless hardened)
+        id: build_distroless
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: .
@@ -127,6 +129,10 @@ jobs:
 
       - name: Sign images (keyless)
         shell: bash
+        env:
+          DIGEST_STD: ${{ steps.build_standard.outputs.digest }}
+          DIGEST_DST: ${{ steps.build_distroless.outputs.digest }}
         run: |
-          cosign sign --yes "${{ env.IMAGE }}:${{ steps.repro.outputs.VERSION }}"
-          cosign sign --yes "${{ env.IMAGE }}:${{ steps.repro.outputs.VERSION }}-distroless"
+          # Sign by digest: a tag could move between push and sign.
+          cosign sign --yes "${IMAGE}@${DIGEST_STD}"
+          cosign sign --yes "${IMAGE}@${DIGEST_DST}"
