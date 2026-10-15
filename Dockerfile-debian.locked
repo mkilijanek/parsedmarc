@@ -6,7 +6,7 @@
 # Debian's python3 (3.13) matches the interpreter shipped in the
 # distroless/python3-debian13 runtime stage; a venv created with the
 # docker-official /usr/local python cannot run there.
-FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS builder
+FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS builder
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""
@@ -33,7 +33,7 @@ RUN apt-get update \
 ############################
 # Runtime (distroless Debian)
 ############################
-FROM gcr.io/distroless/python3-debian13:nonroot@sha256:6bfc400d0a6d89f50f5bbc0a4b4ff57214ae5c01647c3a74c2a0c8d830b4cc00
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:83aa8d4f74a4d7f7cf2d472054139bef71a927b76c680c0f2e1021d6b1d6d732
 
 ARG VCS_REF=""
 ARG BUILD_DATE=""

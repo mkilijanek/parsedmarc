@@ -19,3 +19,4 @@ Start migration execution when upstream ships a stable release containing PR #65
 
 - 2026-03-03: checklist created; waiting for upstream merge/release.
 - 2026-03-08: upstream PR #659 still open; no image/default-version change applied yet.
+- 2026-10-15: upstream shipped RFC 9989/9990/9991 (DMARCbis) support in the 10.x line; this repo moves to 11.0.3. Remaining items: operator migration notes (step 6) and config terminology review (step 4: `forensic` -> `failure` keys are accepted as aliases upstream).
