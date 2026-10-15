@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
 
@@ -33,7 +33,7 @@ jobs:
           file: Dockerfile
           push: false
           build-args: |
-            PARSEDMARC_VERSION=10.4.3
+            PARSEDMARC_VERSION=11.0.3
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
@@ -45,7 +45,7 @@ jobs:
           file: Dockerfile.hardened
           push: false
           build-args: |
-            PARSEDMARC_VERSION=10.4.3
+            PARSEDMARC_VERSION=11.0.3
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ steps.repro.outputs.BUILD_DATE }}
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
