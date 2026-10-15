@@ -74,9 +74,12 @@ jobs:
 
       - name: Log in to GHCR with retry
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
         run: |
           for attempt in 1 2 3 4 5; do
-            if echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin; then
+            if printf '%s' "${GH_TOKEN}" | docker login ghcr.io -u "${GH_ACTOR}" --password-stdin; then
               exit 0
             fi
 

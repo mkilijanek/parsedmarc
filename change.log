@@ -1,5 +1,13 @@
 # Change Log
 
+2026-10-15 (security follow-up)
+- `build-locked-release`: the five `parsedmarc-locked` tags were pushed with SBOM/provenance but never cosign-signed, unlike the other image workflows. They are now signed by digest.
+- `docker-build`: sign by the pushed digest instead of the mutable version tag, and pass digests through `env:` instead of interpolating step outputs into the shell script.
+- `snyk-container`, `trivy`: the GHCR login passes `GITHUB_TOKEN` and the actor through `env:` instead of inlining `${{ secrets.GITHUB_TOKEN }}` into the script text.
+- `build.sh`: `set -eu` and quoting, so a failed `docker build` can no longer be followed by a push of a stale local image.
+- `.env.example` pinned `parsedmarc:9.1.2`; now `11.0.3`. `.gitignore` covers `ini/parsedmarc.ini`, the real config next to the tracked `.example`.
+- Not changed: the Snyk CLI is still downloaded as `latest` and checked against a `.sha256` from the same host. Pinning a version and hash was not possible from the sandbox (downloads.snyk.io blocked).
+
 2026-10-15
 - Synced all open Dependabot updates into one branch (merged the branches of PRs #101-#105, #111, #113, #116, #118) so they land together with the follow-up fixes below; those PRs can be closed once this merges.
 - Release 11.0.3: bumped all version references from 10.4.3. parsedmarc 11.0.0 made the output and mailbox integrations optional extras (upstream #883), so a plain `parsedmarc==11.x` install has no Elasticsearch/OpenSearch/Kafka/S3/Graph/Gmail clients. Dependabot's #116 only changed the pin, which would have built green and failed at runtime for every Graph or Elasticsearch user. All images now install `parsedmarc[all]` (`requirements.in`, `Dockerfile`, `Dockerfile.hardened`); `urllib3>=2.8.0` (#113).

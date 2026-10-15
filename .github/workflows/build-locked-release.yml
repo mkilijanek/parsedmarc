@@ -84,6 +84,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push parsedmarc-locked:alpine
+        id: build_alpine
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: .
@@ -101,6 +102,7 @@ jobs:
           provenance: true
 
       - name: Build and push parsedmarc-locked:debian
+        id: build_debian
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: .
@@ -118,6 +120,7 @@ jobs:
           provenance: true
 
       - name: Build and push parsedmarc-locked:ubi
+        id: build_ubi
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: .
@@ -133,3 +136,17 @@ jobs:
             SOURCE_DATE_EPOCH=${{ steps.repro.outputs.SOURCE_DATE_EPOCH }}
           sbom: true
           provenance: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+
+      - name: Sign images (keyless)
+        shell: bash
+        env:
+          DIGEST_ALPINE: ${{ steps.build_alpine.outputs.digest }}
+          DIGEST_DEBIAN: ${{ steps.build_debian.outputs.digest }}
+          DIGEST_UBI: ${{ steps.build_ubi.outputs.digest }}
+        run: |
+          cosign sign --yes "${IMAGE}@${DIGEST_ALPINE}"
+          cosign sign --yes "${IMAGE}@${DIGEST_DEBIAN}"
+          cosign sign --yes "${IMAGE}@${DIGEST_UBI}"
