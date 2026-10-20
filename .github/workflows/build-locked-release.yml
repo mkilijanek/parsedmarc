@@ -85,7 +85,7 @@ jobs:
 
       - name: Build and push parsedmarc-locked:alpine
         id: build_alpine
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
           file: Dockerfile-alpine.locked
@@ -103,7 +103,7 @@ jobs:
 
       - name: Build and push parsedmarc-locked:debian
         id: build_debian
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
           file: Dockerfile-debian.locked
@@ -121,7 +121,7 @@ jobs:
 
       - name: Build and push parsedmarc-locked:ubi
         id: build_ubi
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
           file: Dockerfile-ubi.locked
